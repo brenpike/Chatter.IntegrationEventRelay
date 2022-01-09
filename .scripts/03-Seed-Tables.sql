@@ -1,0 +1,30 @@
+USE [FakeDb]
+GO
+
+-- Create 25 [dbo].[Event1] records
+
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'BJYZCCXSTVXWZATPZR',1,17957, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'BURCHKVKLWZTLVDRNM',0,17351, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'KUGLNXNXMTAIZOGOWL',0,12887, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'ARQSEVGWWFZWGBCOLQ',1,20327, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'YCGWTLYMMOZEYKHITC',0,23000, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'GETMPKCRNLXMDAUNNJ',1,21345, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'IBLEOSRTZCBAKEBQVR',1,21960, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'EZRGQHMBIMCNNVQCJC',0,20789, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'YVTVQMVLIFGBLCYXDG',1,7712, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'IPKZULWHJPKMJCEUYR',1,24603, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'JOIANACJJNYUBRGCZN',0,16223, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'GIVDBPMBEXJSHBSKJF',1,8428, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'QINONUSCYJYZALDNEY',0,18019, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'WJYQFIGEPKPEVIHJKX',0,10376, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'SGEPPPNTOXTDTCEQQI',1,1792, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'ORDIYAAZJYQPMLZTRM',1,14359, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'ABLMKHLRUNXDBMNFRQ',0,5199, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'TYZYJOAZTNWRHDSWUQ',0,769, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'TLILLWQLTPCCCEZBAA',1,22263, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'DOTIKXWGWUSTSTIAJR',1,7022, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'NJXZUZDGSVGRMORNIC',0,10548, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'VEMQUKDGSQYMIUKPKR',0,22364, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'FVUXRKKQYYBFVEEHQQ',0,16436, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'HFPWBDEAYNPGHPBMOX',0,16632, null, null)
+INSERT INTO [dbo].[Event1] ([Id] ,[StringData] ,[BoolData] ,[IntData] ,[DeletedBy] ,[DeletedAt]) VALUES (NEWID(), 'HKIVRLSQITURNMZRFG',0,23899, null, null)
