@@ -1,0 +1,94 @@
+USE [FakeDb]
+GO                  
+                IF EXISTS (SELECT * FROM sys.databases 
+                                    WHERE name = 'FakeDb' AND is_broker_enabled = 0) 
+                BEGIN
+                    ALTER DATABASE [FakeDb] SET ENABLE_BROKER; 
+
+                    -- SQL Express
+                    ALTER AUTHORIZATION ON DATABASE::[FakeDb] TO [sa]
+                END
+
+                IF NOT EXISTS (SELECT * FROM sys.service_queues WHERE name = 'Chatter_ConversationQueue_Event2ChangedEvent')
+	                CREATE QUEUE dbo.[Chatter_ConversationQueue_Event2ChangedEvent] WITH POISON_MESSAGE_HANDLING (STATUS = OFF)
+
+                IF NOT EXISTS(SELECT * FROM sys.services WHERE name = 'Chatter_ConversationService_Event2ChangedEvent')
+	                CREATE SERVICE [Chatter_ConversationService_Event2ChangedEvent] ON QUEUE dbo.[Chatter_ConversationQueue_Event2ChangedEvent] ([DEFAULT]) 
+            
+
+                            -- Notification Trigger check statement.
+                            
+                IF OBJECT_ID ('dbo.Chatter_NotificationTrigger_Event2ChangedEvent', 'TR') IS NOT NULL
+                    RETURN;
+            
+
+                            -- Notification Trigger configuration statement.
+                            DECLARE @triggerStatement NVARCHAR(MAX)
+                            DECLARE @select NVARCHAR(MAX)
+                            DECLARE @sqlInserted NVARCHAR(MAX)
+                            DECLARE @sqlDeleted NVARCHAR(MAX)
+                            
+                            SET @triggerStatement = N'
+                CREATE TRIGGER [Chatter_NotificationTrigger_Event2ChangedEvent]
+                ON dbo.[Event2]
+                WITH EXECUTE AS OWNER
+                AFTER INSERT, UPDATE, DELETE 
+                AS
+
+                SET NOCOUNT ON;
+
+                IF EXISTS (SELECT * FROM sys.services WHERE name = ''Chatter_ConversationService_Event2ChangedEvent'')
+                BEGIN
+                    DECLARE @message NVARCHAR(MAX)
+                    SET @message = N''''
+
+                    DECLARE @InsertedJSON NVARCHAR(MAX) 
+                    DECLARE @DeletedJSON NVARCHAR(MAX) 
+                    
+                    %inserted_select_statement%
+                    
+                    %deleted_select_statement% 
+                    
+                    IF (COALESCE(@DeletedJSON, N'''') = N'''') SET @message = @InsertedJSON
+                    ELSE
+                    	IF (COALESCE(@InsertedJSON, N'''') = N'''') SET @message = @DeletedJSON
+                    ELSE
+                    	SET @message = CONCAT(SUBSTRING(@InsertedJSON,1,LEN(@InsertedJSON) - 1), N'','', SUBSTRING(@DeletedJSON,2,LEN(@DeletedJSON)-1))
+
+                    IF @message IS NOT NULL
+					BEGIN
+                        SET @message = compress(@message)                    
+
+                	    DECLARE @ConvHandle UNIQUEIDENTIFIER
+
+                	    BEGIN DIALOG @ConvHandle 
+                            FROM SERVICE [Chatter_ConversationService_Event2ChangedEvent] TO SERVICE ''Chatter_ConversationService_Event2ChangedEvent'' ON CONTRACT [DEFAULT] WITH ENCRYPTION=OFF; 
+
+                        SEND ON CONVERSATION @ConvHandle MESSAGE TYPE [DEFAULT] (@message);
+                    END
+                END
+            '
+                            
+                            SET @select = STUFF((SELECT ',' + '[' + COLUMN_NAME + ']'
+                               FROM INFORMATION_SCHEMA.COLUMNS
+                               WHERE DATA_TYPE NOT IN  ('text','ntext','image','geometry','geography') AND TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'Event2' AND TABLE_CATALOG = 'FakeDb'
+                               FOR XML PATH ('')
+                               ), 1, 1, '')
+
+                            SET @sqlInserted =
+                                N'SET @InsertedJSON = (SELECT ' + @select + N'
+                                                                         FROM INSERTED
+                                                                         FOR JSON AUTO, ROOT(''Inserted''))'
+
+                            SET @sqlDeleted =
+                                N'SET @DeletedJSON = (SELECT ' + @select + N'
+                                                                         FROM DELETED
+                                                                         FOR JSON AUTO, ROOT(''Deleted''))'
+
+                            SET @triggerStatement = REPLACE(@triggerStatement
+                                                     , '%inserted_select_statement%', @sqlInserted)
+
+                            SET @triggerStatement = REPLACE(@triggerStatement
+                                                     , '%deleted_select_statement%', @sqlDeleted)
+
+                            EXEC sp_executesql @triggerStatement

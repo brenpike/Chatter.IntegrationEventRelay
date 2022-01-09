@@ -1,0 +1,1 @@
+/opt/mssql-tools/bin/sqlcmd -H localhost -U sa -P $SA_PASSWORD -l 1 -t 1 -Q "select name from sys.databases where state <> 1 | grep --quiet '0 rows affected' || exit 1"

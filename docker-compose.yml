@@ -1,0 +1,58 @@
+﻿version: '3.7'
+
+services:
+  worker:
+    container_name: integrationeventrelay_worker1
+    build:
+      context: .
+      dockerfile: Chatter.IntegrationEventRelay.Worker/src/Worker.Dockerfile
+    env_file:
+      - .devops/worker.env
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker2:
+    container_name: integrationeventrelay_worker2
+    build:
+      context: .
+      dockerfile: Chatter.IntegrationEventRelay.Worker/src/Worker.Dockerfile
+    env_file:
+      - .devops/worker.env
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    container_name: integrationeventrelay_db
+    build:
+      context: .
+      dockerfile: Chatter.IntegrationEventRelay.Worker/src/Sql.Dockerfile
+    env_file:
+      - .devops/sql.env
+    environment:
+      - IntegrationEventRelay__ConnectionString=Server=db;Database=FakeDb;Trusted_Connection=false;User ID=sa;Password=${SA_PASSWORD}
+    ports:
+      - "1401:1433"
+
+  consumer1:
+    container_name: integrationeventrelay_consumer1
+    build:
+      context: .
+      dockerfile: Chatter.IntegrationEventRelay.Consumer/src/Consumer.Dockerfile
+    env_file:
+      - .devops/consumer.env
+    depends_on:
+      db:
+        condition: service_healthy
+
+  consumer2:
+    container_name: integrationeventrelay_consumer2
+    build:
+      context: .
+      dockerfile: Chatter.IntegrationEventRelay.Consumer/src/Consumer.Dockerfile
+    env_file:
+      - .devops/consumer.env
+    depends_on:
+      db:
+        condition: service_healthy

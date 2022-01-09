@@ -1,0 +1,48 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Chatter.IntegrationEventRelay.Core", "Chatter.IntegrationEventRelay.Core\src\Chatter.IntegrationEventRelay.Core.csproj", "{BC6279E8-45BE-4B2B-8B7F-D3A4E221D481}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{90BE6DF5-F9EF-4644-A454-27142FB7EDF4}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Chatter.IntegrationEventRelay.Core.Tests", "Chatter.IntegrationEventRelay.Core\tests\Chatter.IntegrationEventRelay.Core.Tests.csproj", "{946007F2-0DE7-4107-852F-90DF40DBCB12}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Chatter.IntegrationEventRelay.Worker", "Chatter.IntegrationEventRelay.Worker\src\Chatter.IntegrationEventRelay.Worker.csproj", "{CD0AA86A-648B-436A-A4F5-6749A7DC8583}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Chatter.IntegrationEventRelay.Consumer", "Chatter.IntegrationEventRelay.Consumer\src\Chatter.IntegrationEventRelay.Consumer.csproj", "{148B16A0-4120-423D-BB04-4A20E15C13B8}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{BC6279E8-45BE-4B2B-8B7F-D3A4E221D481}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BC6279E8-45BE-4B2B-8B7F-D3A4E221D481}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BC6279E8-45BE-4B2B-8B7F-D3A4E221D481}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BC6279E8-45BE-4B2B-8B7F-D3A4E221D481}.Release|Any CPU.Build.0 = Release|Any CPU
+		{946007F2-0DE7-4107-852F-90DF40DBCB12}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{946007F2-0DE7-4107-852F-90DF40DBCB12}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{946007F2-0DE7-4107-852F-90DF40DBCB12}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{946007F2-0DE7-4107-852F-90DF40DBCB12}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CD0AA86A-648B-436A-A4F5-6749A7DC8583}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CD0AA86A-648B-436A-A4F5-6749A7DC8583}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CD0AA86A-648B-436A-A4F5-6749A7DC8583}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CD0AA86A-648B-436A-A4F5-6749A7DC8583}.Release|Any CPU.Build.0 = Release|Any CPU
+		{148B16A0-4120-423D-BB04-4A20E15C13B8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{148B16A0-4120-423D-BB04-4A20E15C13B8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{148B16A0-4120-423D-BB04-4A20E15C13B8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{148B16A0-4120-423D-BB04-4A20E15C13B8}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{946007F2-0DE7-4107-852F-90DF40DBCB12} = {90BE6DF5-F9EF-4644-A454-27142FB7EDF4}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {6F2EC69A-45E3-40FD-A1F8-504E1B46DB0F}
+	EndGlobalSection
+EndGlobal

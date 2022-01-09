@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Chatter.CQRS" Version="0.6.2" />
+    <PackageReference Include="Chatter.MessageBrokers.SqlServiceBroker" Version="0.3.2" />
+    <PackageReference Include="Chatter.SqlTableWatcher" Version="0.4.4" />
+  </ItemGroup>
+
+</Project>
