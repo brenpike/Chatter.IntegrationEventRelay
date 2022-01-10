@@ -8,7 +8,10 @@ on:
     - bugfix/*
     - hotfix/*
   pull_request:
-    branches: [ main ]
+    branches:
+    - main
+    - release/*
+    - hotfix/*
 
 jobs:
   build:
@@ -35,9 +38,9 @@ jobs:
     - name: Test
       run: dotnet test --no-restore --verbosity normal
     - name: Publish
-      run: dotnet publish Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core -c Release -o publish/${{matrix.dotnet}}
+      run: dotnet publish Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj -c Release -o publish/${{matrix.dotnet}}
     - name: Upload a Build Artifact
-      uses: actions/upload-artifact@v2.2.2
+      uses: actions/upload-artifact@v2.3.1
       with:
         name: Chatter.IntegrationEventRelay.Core
         path: Chatter.IntegrationEventRelay.Core/src/publish/${{matrix.dotnet}}/**
