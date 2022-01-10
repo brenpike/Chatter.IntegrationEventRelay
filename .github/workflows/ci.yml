@@ -44,5 +44,5 @@ jobs:
       uses: actions/upload-artifact@v2.3.1
       with:
         name: Chatter.IntegrationEventRelay.Core
-        path: Chatter.IntegrationEventRelay.Core/src/publish/${{matrix.dotnet}}/**
+        path: /home/runner/work/Chatter.IntegrationEventRelay/Chatter.IntegrationEventRelay/publish/${{matrix.dotnet}}/**
         if-no-files-found: error
