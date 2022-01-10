@@ -3,7 +3,6 @@ name: Build
 on:
   push:
     branches:
-    - main
     - feature/*
     - release/*
     - bugfix/*
@@ -21,7 +20,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        dotnet: [ '6.0.x' ]
+        dotnet: [ '6.0.0' ]
         os: [ubuntu-latest, windows-latest, macOS-latest]
 
     steps:
@@ -39,10 +38,10 @@ jobs:
     - name: Test
       run: dotnet test --no-restore --verbosity normal
     - name: Publish
-      run: dotnet publish Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj -c Release -o publish/${{matrix.dotnet}}
+      run: dotnet publish Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj -c Release -o publish/net${{matrix.dotnet}}
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v2.3.1
       with:
         name: Chatter.IntegrationEventRelay.Core
-        path: Chatter.IntegrationEventRelay.Core/src/publish/${{matrix.dotnet}}/**
+        path: Chatter.IntegrationEventRelay.Core/src/publish/net${{matrix.dotnet}}/**
         if-no-files-found: error
