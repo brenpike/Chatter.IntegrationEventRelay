@@ -3,7 +3,7 @@ name: Upload dotnet package
 on:
   workflow_run:
     workflows: ["Build"]
-    branches: [main]
+    branches: [feature/deploy]
     types: 
       - completed
 
