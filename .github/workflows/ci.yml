@@ -15,7 +15,7 @@ on:
 
 jobs:
   build:
-    name: build-and-test
+    name: build
     runs-on: ubuntu-latest
     env:
       dotnet-version:  '6.0.x'
@@ -34,7 +34,7 @@ jobs:
       run: dotnet test --no-restore --verbosity normal
     - name: Publish
       run: dotnet publish Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj -c Release -o publish
-    - name: Create the package
+    - name: Create nupkg
       run: dotnet pack Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj -c Release -o publish
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v2.3.1
