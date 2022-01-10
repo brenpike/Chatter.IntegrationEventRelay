@@ -3,7 +3,6 @@ name: Build
 on:
   push:
     branches:
-    - main
     - feature/*
     - release/*
     - bugfix/*
@@ -17,7 +16,7 @@ on:
 jobs:
   build:
 
-    name: build-and-test-${{matrix.os}}
+    name: build-and-test-${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -29,7 +28,7 @@ jobs:
     - name: Setup .NET Core
       uses: actions/setup-dotnet@v1
       with:
-        dotnet-version: ${{matrix.dotnet}}
+        dotnet-version: ${{ matrix.dotnet }}
     - name: Display dotnet version
       run: dotnet --version
     - name: Install dependencies
@@ -39,10 +38,10 @@ jobs:
     - name: Test
       run: dotnet test --no-restore --verbosity normal
     - name: Publish
-      run: dotnet publish Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj -c Release -o publish/${{matrix.dotnet}}
+      run: dotnet publish Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj -c Release -o publish/${{ matrix.os }}/${{ matrix.dotnet }}
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v2.3.1
       with:
         name: Chatter.IntegrationEventRelay.Core
-        path: /home/runner/work/Chatter.IntegrationEventRelay/Chatter.IntegrationEventRelay/publish/${{matrix.dotnet}}/**
+        path: /home/runner/work/Chatter.IntegrationEventRelay/Chatter.IntegrationEventRelay/publish/${{ matrix.os }}/${{matrix.dotnet}}/**
         if-no-files-found: error
