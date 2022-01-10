@@ -3,7 +3,6 @@ name: Build
 on:
   push:
     branches:
-    - main
     - feature/*
     - release/*
     - bugfix/*
@@ -16,22 +15,17 @@ on:
 
 jobs:
   build:
-
-    name: build-and-test-${{matrix.os}}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        dotnet: [ '6.0.x' ]
-        os: [ubuntu-latest, windows-latest, macOS-latest]
+    name: build
+    runs-on: ubuntu-latest
+    env:
+      dotnet-version:  '6.0.x'
 
     steps:
     - uses: actions/checkout@v2
     - name: Setup .NET Core
       uses: actions/setup-dotnet@v1
       with:
-        dotnet-version: ${{matrix.dotnet}}
-    - name: Display dotnet version
-      run: dotnet --version
+        dotnet-version: ${{ env.dotnet-version }}
     - name: Install dependencies
       run: dotnet restore
     - name: Build
@@ -39,10 +33,12 @@ jobs:
     - name: Test
       run: dotnet test --no-restore --verbosity normal
     - name: Publish
-      run: dotnet publish Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj -c Release -o publish/${{matrix.dotnet}}
+      run: dotnet publish Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj -c Release -o publish
+    - name: Create nupkg
+      run: dotnet pack Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj -c Release -o publish
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v2.3.1
       with:
         name: Chatter.IntegrationEventRelay.Core
-        path: /home/runner/work/Chatter.IntegrationEventRelay/Chatter.IntegrationEventRelay/publish/${{matrix.dotnet}}/**
+        path: /home/runner/work/Chatter.IntegrationEventRelay/Chatter.IntegrationEventRelay/publish/**
         if-no-files-found: error
