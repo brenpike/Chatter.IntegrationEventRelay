@@ -1,0 +1,30 @@
+name: Upload dotnet package
+
+on:
+  workflow_run:
+    workflows: ["Build"]
+    branches: [main]
+    types: 
+      - completed
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: '6.0.x'
+          source-url: https://nuget.pkg.github.com/brenpike/index.json
+        env:
+          NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+      - name: Download a Build Artifact
+        uses: actions/download-artifact@v2.1.0
+        with:
+          name: Chatter.IntegrationEventRelay.Core
+
+      - name: Publish the package to GPR
+        run: dotnet nuget push Chatter.IntegrationEventRelay.Core/*.nupkg
