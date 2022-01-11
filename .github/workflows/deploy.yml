@@ -2,7 +2,7 @@ name: Upload dotnet package
 
 on:
   workflow_run:
-    workflows: ["Build"]
+    workflows: ["ci.yml"]
     branches: [feature/deploy]
     types: 
       - completed
@@ -23,8 +23,14 @@ jobs:
           NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
       - name: Download a Build Artifact
         uses: actions/download-artifact@v2.1.0
+        id: download-build-artifact
         with:
           name: Chatter.IntegrationEventRelay.Core
-
+          
+      - name: Display structure of downloaded files
+        if: steps.download-build-artifact.outputs.conclusion == 'success'
+        run: ls -R
+        working-directory: ./build/dist
+        
       - name: Publish the package to GPR
         run: dotnet nuget push Chatter.IntegrationEventRelay.Core/*.nupkg
