@@ -34,13 +34,20 @@ jobs:
     - name: Test
       run: dotnet test --no-restore --verbosity normal
     - name: Publish
-      run: dotnet publish Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj -c Release -o publish
+      run: dotnet publish Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj -c Release -o publish/source
     - name: Create nupkg
-      run: dotnet pack Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj -c Release -o publish
-    - name: Upload a Build Artifact
+      run: dotnet pack Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj -c Release -o publish/nuget
+    - name: Upload Source
       uses: actions/upload-artifact@v2.3.1
       with:
-        name: Chatter.IntegrationEventRelay.Core
-        path: /home/runner/work/Chatter.IntegrationEventRelay/Chatter.IntegrationEventRelay/publish/**
-        retention-days: 7
+        name: source
+        path: /home/runner/work/Chatter.IntegrationEventRelay/Chatter.IntegrationEventRelay/publish/source/**
+        retention-days: 5
+        if-no-files-found: error
+    - name: Upload NuGet
+      uses: actions/upload-artifact@v2.3.1
+      with:
+        name: nuget
+        path: /home/runner/work/Chatter.IntegrationEventRelay/Chatter.IntegrationEventRelay/publish/nuget/**
+        retention-days: 5
         if-no-files-found: error
