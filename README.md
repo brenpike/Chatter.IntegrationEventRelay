@@ -1,4 +1,7 @@
 
+![ci](https://github.com/brenpike/Chatter.IntegrationEventRelay/actions/workflows/ci.yml/badge.svg)
+![cd](https://github.com/brenpike/Chatter.IntegrationEventRelay/actions/workflows/ci.yml/badge.svg)
+
 Add Config/Env vars
 
 Add sql.env to .devops folder
