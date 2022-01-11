@@ -21,7 +21,8 @@ jobs:
           dotnet-version: '6.0.x'
           source-url: https://nuget.pkg.github.com/brenpike/index.json
         env:
-          NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+          NUGET_AUTH_TOKEN: ${{ secrets.NUGET_API_KEY_INTEGRATIONEVENTRELAY }}
+          NUGET_URL: https://api.nuget.org/v3/index.json
       - name: Download Source
         uses: dawidd6/action-download-artifact@v2.16.0
         id: download-source
@@ -42,6 +43,7 @@ jobs:
         run: ls -R
         working-directory: ./dist
         
-      - name: Publish package
-        if: steps.download-build-artifact.outputs.conclusion == 'success'
-        run: dotnet nuget push Chatter.IntegrationEventRelay.Core/*.nupkg
+      - name: Push Nuget packages
+        shell: bash
+        run: |
+          dotnet nuget push ".dist/nuget/*.nupkg" -k '${{ env.NUGET_AUTH_TOKEN }}' -s '${{ evn.NUGET_URL }}'
