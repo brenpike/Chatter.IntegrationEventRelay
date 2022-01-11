@@ -9,6 +9,7 @@ on:
 
 jobs:
   deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       packages: write
@@ -32,6 +33,6 @@ jobs:
         run: ls -R
         working-directory: ./build/dist
         
-      - name: Publish the package to GPR
+      - name: Publish package
         if: steps.download-build-artifact.outputs.conclusion == 'success'
         run: dotnet nuget push Chatter.IntegrationEventRelay.Core/*.nupkg
