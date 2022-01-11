@@ -1,9 +1,9 @@
-name: Upload dotnet package
+name: continuous_deployment
 
 on:
   workflow_run:
-    workflows: ["ci.yml"]
-    branches: [feature/deploy]
+    workflows:
+      - Build
     types: 
       - completed
 
@@ -33,4 +33,5 @@ jobs:
         working-directory: ./build/dist
         
       - name: Publish the package to GPR
+        if: steps.download-build-artifact.outputs.conclusion == 'success'
         run: dotnet nuget push Chatter.IntegrationEventRelay.Core/*.nupkg
