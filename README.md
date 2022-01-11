@@ -1,6 +1,6 @@
 
 ![ci](https://github.com/brenpike/Chatter.IntegrationEventRelay/actions/workflows/ci.yml/badge.svg)
-![cd](https://github.com/brenpike/Chatter.IntegrationEventRelay/actions/workflows/ci.yml/badge.svg)
+![cd](https://github.com/brenpike/Chatter.IntegrationEventRelay/actions/workflows/cd.yml/badge.svg)
 
 Add Config/Env vars
 
