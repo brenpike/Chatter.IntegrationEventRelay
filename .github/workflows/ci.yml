@@ -42,4 +42,5 @@ jobs:
       with:
         name: Chatter.IntegrationEventRelay.Core
         path: /home/runner/work/Chatter.IntegrationEventRelay/Chatter.IntegrationEventRelay/publish/**
+        retention-days: 7
         if-no-files-found: error
