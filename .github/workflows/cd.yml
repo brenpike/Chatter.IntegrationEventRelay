@@ -22,17 +22,25 @@ jobs:
           source-url: https://nuget.pkg.github.com/brenpike/index.json
         env:
           NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
-      - name: Download a Build Artifact
+      - name: Download Source
         uses: dawidd6/action-download-artifact@v2.16.0
-        id: download-build-artifact
+        id: download-source
         with:
-          name: Chatter.IntegrationEventRelay.Core
+          name: source
+          path: ./dist/source
           workflow: ci.yml
-          
+      
+      - name: Download NuGet
+        uses: dawidd6/action-download-artifact@v2.16.0
+        id: download-nuget
+        with:
+          name: nuget
+          path: ./dist/nuget
+          workflow: ci.yml
+      
       - name: Display structure of downloaded files
-        if: steps.download-build-artifact.outputs.conclusion == 'success'
         run: ls -R
-        working-directory: ./build/dist
+        working-directory: ./dist
         
       - name: Publish package
         if: steps.download-build-artifact.outputs.conclusion == 'success'
