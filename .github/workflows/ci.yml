@@ -1,6 +1,7 @@
 name: continuous_integration
 
 on:
+  workflow_dispatch:
   push:
     branches:
     - feature/*
