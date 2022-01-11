@@ -23,10 +23,11 @@ jobs:
         env:
           NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
       - name: Download a Build Artifact
-        uses: actions/download-artifact@v2.1.0
+        uses: dawidd6/action-download-artifact@v2.16.0
         id: download-build-artifact
         with:
           name: Chatter.IntegrationEventRelay.Core
+          workflow: ci.yml
           
       - name: Display structure of downloaded files
         if: steps.download-build-artifact.outputs.conclusion == 'success'
