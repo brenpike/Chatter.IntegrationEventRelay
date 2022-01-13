@@ -4,15 +4,14 @@ on:
   workflow_dispatch:
   push:
     branches:
-    - feature/*
-    - release/*
-    - bugfix/*
-    - hotfix/*
+    - feature/**
+    - release/**
+    - bugfix/**
+    - hotfix/**
   pull_request:
     branches:
     - main
-    - release/*
-    - hotfix/*
+    - release/**
 
 jobs:
   build:
