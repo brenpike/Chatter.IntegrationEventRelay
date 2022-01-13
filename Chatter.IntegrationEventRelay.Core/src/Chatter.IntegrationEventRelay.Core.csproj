@@ -4,17 +4,16 @@
     <TargetFramework>net6.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.0.1</Version>
+    <Version>0.0.2</Version>
     <Authors>Brennan Pike</Authors>
     <Owners>Brennan Pike</Owners>
     <Description>Capture domain events from changes in a SQL database and relay them to message broker infrastructure as integration events</Description>
     <PackageId>Chatter.IntegrationEventRelay</PackageId>
     <RepositoryUrl>https://github.com/brenpike/Chatter.IntegrationEventRelay</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>.net;message broker;events;domain event;integration event;Chatter</PackageTags>
+    <PackageTags>.net;message-broker;events;domain-event;integration-event;Chatter</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <IsPackable>true</IsPackable>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>
 
   <ItemGroup>
