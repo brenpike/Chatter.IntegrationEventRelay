@@ -6,9 +6,6 @@ on:
       - continuous_integration
     types: 
       - completed
-  push:
-    paths: 
-       - 'Chatter.IntegrationEventRelay.Core/**'
 
 jobs:
   deploy:
