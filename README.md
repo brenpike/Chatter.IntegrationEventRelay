@@ -1,14 +1,28 @@
-
 ![ci](https://github.com/brenpike/Chatter.IntegrationEventRelay/actions/workflows/ci.yml/badge.svg)
 ![cd](https://github.com/brenpike/Chatter.IntegrationEventRelay/actions/workflows/cd.yml/badge.svg)
+
+- [Integration Event Relay](#integration-event-relay)
+  - [About this repo](#about-this-repo)
+    - [Chatter.IntegrationEventRelay.Core](#chatterintegrationeventrelaycore)
+    - [Chatter.IntegrationEventRelay.Worker](#chatterintegrationeventrelayworker)
+    - [Chatter.IntegrationEventRelay.Consumer](#chatterintegrationeventrelayconsumer)
+  - [Running this repo locally](#running-this-repo-locally)
+    - [Setup Azure Service Bus](#setup-azure-service-bus)
+    - [Setting up Docker environment](#setting-up-docker-environment)
+      - [sql.env](#sqlenv)
+      - [worker.env](#workerenv)
+      - [consumer.env](#consumerenv)
+  - [Building a Worker Service](#building-a-worker-service)
+    - [Configuration](#configuration)
+    - [Create Dtos for Integration Events](#create-dtos-for-integration-events)
+    - [Create Dtos for Source Events](#create-dtos-for-source-events)
+    - [Create Source Event to Integration Event Mappers](#create-source-event-to-integration-event-mappers)
 
 # Integration Event Relay
 
 The primary use case of the Integration Event Relay is to relay domain events from legacy systems to message broker infrastructure as integration events to enable an event-driven architecture. The legacy systems in question would otherwise be unable to participate in an event-driven architecture due to their as-is architecture, technical debt, or inability to integrate with message broker infrastructure.
 
 The Integration Event Relay leverages SQL Service Broker via [Chatter.SqlTableWatcher](https://github.com/brenpike/Chatter/tree/master/src/Chatter.SqlTableWatcher) to watch for changes made to database tables. The modified data is added to a SQL Service Broker queue to be consumed by a [Worker service](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.Worker) where it will be mapped to an integration event and relayed to message broker infrastructure. As SQL Service Broker is core to the implementation, it is required that the legacy system leverages SQL as it's backend, it is also imparative that the SQL server infrastructure support SQL Service Broker (i.e., most PaaS offerings do not).
-
----
 
 ## About this repo
 
@@ -26,11 +40,9 @@ This Worker Service implementation is a sample showing how [Chatter.IntegrationE
 
 The Consumer Service has been kept simple. It has [IEvent](https://github.com/brenpike/Chatter/blob/master/src/Chatter.CQRS/src/Chatter.CQRS/Events/IEvent.cs) implementations matching the integration events published by the Worker Service as well as [IMessageHandler<>](https://github.com/brenpike/Chatter/blob/master/src/Chatter.CQRS/src/Chatter.CQRS/IMessageHandler.cs) implementations. The Consumer Service leverages [Chatter.MessageBrokers.AzureServiceBus](https://github.com/brenpike/Chatter/tree/master/src/Chatter.MessageBrokers.AzureServiceBus) as its message broker infrastructure and subscribes to the integration events published by the Worker Services. The [IMessageHandler<>](https://github.com/brenpike/Chatter/blob/master/src/Chatter.CQRS/src/Chatter.CQRS/IMessageHandler.cs) handles the integration events and displays information to console. The handled messages are cached in memory and all handled messages are displayed on shutdown.
 
----
-
 ## Running this repo locally
 
-### Azure Service Bus
+### Setup Azure Service Bus
 
 **note: Azure Service Bus is being used as it is one of the only message broker infrastructure implementations for [Chatter](https://github.com/brenpike/Chatter) at this time. Message broker infrastructure is currently being implemented for RabbitMQ, which is much more Docker friendly and will greatly simplify execution of this solution without the following setup*
 
@@ -97,3 +109,15 @@ Chatter__Infrastructure__AzureServiceBus__Auth__ClientSecret=<insert client secr
 Chatter__Infrastructure__AzureServiceBus__Auth__ClientId=<insert client id>
 Chatter__Infrastructure__AzureServiceBus__Auth__Authority="https://login.microsoftonline.com/<tenant id>/"
 ```
+
+## Building a Worker Service
+
+TBD
+
+### Configuration
+
+### Create Dtos for Integration Events
+
+### Create Dtos for Source Events
+
+### Create Source Event to Integration Event Mappers
