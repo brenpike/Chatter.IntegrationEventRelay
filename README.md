@@ -1,5 +1,4 @@
 ![ci](https://github.com/brenpike/Chatter.IntegrationEventRelay/actions/workflows/ci.yml/badge.svg)
-![cd](https://github.com/brenpike/Chatter.IntegrationEventRelay/actions/workflows/cd.yml/badge.svg)
 
 - [Integration Event Relay](#integration-event-relay)
   - [About this repo](#about-this-repo)
