@@ -9,14 +9,6 @@ on:
         default: 'Manual build from GitHub UI'
   push:
     branches: [ main ]
-#    - feature/**
-#    - release/**
-#    - bugfix/**
-#    - hotfix/**
-#  pull_request:
-#    branches:
-#    - main
-#    - release/**
     
 env:
   dotnet-version:  '6.0.x'
@@ -63,7 +55,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     
     environment:
-      name: prod
+      name: Production
     
     env:
       NUGET_AUTH_TOKEN: ${{ secrets.NUGET_API_KEY_INTEGRATIONEVENTRELAY }}
