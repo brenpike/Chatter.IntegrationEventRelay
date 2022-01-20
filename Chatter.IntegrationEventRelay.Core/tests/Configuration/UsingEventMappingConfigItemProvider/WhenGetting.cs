@@ -118,16 +118,22 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Configuration.UsingEventMappi
         [Fact]
         public void MustReturnNullMappingIfExceptionIsThrown()
         {
+            _logger.WithLogDebugThatThrows();
+            var sut = new EventMappingConfigItemProvider(_config.Mock, _logger.Mock);
+
             _config.WithMappings(null);
-            var result = _sut.Get<ISourceEvent, ISourceEvent>(ChangeTypes.Insert);
+            var result = sut.Get<ISourceEvent, ISourceEvent>(ChangeTypes.Insert);
             Assert.Null(result);
         }
 
         [Fact]
         public void MustLogWarningIfExceptionIsThrown()
         {
+            _logger.WithLogDebugThatThrows();
+            var sut = new EventMappingConfigItemProvider(_config.Mock, _logger.Mock);
+
             _config.WithMappings(null);
-            _sut.Get<ISourceEvent, ISourceEvent>(ChangeTypes.Insert);
+            sut.Get<ISourceEvent, ISourceEvent>(ChangeTypes.Insert);
             _logger.VerifyWasCalled(LogLevel.Warning, times: Times.Once());
         }
     }

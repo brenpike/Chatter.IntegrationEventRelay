@@ -19,7 +19,7 @@ public class ChatterBuilderCreator : MockCreator<IChatterBuilder>
         Mock = _mockChatterBuilder.Object;
     }
 
-    public ChatterBuilderCreator WithAssemblySourceFilter(IAssemblySourceFilter? assemblySourceFilter)
+    public ChatterBuilderCreator WithAssemblySourceFilter(IAssemblySourceFilter assemblySourceFilter)
     {
         _mockChatterBuilder.SetupGet(c => c.AssemblySourceFilter).Returns(assemblySourceFilter);
         return this;

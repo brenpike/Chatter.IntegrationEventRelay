@@ -50,4 +50,17 @@ public class LoggerCreator<T> : MockCreator<ILogger<T>>
 
         return this;
     }
+
+    public LoggerCreator<T> WithLogDebugThatThrows() => WithLogOperationThatThrows<Exception>(LogLevel.Debug);
+    public LoggerCreator<T> WithLogErrorThatThrows() => WithLogOperationThatThrows<Exception>(LogLevel.Error);
+    public LoggerCreator<T> WithLogWarningThatThrows() => WithLogOperationThatThrows<Exception>(LogLevel.Warning);
+    public LoggerCreator<T> WithLogTraceThatThrows() => WithLogOperationThatThrows<Exception>(LogLevel.Trace);
+    public LoggerCreator<T> WithLogInfoThatThrows() => WithLogOperationThatThrows<Exception>(LogLevel.Information);
+    public LoggerCreator<T> WithLogCriticalThatThrows() => WithLogOperationThatThrows<Exception>(LogLevel.Critical);
+
+    public LoggerCreator<T> WithLogOperationThatThrows<TException>(LogLevel level) where TException : Exception, new()
+    {
+        _loggerMock.Setup(d => d.Log(level, It.IsAny<EventId>(), It.IsAny<It.IsAnyType>() ,It.IsAny<Exception>(), It.IsAny<Func<It.IsAnyType, Exception, string>>())).Throws<TException>();
+        return this;
+    }
 }

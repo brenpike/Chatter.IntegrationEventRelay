@@ -20,7 +20,7 @@ public class RowChangeExecutor<TSourceEvent, TIntegrationEvent> : IRowChangeHand
         _relayIntegrationEvent = relayIntegrationEvent ?? throw new ArgumentNullException(nameof(relayIntegrationEvent));
     }
 
-    public async Task Execute(IMapSourceToIntegrationEvent<TSourceEvent, TIntegrationEvent> integrationEventMapper, MappingData<TSourceEvent> mapping, EventMappingConfigurationItem eventMappingConfiguration, IMessageHandlerContext context)
+    public async Task Execute(IMapSourceToIntegrationEvent<TSourceEvent, TIntegrationEvent> integrationEventMapper, MappingData<TSourceEvent> mapping, EventMappingConfigurationItem? eventMappingConfiguration, IMessageHandlerContext context)
     {
         _ = integrationEventMapper ?? throw new ArgumentNullException(nameof(integrationEventMapper), "A source to integration event mapper is required");
         _ = mapping ?? throw new ArgumentNullException(nameof(mapping), "Mapping data is required");

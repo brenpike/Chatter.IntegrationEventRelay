@@ -14,7 +14,7 @@ namespace Chatter.IntegrationEventRelay.Core.Extensions;
 
 public static class ChatterBuilderExtensions
 {
-    public static IChatterBuilder AddIntegrationEventRelay(this IChatterBuilder builder, EventMappingConfiguration eventMappingConfig, Action<SqlTableWatcherOptionsBuilder> optionsBuilder = null)
+    public static IChatterBuilder AddIntegrationEventRelay(this IChatterBuilder builder, EventMappingConfiguration eventMappingConfig, Action<SqlTableWatcherOptionsBuilder>? optionsBuilder = null)
     {
         builder.Services.AddSingleton(eventMappingConfig);
         builder.Services.AddTransient<IEventMappingConfigItemProvider, EventMappingConfigItemProvider>();
@@ -22,10 +22,10 @@ public static class ChatterBuilderExtensions
 
         var assemblies = builder.AssemblySourceFilter.Apply();
 
-        foreach (var map in eventMappingConfig.Mappings)
+        foreach (var map in eventMappingConfig.Mappings ?? new List<EventMappingConfigurationItem>())
         {
-            map.IntegrationEventType = map.IntegrationEventTypeName.GetTypeFromString(assemblies);
-            map.SourceEventType = map.SourceEventTypeName.GetTypeFromString(assemblies);
+            map.IntegrationEventType = map.IntegrationEventTypeName?.GetTypeFromString(assemblies);
+            map.SourceEventType = map.SourceEventTypeName?.GetTypeFromString(assemblies);
             _ = map.SourceEventType ?? throw new ArgumentNullException(nameof(map.SourceEventType), $"No type found for {nameof(map.SourceEventTypeName)} for mapping to database '{map.DatabaseName}' and table '{map.TableName}'");
             _ = map.IntegrationEventType ?? throw new ArgumentNullException(nameof(map.IntegrationEventType), $"No type found for {nameof(map.IntegrationEventTypeName)} for mapping to database '{map.DatabaseName}' and table '{map.TableName}'");
 
@@ -55,15 +55,18 @@ public static class ChatterBuilderExtensions
         return builder;
     }
 
-    public static IChatterBuilder AddIntegrationEventRelay(this IChatterBuilder builder, string sectionName = "IntegrationEventRelay", Action<SqlTableWatcherOptionsBuilder> optionsBuilder = null)
+    public static IChatterBuilder AddIntegrationEventRelay(this IChatterBuilder builder, string sectionName = "IntegrationEventRelay", Action<SqlTableWatcherOptionsBuilder>? optionsBuilder = null)
     {
         var eventMappingConfig = new EventMappingConfiguration();
         builder.Configuration.GetSection(sectionName).Bind(eventMappingConfig);
         return builder.AddIntegrationEventRelay(eventMappingConfig, optionsBuilder);
     }
 
-    public static IChatterBuilder AddSqlTableWatcherPerUniqueDataSource(this IChatterBuilder builder, EventMappingConfiguration relayConfiguration, Action<SqlTableWatcherOptionsBuilder> optionsBuilder)
+    public static IChatterBuilder AddSqlTableWatcherPerUniqueDataSource(this IChatterBuilder builder, EventMappingConfiguration relayConfiguration, Action<SqlTableWatcherOptionsBuilder>? optionsBuilder)
     {
+        if (relayConfiguration.Mappings is null)
+            return builder;
+
         var mappingGroups = relayConfiguration.Mappings.GroupBy(d => (d.ConnectionString, d.DatabaseName, d.TableName, d.SourceEventType));
         foreach (var mappingGroup in mappingGroups)
         {
@@ -143,6 +146,9 @@ public static class ChatterBuilderExtensions
     public static IServiceProvider UseTableWatcherSqlMigrations(this IServiceProvider provider)
     {
         var relayConfiguration = provider.GetRequiredService<EventMappingConfiguration>();
+
+        if (relayConfiguration.Mappings is null)
+            return provider;
 
         var mappingGroups = relayConfiguration.Mappings.GroupBy(d => (d.ConnectionString, d.DatabaseName, d.TableName, d.SourceEventType));
         foreach (var mappingGroup in mappingGroups)

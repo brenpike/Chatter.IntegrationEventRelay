@@ -13,7 +13,7 @@ public class EventMappingConfigurationItem
     /// If just the name of the type is used,an attempt will be made to match the with the correct <see cref="Type"/>, but will fail exactly one match is not found.
     /// </remarks>
     [Required]
-    public string SourceEventTypeName { get; set; }
+    public string? SourceEventTypeName { get; set; }
     /// <summary>
     /// The name of the type that changes to <see cref="TableName"/> will be relayed to messaging infrastructure as an integration event. Will be used to get the type <see cref="IntegrationEventType"/>.
     /// </summary>
@@ -22,7 +22,7 @@ public class EventMappingConfigurationItem
     /// If just the name of the type is used,an attempt will be made to match the with the correct <see cref="Type"/>, but will fail exactly one match is not found.
     /// </remarks>
     [Required]
-    public string IntegrationEventTypeName { get; set; }
+    public string? IntegrationEventTypeName { get; set; }
 
     /// <summary>
     /// The type that changes to <see cref="TableName"/> will be mapped to.
@@ -37,16 +37,16 @@ public class EventMappingConfigurationItem
     /// <summary>
     /// Optional. The connection string of the sql server to watch for changes that are to be relayed to messaging infrastructure as integration events. If not set, <see cref="EventMappingConfiguration.ConnectionString"/> will be used.
     /// </summary>
-    public string ConnectionString { get; set; }
+    public string? ConnectionString { get; set; }
     /// <summary>
     /// The database of which contains the table to watch for changes to be relayed to messaging infrastructure as integration events.
     /// </summary>
-    public string DatabaseName { get; set; }
+    public string? DatabaseName { get; set; }
     /// <summary>
     /// The table to watch for changes to be relayed to messaging infrastructure as integration events.
     /// </summary>
     [Required]
-    public string TableName { get; set; }
+    public string? TableName { get; set; }
     /// <summary>
     /// The type of change to watch <see cref="TableName"/> for, so that <see cref="SourceEventType"/> and be relayed as an integration event of type <see cref="IntegrationEventType"/>
     /// </summary>
@@ -66,5 +66,5 @@ public class EventMappingConfigurationItem
     /// Optional. The name of the topic/event on the messaging infrastructure to publish the integration event to.
     /// If supplied, will override the value specified by the <see cref="MessageBrokers.BrokeredMessageAttribute"/> on the <see cref="IntegrationEventType"/>.
     /// </summary>
-    public string InfrastructureMessageName { get; set; }
+    public string? InfrastructureMessageName { get; set; }
 }

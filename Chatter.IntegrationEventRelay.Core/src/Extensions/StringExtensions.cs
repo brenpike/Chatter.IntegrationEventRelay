@@ -4,7 +4,7 @@ namespace Chatter.IntegrationEventRelay.Core.Extensions;
 
 public static class StringExtensions
 {
-    public static Type GetTypeFromString(this string typeName, IEnumerable<Assembly> assemblies = null)
+    public static Type? GetTypeFromString(this string typeName, IEnumerable<Assembly>? assemblies = null)
     {
         if (assemblies == null)
             assemblies = new[] { Assembly.GetExecutingAssembly() };
@@ -12,7 +12,9 @@ public static class StringExtensions
         if (string.IsNullOrWhiteSpace(typeName))
             return null;
 
-        var types = assemblies?.SelectMany(a => a.GetTypes()).Where(t => t.FullName?.ToLowerInvariant().Contains(typeName.ToLowerInvariant()) ?? false);
+        var types = assemblies?.SelectMany(a => a.GetTypes())
+                               .Where(t => t.FullName?.ToLowerInvariant()
+                                                      .Contains(typeName.ToLowerInvariant()) ?? false) ?? new List<Type>();
         if (!types.Any())
             return null;
         else if (types.Count() == 1)
