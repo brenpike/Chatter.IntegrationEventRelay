@@ -28,7 +28,7 @@ public class IntegrationEventRelayService : IRelayIntegrationEvent
             {
                 var publishOptions = new PublishOptions
                 {
-                    ContentType = "application/json"
+                    ContentType = settings.BrokeredMessageContentType
                 };
                 publishOptions.UseMessagingInfrastructure(i => settings.MessagingInfrastructureType);
                 _logger.LogTrace($"Attempting to publish integration event to messaging infrastructure");

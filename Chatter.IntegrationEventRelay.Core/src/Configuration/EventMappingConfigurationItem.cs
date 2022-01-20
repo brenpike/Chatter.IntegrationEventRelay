@@ -5,6 +5,8 @@ namespace Chatter.IntegrationEventRelay.Core.Configuration;
 
 public class EventMappingConfigurationItem
 {
+    private const string DefaultContentType = "application/json";
+
     /// <summary>
     /// The name of the type that changes to <see cref="TableName"/> will be mapped to. Will be used to get the type <see cref="SourceEventType"/>.
     /// </summary>
@@ -67,4 +69,9 @@ public class EventMappingConfigurationItem
     /// If supplied, will override the value specified by the <see cref="MessageBrokers.BrokeredMessageAttribute"/> on the <see cref="IntegrationEventType"/>.
     /// </summary>
     public string? InfrastructureMessageName { get; set; }
+
+    /// <summary>
+    /// The content type of the brokered message that will be sent to the Messagining Infrastructure. Default value is 'application/json'.
+    /// </summary>
+    public string? BrokeredMessageContentType { get; set; } = DefaultContentType;
 }
