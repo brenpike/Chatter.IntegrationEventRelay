@@ -7,8 +7,8 @@ namespace Chatter.IntegrationEventRelay.Consumer.IntegrationEvents;
 public class Event2CreatedEvent : IEvent
 {
     public Guid Id { get; set; }
-    public string StringData { get; set; }
-    public string MoreStringData { get; set; }
+    public string? StringData { get; set; }
+    public string? MoreStringData { get; set; }
     public double DoubleData { get; set; }
     public DateTime OccurredAt { get; set; }
 }

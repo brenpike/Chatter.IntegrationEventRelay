@@ -11,6 +11,6 @@ public interface IRowChangeHandlerExecutor<TSourceEvent, TIntegrationEvent>
 {
     Task Execute(IMapSourceToIntegrationEvent<TSourceEvent, TIntegrationEvent> integrationEventMapper,
                  MappingData<TSourceEvent> mapping,
-                 EventMappingConfigurationItem eventMappingConfiguration,
+                 EventMappingConfigurationItem? eventMappingConfiguration,
                  IMessageHandlerContext context);
 }

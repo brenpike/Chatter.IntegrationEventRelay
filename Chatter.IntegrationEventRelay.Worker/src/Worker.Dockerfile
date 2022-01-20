@@ -14,7 +14,7 @@ COPY ["./Chatter.IntegrationEventRelay.Worker/src/", "./Chatter.IntegrationEvent
 COPY ["./Chatter.IntegrationEventRelay.Core/src/", "./Chatter.IntegrationEventRelay.Core/src/"]
 COPY ["./Chatter.IntegrationEventRelay.Core/tests/", "./Chatter.IntegrationEventRelay.Core/tests/"]
 
-RUN dotnet test "./Chatter.IntegrationEventRelay.Core/tests/Chatter.IntegrationEventRelay.Core.Tests.csproj" -c Release --no-build --no-restore
+RUN dotnet test "./Chatter.IntegrationEventRelay.Core/tests/Chatter.IntegrationEventRelay.Core.Tests.csproj" -c Release --no-restore
 
 RUN dotnet publish "./Chatter.IntegrationEventRelay.Worker/src/Chatter.IntegrationEventRelay.Worker.csproj" -c Release -o /app/publish
 

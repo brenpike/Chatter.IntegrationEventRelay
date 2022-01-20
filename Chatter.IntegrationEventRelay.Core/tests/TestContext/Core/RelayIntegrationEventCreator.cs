@@ -18,7 +18,7 @@ public class RelayIntegrationEventCreator : MockCreator<IRelayIntegrationEvent>
         Mock = _mockRelay.Object;
     }
 
-    public RelayIntegrationEventCreator SetupRelay<TIntegrationEvent>(TIntegrationEvent? @event, IMessageHandlerContext context, EventMappingConfigurationItem mapping)
+    public RelayIntegrationEventCreator SetupRelay<TIntegrationEvent>(TIntegrationEvent @event, IMessageHandlerContext context, EventMappingConfigurationItem mapping)
         where TIntegrationEvent : class, IEvent
     {
         _mockRelay.Setup(m => m.Relay(@event, context, mapping)).Returns(Task.CompletedTask);

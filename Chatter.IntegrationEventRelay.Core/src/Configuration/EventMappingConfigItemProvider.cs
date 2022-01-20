@@ -15,16 +15,16 @@ public class EventMappingConfigItemProvider : IEventMappingConfigItemProvider
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public EventMappingConfigurationItem Get<TSourceEvent, TIntegrationEvent>(ChangeTypes sourceChangeType) where TSourceEvent : class, ISourceEvent
+    public EventMappingConfigurationItem? Get<TSourceEvent, TIntegrationEvent>(ChangeTypes sourceChangeType) where TSourceEvent : class, ISourceEvent
                                                                                                         where TIntegrationEvent : class, IEvent
     {
         try
         {
-            var mappings = _integrationEventSourceConfig.Mappings
+            var mappings = _integrationEventSourceConfig.Mappings?
                 .Where(m =>
                     m.SourceEventType == typeof(TSourceEvent)
                     && m.IntegrationEventType == typeof(TIntegrationEvent)
-                    && m.SourceChangeType == sourceChangeType);
+                    && m.SourceChangeType == sourceChangeType) ?? new List<EventMappingConfigurationItem>();
 
             if (!mappings.Any())
             {

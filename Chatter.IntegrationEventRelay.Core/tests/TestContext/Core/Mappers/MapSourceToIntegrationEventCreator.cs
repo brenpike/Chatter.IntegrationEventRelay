@@ -17,7 +17,7 @@ public class MapSourceToIntegrationEventCreator<TSourceEvent, TIntegrationEvent>
         Mock = _mockMapper.Object;
     }
 
-    public MapSourceToIntegrationEventCreator<TSourceEvent, TIntegrationEvent> SetupMapAsync(MappingData<TSourceEvent> mappingData, TIntegrationEvent? returnValue = null)
+    public MapSourceToIntegrationEventCreator<TSourceEvent, TIntegrationEvent> SetupMapAsync(MappingData<TSourceEvent> mappingData, TIntegrationEvent returnValue = null)
     {
         if (returnValue == null)
             returnValue = new Mock<TIntegrationEvent>().Object;
