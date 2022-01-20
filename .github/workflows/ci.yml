@@ -1,7 +1,12 @@
-name: continuous_integration
+name: Continuous Deployment
 
 on:
   workflow_dispatch:
+   inputs:
+      reason:
+        description: 'The reason for running the workflow'
+        required: true
+        default: 'Manual build from GitHub UI'
   push:
     branches:
     - feature/**
@@ -12,14 +17,15 @@ on:
     branches:
     - main
     - release/**
-
+    
+env:
+  dotnet-version:  '6.0.x'
+      
 jobs:
   build:
     name: build
     runs-on: ubuntu-latest
-    env:
-      dotnet-version:  '6.0.x'
-
+    
     steps:
     - uses: actions/checkout@v2
     - name: Setup .NET Core
@@ -50,3 +56,46 @@ jobs:
         path: /home/runner/work/Chatter.IntegrationEventRelay/Chatter.IntegrationEventRelay/publish/nuget/**
         retention-days: 5
         if-no-files-found: error
+        
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    environment:
+      name: prod
+    
+    env:
+      NUGET_AUTH_TOKEN: ${{ secrets.NUGET_API_KEY_INTEGRATIONEVENTRELAY }}
+      NUGET_URL: https://api.nuget.org/v3/index.json
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: ${{ env.dotnet-version }}
+          source-url: ${{ env.NUGET_URL }}
+          
+      - name: Download Source
+        uses: actions/download-artifact@v2.1.0
+        with:
+          name: source
+          path: ./dist/source
+      
+      - name: Download NuGet
+        uses: actions/download-artifact@v2.1.0
+        id: download-nuget
+        with:
+          name: nuget
+          path: ./dist/nuget
+      
+      - name: Display structure of downloaded files
+        run: ls -R
+        working-directory: ./dist
+        
+      - name: Push Nuget packages
+        shell: bash
+        run: |
+          dotnet nuget push "./dist/nuget/*.nupkg" -k '${{ env.NUGET_AUTH_TOKEN }}' -s '${{ env.NUGET_URL }}'
