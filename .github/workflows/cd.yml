@@ -1,11 +1,12 @@
 name: continuous_deployment
 
 on:
-  workflow_run:
-    workflows:
-      - continuous_integration
-    types: 
-      - completed
+  workflow_dispatch:
+#  workflow_run:
+#    workflows:
+#      - continuous_integration
+#    types: 
+#      - completed
 
 jobs:
   deploy:
