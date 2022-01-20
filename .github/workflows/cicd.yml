@@ -1,4 +1,4 @@
-name: Continuous Deployment
+name: CI/CD
 
 on:
   workflow_dispatch:
@@ -9,6 +9,8 @@ on:
         default: 'Manual build from GitHub UI'
   push:
     branches: [ main ]
+    paths:
+    - 'Chatter.IntegrationEventRelay.Core/**'
     
 env:
   dotnet-version:  '6.0.x'
