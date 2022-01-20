@@ -8,15 +8,15 @@ on:
         required: true
         default: 'Manual build from GitHub UI'
   push:
-    branches:
-    - feature/**
-    - release/**
-    - bugfix/**
-    - hotfix/**
-  pull_request:
-    branches:
-    - main
-    - release/**
+    branches: [ main ]
+#    - feature/**
+#    - release/**
+#    - bugfix/**
+#    - hotfix/**
+#  pull_request:
+#    branches:
+#    - main
+#    - release/**
     
 env:
   dotnet-version:  '6.0.x'
