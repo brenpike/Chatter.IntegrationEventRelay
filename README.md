@@ -1,6 +1,6 @@
 ![ci](https://github.com/brenpike/Chatter.IntegrationEventRelay/actions/workflows/cicd.yml/badge.svg)
 
-[context-landscape-diagram]: https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/.docs/assets/context-landscape-diagram.png "Context Landscape Diagram"
+[context-landscape-diagram]: https://github.com/brenpike/Chatter.IntegrationEventRelay/raw/main/.docs/assets/context-landscape-diagram.png "Context Landscape Diagram"
 
 - [Integration Event Relay](#integration-event-relay)
   - [About this repo](#about-this-repo)
