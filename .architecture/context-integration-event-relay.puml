@@ -1,0 +1,49 @@
+@startuml integration-event-relay-context-diagram
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+!define DEVICONS2 https://raw.githubusercontent.com/tupadr3/plantuml-icon-font-sprites/master/devicons2
+!define FONTAWESOME https://raw.githubusercontent.com/tupadr3/plantuml-icon-font-sprites/master/font-awesome-5
+!include DEVICONS2/dotnetcore.puml
+!include DEVICONS2/microsoftsqlserver.puml
+!include FONTAWESOME/envelope.puml
+!include FONTAWESOME/file_excel.puml
+!include FONTAWESOME/desktop.puml
+!include FONTAWESOME/user.puml
+
+title System Context Landscape diagram for Integration Event Relay
+
+SHOW_PERSON_OUTLINE()
+
+AddExternalPersonTag("dbuser", $legendText="Database User")
+AddExternalSystemTag("legacy", $legendText="Legacy System")
+AddSystemTag("service", $sprite="dotnetcore", $legendText=".NET 6 Worker Service")
+AddExternalSystemTag("storage", $sprite="microsoftsqlserver", $legendText="Legacy System Database")
+AddExternalSystemTag("broker", $sprite="envelope", $legendText="Message Broker Infrastructure")
+AddRelTag("asynchronous", $textColor=$ARROW_COLOR, $lineColor=$ARROW_COLOR, $lineStyle=DashedLine())
+AddRelTag("synchronous", $textColor=$ARROW_COLOR, $lineColor=$ARROW_COLOR)
+
+Person_Ext(db_user, "DB User","A person with\nability to modify\ndatabase tables", $tags="dbuser")
+
+System(worker_service, "Worker Service", "Uses Chatter.IntegrationEventRelay.Core to map messages queued by SQL Service Broker ('Source Events') to Integration Events and publish them to message broker infrastructure", $tags = "service")
+System(consumer_service, "Consumer Service", "Receive and process Integration Events from message broker infrastructure", $tags="service")
+SystemQueue_Ext(message_broker, "Message Broker", "Azure Service Bus messaging infrastructure", $tags="broker")
+SystemDb_Ext(legacy_db_1, "Legacy System Database", "A SQL backend for a legacy system", $tags="storage")
+SystemDb_Ext(legacy_db_2, "Legacy System Database", "A SQL backend for a legacy system", $tags="storage")
+SystemDb_Ext(legacy_db_n, "Legacy System Database", "A SQL backend for a legacy system", $tags="storage")
+
+System_Ext(legacy_system_1, "Legacy Desktop Application", "A monolithic desktop application (WinForms/Swing) which is unable to create/publish Integration Events", $tags="legacy", $sprite="desktop")
+System_Ext(legacy_system_n, "Legacy Excel Application", "A legacy VBA Excel application which is unable to create/publish Integration Events", $tags="legacy", $sprite="file_excel")
+
+Rel(worker_service, legacy_db_1, "Receive messages from SQL Service Broker queue", $tags="asynchronous")
+Rel(worker_service, legacy_db_2, "Receive messages from SQL Service Broker queue", $tags="asynchronous")
+Rel(worker_service, legacy_db_n, "Receive messages from SQL Service Broker queue", $tags="asynchronous")
+
+Rel(worker_service, message_broker, "Publish Integration Event as a brokered message to a Topic", $tags="asynchronous")
+Rel(consumer_service, message_broker, "Subscribe to Topic Subscription(s)", $tags="asynchronous")
+
+Rel_U(db_user, legacy_db_n, "Performs CRUD operations on SQL table(s)", $tags="synchronous")
+Rel_U(legacy_system_1, legacy_db_1, "Performs CRUD operations on SQL table(s)", $tags="synchronous")
+Rel_U(legacy_system_1, legacy_db_2, "Performs CRUD operations on SQL table(s)", $tags="synchronous")
+Rel_U(legacy_system_n, legacy_db_n, "Performs CRUD operations on SQL table(s)", $tags="synchronous")
+SHOW_LEGEND()
+
+@enduml
