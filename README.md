@@ -38,7 +38,7 @@ The primary use case of the Integration Event Relay is to relay domain events fr
 
 The Integration Event Relay leverages SQL Service Broker via [Chatter.SqlTableWatcher](https://github.com/brenpike/Chatter/tree/master/src/Chatter.SqlTableWatcher) to watch for changes made to database tables. The modified data is added to a SQL Service Broker queue to be consumed by a [Worker service](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.Worker) where it will be mapped to an integration event and relayed to message broker infrastructure. As SQL Service Broker is core to the implementation, it is required that the legacy system leverages SQL as it's backend, it is also imparative that the SQL server infrastructure support SQL Service Broker (i.e., most PaaS offerings do not).
 
-![alt text][context-landscape-diagram]
+![Context Landspace Diagram][context-landscape-diagram]
 
 ## About this repo
 
