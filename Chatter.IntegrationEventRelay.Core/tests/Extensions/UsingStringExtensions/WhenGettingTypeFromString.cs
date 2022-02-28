@@ -16,13 +16,24 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingStringExtensi
         }
 
         [Fact]
-        public void ShouldReturnNullIfTypeForStringIsNotFound()
+        public void ShouldReturnNullIfExactTypeForStringIsNotFound()
         {
             var fakeNamespaceString = "I.Am.A.Fake.Namespace";
             var mockType = Context.Common().Type.WithFullName(fakeNamespaceString).Mock;
             var mockAssembly = Context.Common().Assembly.WithTypes(mockType).Mock;
 
             var result = "This.Type.Wont.Be.Found".GetTypeFromString(new[] { mockAssembly });
+            Assert.Null(result);
+        }
+
+        [Fact]
+        public void ShouldReturnNullIfNoTypeEndsWith()
+        {
+            var fakeNamespaceString = "I.Am.A.Fake.NamespaceSuperset";
+            var mockType = Context.Common().Type.WithFullName(fakeNamespaceString).Mock;
+            var mockAssembly = Context.Common().Assembly.WithTypes(mockType).Mock;
+
+            var result = "I.Am.A.Fake.Namespace".GetTypeFromString(new[] { mockAssembly });
             Assert.Null(result);
         }
 
@@ -38,7 +49,7 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingStringExtensi
         }
 
         [Fact]
-        public void ShouldThrowIfStringMatchesMoreThanOneType()
+        public void ShouldThrowIfEndOfStringMatchesMoreThanOneType()
         {
             var fakeTypeFullNameOne = "Fake.Namespace.One.FakeType";
             var fakeTypeFullNameTwo = "Fake.Namespace.Two.FakeType";
@@ -50,7 +61,31 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingStringExtensi
         }
 
         [Fact]
+        public void ShouldThrowIStringExactlyMatchesMoreThanOneType()
+        {
+            var fakeTypeFullNameOne = "Fake.Namespace.One.FakeType";
+            var mockType = Context.Common().Type.WithFullName(fakeTypeFullNameOne).Mock;
+            var mockType2 = Context.Common().Type.WithFullName(fakeTypeFullNameOne).Mock;
+            var mockAssembly = Context.Common().Assembly.WithTypes(mockType, mockType2).Mock;
+
+            Assert.Throws<ArgumentException>(() => "FakeType".GetTypeFromString(new[] { mockAssembly }));
+        }
+
+        [Fact]
         public void ShouldReturnTypeIfMatchesExactlyOneType()
+        {
+            var fakeTypeFullNameOne = "Fake.Namespace.One.FakeType";
+            var fakeTypeFullNameTwo = "Fake.Namespace.Two.FakeType";
+            var mockType = Context.Common().Type.WithFullName(fakeTypeFullNameOne).Mock;
+            var mockType2 = Context.Common().Type.WithFullName(fakeTypeFullNameTwo).Mock;
+            var mockAssembly = Context.Common().Assembly.WithTypes(mockType, mockType2).Mock;
+
+            var result = fakeTypeFullNameOne.GetTypeFromString(new[] { mockAssembly });
+            Assert.Equal(mockType, result);
+        }
+
+        [Fact]
+        public void ShouldReturnTypeIfExactlyOneTypeEndsWith()
         {
             var fakeTypeFullNameOne = "Fake.Namespace.One.FakeType";
             var fakeTypeFullNameTwo = "Fake.Namespace.Two.FakeType";
