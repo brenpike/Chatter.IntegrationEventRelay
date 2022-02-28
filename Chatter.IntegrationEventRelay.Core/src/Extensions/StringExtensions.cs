@@ -14,7 +14,7 @@ public static class StringExtensions
 
         var types = assemblies?.SelectMany(a => a.GetTypes())
                                .Where(t => t.FullName?.ToLowerInvariant()
-                                                      .Contains(typeName.ToLowerInvariant()) ?? false) ?? new List<Type>();
+                                                      .EndsWith(typeName.ToLowerInvariant()) ?? false) ?? new List<Type>();
         if (!types.Any())
             return null;
         else if (types.Count() == 1)
