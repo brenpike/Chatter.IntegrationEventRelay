@@ -1,5 +1,5 @@
 ﻿using Chatter.CQRS.Events;
-using Chatter.SqlTableWatcher;
+using Chatter.SqlChangeFeed;
 using Microsoft.Extensions.Logging;
 
 namespace Chatter.IntegrationEventRelay.Core.Configuration;

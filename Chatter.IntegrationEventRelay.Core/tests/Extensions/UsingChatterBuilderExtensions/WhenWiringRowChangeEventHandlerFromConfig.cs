@@ -4,7 +4,7 @@ using Chatter.IntegrationEventRelay.Core.Handlers;
 using Chatter.IntegrationEventRelay.Core.Tests.TestContext;
 using Chatter.IntegrationEventRelay.Core.Tests.TestContext.Chatter.Cqrs;
 using Chatter.IntegrationEventRelay.Core.Tests.TestContext.Core.Configuration;
-using Chatter.SqlTableWatcher;
+using Chatter.SqlChangeFeed;
 using System;
 using Xunit;
 

@@ -36,7 +36,7 @@
 
 The primary use case of the Integration Event Relay is to relay domain events from legacy systems to message broker infrastructure as integration events to enable an event-driven architecture. The legacy systems in question would otherwise be unable to participate in an event-driven architecture due to their as-is architecture, technical debt, or inability to integrate with message broker infrastructure.
 
-The Integration Event Relay leverages SQL Service Broker via [Chatter.SqlTableWatcher](https://github.com/brenpike/Chatter/tree/master/src/Chatter.SqlTableWatcher) to watch for changes made to database tables. The modified data is added to a SQL Service Broker queue to be consumed by a [Worker service](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.Worker) where it will be mapped to an integration event and relayed to message broker infrastructure. As SQL Service Broker is core to the implementation, it is required that the legacy system leverages SQL as it's backend, it is also imparative that the SQL server infrastructure support SQL Service Broker (i.e., most PaaS offerings do not).
+The Integration Event Relay leverages SQL Service Broker via [Chatter.SqlChangeFeed](https://github.com/brenpike/Chatter/tree/master/src/Chatter.SqlChangeFeed) to watch for changes made to database tables. The modified data is added to a SQL Service Broker queue to be consumed by a [Worker service](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.Worker) where it will be mapped to an integration event and relayed to message broker infrastructure. As SQL Service Broker is core to the implementation, it is required that the legacy system leverages SQL as it's backend, it is also imparative that the SQL server infrastructure support SQL Service Broker (i.e., most PaaS offerings do not).
 
 ![Context Landspace Diagram][context-landscape-diagram]
 
@@ -46,7 +46,7 @@ This repo contains three projects, [Chatter.IntegrationEventRelay.Worker](https:
 
 ### Chatter.IntegrationEventRelay.Core
 
-As the name suggests, this is the core of the implementation. It leverages [Chatter.SqlTableWatcher](https://github.com/brenpike/Chatter/tree/master/src/Chatter.SqlTableWatcher) and contains interfaces, services, configuration definitions and extension methods required to quickly and easily build one or more Worker Services. This project is available via nuget as [Chatter.IntegrationEventRelay](https://www.nuget.org/packages/Chatter.IntegrationEventRelay/).
+As the name suggests, this is the core of the implementation. It leverages [Chatter.SqlChangeFeed](https://github.com/brenpike/Chatter/tree/master/src/Chatter.SqlChangeFeed) and contains interfaces, services, configuration definitions and extension methods required to quickly and easily build one or more Worker Services. This project is available via nuget as [Chatter.IntegrationEventRelay](https://www.nuget.org/packages/Chatter.IntegrationEventRelay/).
 
 ### Chatter.IntegrationEventRelay.Worker
 
@@ -189,7 +189,7 @@ using IHost host = Host.CreateDefaultBuilder(args)
 var env = host.Services.GetRequiredService<IHostEnvironment>();
 if (env.IsDevelopment())
     //Creates all database dependencies, including Install/Uninstall stored procs, triggers and SQL Service Broker queues. Should only be used in a development environment. Created DB objects should be deployed by other means (i.e., dacpac).
-    host.Services.UseTableWatcherSqlMigrations(); 
+    host.Services.UseChangeFeedSqlMigrations(); 
 
 await host.RunAsync();
 ```
@@ -255,7 +255,7 @@ GO
 
 ### Create Source Event Dto
 
-A Dto representing a row of the `Orders` table must be created. When changes are made to `Orders` these changes are queued to Sql Service Broker and consumed by a background service that is wired up on start-up via [Chatter.SqlTableWatcher](https://github.com/brenpike/Chatter/tree/master/src/Chatter.SqlTableWatcher).
+A Dto representing a row of the `Orders` table must be created. When changes are made to `Orders` these changes are queued to Sql Service Broker and consumed by a background service that is wired up on start-up via [Chatter.SqlChangeFeed](https://github.com/brenpike/Chatter/tree/master/src/Chatter.SqlChangeFeed).
 
 ```csharp
 using Chatter.IntegrationEventRelay.Core;

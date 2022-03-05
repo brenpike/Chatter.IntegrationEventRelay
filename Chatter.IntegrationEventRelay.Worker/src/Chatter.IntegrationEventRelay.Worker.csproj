@@ -8,9 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Chatter.MessageBrokers.AzureServiceBus" Version="0.7.2" />
     <PackageReference Include="Chatter.MessageBrokers.AzureServiceBus.Auth" Version="1.3.0" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="6.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="6.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="6.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="6.0.1" />
   </ItemGroup>
 
   <ItemGroup>

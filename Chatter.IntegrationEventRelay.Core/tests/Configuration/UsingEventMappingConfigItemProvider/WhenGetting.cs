@@ -3,7 +3,7 @@ using Chatter.IntegrationEventRelay.Core.Configuration;
 using Chatter.IntegrationEventRelay.Core.Tests.TestContext;
 using Chatter.IntegrationEventRelay.Core.Tests.TestContext.Common;
 using Chatter.IntegrationEventRelay.Core.Tests.TestContext.Core.Configuration;
-using Chatter.SqlTableWatcher;
+using Chatter.SqlChangeFeed;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;

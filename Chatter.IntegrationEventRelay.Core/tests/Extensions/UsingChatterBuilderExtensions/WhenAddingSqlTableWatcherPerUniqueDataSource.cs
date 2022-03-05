@@ -7,7 +7,7 @@ using Chatter.IntegrationEventRelay.Core.Tests.TestContext.Common;
 using Chatter.IntegrationEventRelay.Core.Tests.TestContext.Core.Configuration;
 using Chatter.MessageBrokers.Receiving;
 using Chatter.MessageBrokers.SqlServiceBroker.Configuration;
-using Chatter.SqlTableWatcher;
+using Chatter.SqlChangeFeed;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Data.SqlClient;
@@ -15,11 +15,11 @@ using Xunit;
 
 namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilderExtensions
 {
-    public class WhenAddingSqlTableWatcherPerUniqueDataSource : MockContext
+    public class WhenAddingSqlChangeFeedPerUniqueDataSource : MockContext
     {
         private readonly IChatterBuilder _builder;
 
-        public WhenAddingSqlTableWatcherPerUniqueDataSource()
+        public WhenAddingSqlChangeFeedPerUniqueDataSource()
         {
             var assembly = Context.Common().Assembly.WithTypes(typeof(FakeEvent), typeof(AnotherFakeEvent)).Mock;
             var asf = Context.Cqrs().AssemblySourceFilter.WithAssemblySource(assembly).Mock;
@@ -39,7 +39,7 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
                 .WithMappings(item)
                 .Mock;
 
-            Assert.Throws<ArgumentNullException>(() => _builder.AddSqlTableWatcherPerUniqueDataSource(mappings, null));
+            Assert.Throws<ArgumentNullException>(() => _builder.AddSqlChangeFeedPerUniqueDataSource(mappings, null));
         }
 
         [Fact]
@@ -54,7 +54,7 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
                 .WithMappings(item)
                 .Mock;
 
-            Assert.Throws<ArgumentNullException>(() => _builder.AddSqlTableWatcherPerUniqueDataSource(mappings, null));
+            Assert.Throws<ArgumentNullException>(() => _builder.AddSqlChangeFeedPerUniqueDataSource(mappings, null));
         }
 
         [Fact]
@@ -68,7 +68,7 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
                 .WithMappings(item)
                 .Mock;
 
-            Assert.Throws<ArgumentNullException>(() => _builder.AddSqlTableWatcherPerUniqueDataSource(mappings, null));
+            Assert.Throws<ArgumentNullException>(() => _builder.AddSqlChangeFeedPerUniqueDataSource(mappings, null));
         }
 
         [Fact]
@@ -83,7 +83,7 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
                 .WithMappings(item)
                 .Mock;
 
-            Assert.Throws<ArgumentNullException>(() => _builder.AddSqlTableWatcherPerUniqueDataSource(mappings, null));
+            Assert.Throws<ArgumentNullException>(() => _builder.AddSqlChangeFeedPerUniqueDataSource(mappings, null));
         }
 
         [Fact]
@@ -97,7 +97,7 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
                 .WithMappings(items)
                 .Mock;
 
-            Assert.Throws<ArgumentException>(() => _builder.AddSqlTableWatcherPerUniqueDataSource(mappings, null));
+            Assert.Throws<ArgumentException>(() => _builder.AddSqlChangeFeedPerUniqueDataSource(mappings, null));
         }
 
         [Fact]
@@ -111,7 +111,7 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
                 .WithMappings(item)
                 .Mock;
 
-            Assert.Throws<ArgumentException>(() => _builder.AddSqlTableWatcherPerUniqueDataSource(mappings, null));
+            Assert.Throws<ArgumentException>(() => _builder.AddSqlChangeFeedPerUniqueDataSource(mappings, null));
         }
 
         [Fact]
@@ -128,7 +128,7 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
                 .WithMappings(item)
                 .Mock;
 
-            _builder.AddSqlTableWatcherPerUniqueDataSource(mappings, null);
+            _builder.AddSqlChangeFeedPerUniqueDataSource(mappings, null);
 
             var sp = _builder.Services.BuildServiceProvider();
             var opts = sp.GetRequiredService<SqlServiceBrokerOptions>();
@@ -150,7 +150,7 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
                 .WithMappings(item)
                 .Mock;
 
-            _builder.AddSqlTableWatcherPerUniqueDataSource(mappings, null);
+            _builder.AddSqlChangeFeedPerUniqueDataSource(mappings, null);
 
             var sp = _builder.Services.BuildServiceProvider();
             var opts = sp.GetRequiredService<SqlServiceBrokerOptions>();
@@ -171,7 +171,7 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
                 .WithMappings(item)
                 .Mock;
 
-            _builder.AddSqlTableWatcherPerUniqueDataSource(mappings, null);
+            _builder.AddSqlChangeFeedPerUniqueDataSource(mappings, null);
 
             var sp = _builder.Services.BuildServiceProvider();
             var opts = sp.GetRequiredService<SqlServiceBrokerOptions>();
@@ -194,7 +194,7 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
                 .WithMappings(item)
                 .Mock;
 
-            _builder.AddSqlTableWatcherPerUniqueDataSource(mappings, null);
+            _builder.AddSqlChangeFeedPerUniqueDataSource(mappings, null);
 
             var sp = _builder.Services.BuildServiceProvider();
             var opts = (SqlDependencyManager<FakeEvent>)sp.GetRequiredService<ISqlDependencyManager<FakeEvent>>();
@@ -219,7 +219,7 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
                 .WithMappings(items)
                 .Mock;
 
-            _builder.AddSqlTableWatcherPerUniqueDataSource(mappings, null);
+            _builder.AddSqlChangeFeedPerUniqueDataSource(mappings, null);
 
             var sp = _builder.Services.BuildServiceProvider();
             var opts = (SqlDependencyManager<FakeEvent>)sp.GetRequiredService<ISqlDependencyManager<FakeEvent>>();
@@ -229,7 +229,7 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
         }
 
         [Fact]
-        public void MustAddSqlTableWatcherForEachUniqueMappingSource()
+        public void MustAddSqlChangeFeedForEachUniqueMappingSource()
         {
             var sourceToIntEventConnStr = $"Data Source=sourceToIntegrationEvent;Database=;Integrated Security=True;";
             var item1 = Context.Configuration().EventMappingConfigurationItem
@@ -251,17 +251,17 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
                 .WithMappings(item1, item2)
                 .Mock;
 
-            _builder.AddSqlTableWatcherPerUniqueDataSource(mappings, null);
+            _builder.AddSqlChangeFeedPerUniqueDataSource(mappings, null);
 
-            var anotherFakeEventReceivers = _builder.Services.GetServiceDescriptorsByServiceType(typeof(IBrokeredMessageReceiver<ProcessTableChangesCommand<AnotherFakeEvent>>));
-            var fakeEventReceivers = _builder.Services.GetServiceDescriptorsByServiceType(typeof(IBrokeredMessageReceiver<ProcessTableChangesCommand<FakeEvent>>));
+            var anotherFakeEventReceivers = _builder.Services.GetServiceDescriptorsByServiceType(typeof(IBrokeredMessageReceiver<ProcessChangeFeedCommand<AnotherFakeEvent>>));
+            var fakeEventReceivers = _builder.Services.GetServiceDescriptorsByServiceType(typeof(IBrokeredMessageReceiver<ProcessChangeFeedCommand<FakeEvent>>));
 
             Assert.Single(anotherFakeEventReceivers);
             Assert.Single(fakeEventReceivers);
         }
 
         [Fact]
-        public void MustNotAddDuplicateSqlTableWatchers()
+        public void MustNotAddDuplicateSqlChangeFeeds()
         {
             var sourceToIntEventConnStr = $"Data Source=sourceToIntegrationEvent;Database=;Integrated Security=True;";
             var item1 = Context.Configuration().EventMappingConfigurationItem
@@ -283,9 +283,9 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
                 .WithMappings(item1, item2)
                 .Mock;
 
-            _builder.AddSqlTableWatcherPerUniqueDataSource(mappings, null);
+            _builder.AddSqlChangeFeedPerUniqueDataSource(mappings, null);
 
-            var fakeEventReceivers = _builder.Services.GetServiceDescriptorsByServiceType(typeof(IBrokeredMessageReceiver<ProcessTableChangesCommand<FakeEvent>>));
+            var fakeEventReceivers = _builder.Services.GetServiceDescriptorsByServiceType(typeof(IBrokeredMessageReceiver<ProcessChangeFeedCommand<FakeEvent>>));
 
             Assert.Single(fakeEventReceivers);
         }
