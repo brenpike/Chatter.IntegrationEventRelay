@@ -3,7 +3,7 @@ using Chatter.CQRS.Context;
 using Chatter.CQRS.Events;
 using Chatter.IntegrationEventRelay.Core.Configuration;
 using Chatter.IntegrationEventRelay.Core.Mapping;
-using Chatter.SqlTableWatcher;
+using Chatter.SqlChangeFeed;
 using Microsoft.Extensions.Logging;
 
 namespace Chatter.IntegrationEventRelay.Core.Handlers;

@@ -1,4 +1,4 @@
-﻿using Chatter.SqlTableWatcher;
+﻿using Chatter.SqlChangeFeed;
 using System.ComponentModel.DataAnnotations;
 
 namespace Chatter.IntegrationEventRelay.Core.Configuration;

@@ -4,8 +4,9 @@ using Chatter.IntegrationEventRelay.Core.Configuration;
 using Chatter.IntegrationEventRelay.Core.Extensions;
 using Chatter.IntegrationEventRelay.Core.Handlers;
 using Chatter.IntegrationEventRelay.Core.Mapping;
-using Chatter.SqlTableWatcher;
-using Chatter.SqlTableWatcher.Configuration;
+using Chatter.SqlChangeFeed;
+using Chatter.SqlChangeFeed.Configuration;
+using Chatter.SqlChangeFeed.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System.Data.SqlClient;
@@ -14,7 +15,7 @@ namespace Chatter.IntegrationEventRelay.Core.Extensions;
 
 public static class ChatterBuilderExtensions
 {
-    public static IChatterBuilder AddIntegrationEventRelay(this IChatterBuilder builder, EventMappingConfiguration eventMappingConfig, Action<SqlTableWatcherOptionsBuilder>? optionsBuilder = null)
+    public static IChatterBuilder AddIntegrationEventRelay(this IChatterBuilder builder, EventMappingConfiguration eventMappingConfig, Action<SqlChangeFeedOptionsBuilder>? optionsBuilder = null)
     {
         builder.Services.AddSingleton(eventMappingConfig);
         builder.Services.AddTransient<IEventMappingConfigItemProvider, EventMappingConfigItemProvider>();
@@ -50,19 +51,19 @@ public static class ChatterBuilderExtensions
             }
         }
 
-        builder.AddSqlTableWatcherPerUniqueDataSource(eventMappingConfig, optionsBuilder);
+        builder.AddSqlChangeFeedPerUniqueDataSource(eventMappingConfig, optionsBuilder);
 
         return builder;
     }
 
-    public static IChatterBuilder AddIntegrationEventRelay(this IChatterBuilder builder, string sectionName = "IntegrationEventRelay", Action<SqlTableWatcherOptionsBuilder>? optionsBuilder = null)
+    public static IChatterBuilder AddIntegrationEventRelay(this IChatterBuilder builder, string sectionName = "IntegrationEventRelay", Action<SqlChangeFeedOptionsBuilder>? optionsBuilder = null)
     {
         var eventMappingConfig = new EventMappingConfiguration();
         builder.Configuration.GetSection(sectionName).Bind(eventMappingConfig);
         return builder.AddIntegrationEventRelay(eventMappingConfig, optionsBuilder);
     }
 
-    public static IChatterBuilder AddSqlTableWatcherPerUniqueDataSource(this IChatterBuilder builder, EventMappingConfiguration relayConfiguration, Action<SqlTableWatcherOptionsBuilder>? optionsBuilder)
+    public static IChatterBuilder AddSqlChangeFeedPerUniqueDataSource(this IChatterBuilder builder, EventMappingConfiguration relayConfiguration, Action<SqlChangeFeedOptionsBuilder>? optionsBuilder)
     {
         if (relayConfiguration.Mappings is null)
             return builder;
@@ -81,7 +82,7 @@ public static class ChatterBuilderExtensions
                 throw new ArgumentNullException(nameof(databaseName), $"A database is required to watch for change events on table '{mappingGroup.Key.TableName}'. " +
                     $"Set Database/InitialCatalog of connection string or {nameof(EventMappingConfigurationItem)}.DatabaseName");
 
-            builder.AddSqlTableWatcher(mappingGroup.Key.SourceEventType, connString, databaseName, mappingGroup.Key.TableName, optionsBuilder);
+            builder.AddSqlChangeFeed(mappingGroup.Key.SourceEventType, connString, databaseName, mappingGroup.Key.TableName, optionsBuilder);
         }
 
         return builder;
@@ -143,7 +144,7 @@ public static class ChatterBuilderExtensions
         return builder;
     }
 
-    public static IServiceProvider UseTableWatcherSqlMigrations(this IServiceProvider provider)
+    public static IServiceProvider UseChangeFeedSqlMigrations(this IServiceProvider provider)
     {
         var relayConfiguration = provider.GetRequiredService<EventMappingConfiguration>();
 
@@ -153,7 +154,7 @@ public static class ChatterBuilderExtensions
         var mappingGroups = relayConfiguration.Mappings.GroupBy(d => (d.ConnectionString, d.DatabaseName, d.TableName, d.SourceEventType));
         foreach (var mappingGroup in mappingGroups)
         {
-            provider.UseTableWatcherSqlMigrations(mappingGroup.Key.SourceEventType);
+            provider.UseChangeFeedSqlMigrations(mappingGroup.Key.SourceEventType);
         }
 
         return provider;

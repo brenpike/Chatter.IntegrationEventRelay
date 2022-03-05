@@ -1,5 +1,5 @@
 ﻿using Chatter.IntegrationEventRelay.Core.Configuration;
-using Chatter.SqlTableWatcher;
+using Chatter.SqlChangeFeed;
 using System;
 
 namespace Chatter.IntegrationEventRelay.Core.Tests.TestContext.Core.Configuration;

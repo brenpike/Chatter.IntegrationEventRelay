@@ -17,6 +17,6 @@ using IHost host = Host.CreateDefaultBuilder(args)
 
 var env = host.Services.GetRequiredService<IHostEnvironment>();
 if (env.IsDevelopment())
-    host.Services.UseTableWatcherSqlMigrations();
+    host.Services.UseChangeFeedSqlMigrations();
 
 await host.RunAsync();

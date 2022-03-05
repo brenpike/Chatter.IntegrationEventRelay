@@ -1,6 +1,6 @@
 ﻿using Chatter.CQRS.Events;
 using Chatter.IntegrationEventRelay.Core.Configuration;
-using Chatter.SqlTableWatcher;
+using Chatter.SqlChangeFeed;
 using Moq;
 
 namespace Chatter.IntegrationEventRelay.Core.Tests.TestContext.Core.Configuration;
