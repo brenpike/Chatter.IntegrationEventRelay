@@ -1,4 +1,5 @@
-﻿using Chatter.IntegrationEventRelay.Core.Mapping;
+﻿using Chatter.IntegrationEventRelay.Core.Configuration;
+using Chatter.IntegrationEventRelay.Core.Mapping;
 using Chatter.IntegrationEventRelay.Worker.Aggregates.Event1.IntegrationEvents;
 using Chatter.IntegrationEventRelay.Worker.Aggregates.Event1.SourceEvents;
 
@@ -13,7 +14,7 @@ public class SourceDeletedToEvent1DeletedEventMapper : IMapSourceDeleteToIntegra
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public Task<Event1DeletedEvent> MapAsync(MappingData<Event1ChangedEvent> data)
+    public Task<Event1DeletedEvent?> MapAsync(MappingData<Event1ChangedEvent> data, EventMappingConfigurationItem? mappingConfig)
     {
         _logger.LogInformation($"Mapping {nameof(Event1ChangedEvent)} to {nameof(Event1DeletedEvent)}");
 
@@ -21,17 +22,17 @@ public class SourceDeletedToEvent1DeletedEventMapper : IMapSourceDeleteToIntegra
         {
             var @event = new Event1DeletedEvent()
             {
-                Id = data.NewValue.Id,
+                Id = data.NewValue?.Id ?? Guid.NewGuid(),
                 OccurredAt = DateTime.UtcNow,
-                DeletedAt = data.NewValue.DeletedAt,
-                DeletedBy = data.NewValue.DeletedBy
+                DeletedAt = data.NewValue?.DeletedAt,
+                DeletedBy = data.NewValue?.DeletedBy
             };
 
-            return Task.FromResult(@event);
+            return Task.FromResult<Event1DeletedEvent?>(@event);
         }
 
         _logger.LogInformation($"{nameof(Event1ChangedEvent)} was already soft-deleted. Skipping emitting of integration event '{nameof(Event1DeletedEvent)}'");
 
-        return Task.FromResult<Event1DeletedEvent>(null);
+        return Task.FromResult<Event1DeletedEvent?>(null);
     }
 }

@@ -20,7 +20,7 @@ public class RowChangeExecutor<TSourceEvent, TIntegrationEvent> : IRowChangeHand
         _relayIntegrationEvent = relayIntegrationEvent ?? throw new ArgumentNullException(nameof(relayIntegrationEvent));
     }
 
-    public async Task Execute(IMapSourceToIntegrationEvent<TSourceEvent, TIntegrationEvent> integrationEventMapper, MappingData<TSourceEvent> mapping, EventMappingConfigurationItem? eventMappingConfiguration, IMessageHandlerContext context)
+    public async Task Execute(IMapSourceToIntegrationEvent<TSourceEvent, TIntegrationEvent?> integrationEventMapper, MappingData<TSourceEvent> mapping, EventMappingConfigurationItem? eventMappingConfiguration, IMessageHandlerContext context)
     {
         _ = integrationEventMapper ?? throw new ArgumentNullException(nameof(integrationEventMapper), "A source to integration event mapper is required");
         _ = mapping ?? throw new ArgumentNullException(nameof(mapping), "Mapping data is required");
@@ -29,11 +29,11 @@ public class RowChangeExecutor<TSourceEvent, TIntegrationEvent> : IRowChangeHand
 
         try
         {
-            TIntegrationEvent integrationEvent;
+            TIntegrationEvent? integrationEvent;
 
             try
             {
-                integrationEvent = await integrationEventMapper.MapAsync(mapping);
+                integrationEvent = await integrationEventMapper.MapAsync(mapping, eventMappingConfiguration);
                 _logger.LogInformation($"Successfully mapped '{typeof(TSourceEvent).Name}' to '{typeof(TIntegrationEvent).Name}'");
             }
             catch (Exception e)

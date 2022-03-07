@@ -1,4 +1,5 @@
-﻿using Chatter.IntegrationEventRelay.Core.Mapping;
+﻿using Chatter.IntegrationEventRelay.Core.Configuration;
+using Chatter.IntegrationEventRelay.Core.Mapping;
 using Chatter.IntegrationEventRelay.Worker.Aggregates.Event1.IntegrationEvents;
 using Chatter.IntegrationEventRelay.Worker.Aggregates.Event1.SourceEvents;
 
@@ -13,7 +14,7 @@ public class SourceUpdatedToEvent1DeletedEventMapper : IMapSourceUpdateToIntegra
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public Task<Event1DeletedEvent> MapAsync(MappingData<Event1ChangedEvent> data)
+    public Task<Event1DeletedEvent?> MapAsync(MappingData<Event1ChangedEvent> data, EventMappingConfigurationItem? mappingConfig)
     {
         if (data.OldValue?.DeletedBy is null && data.NewValue?.DeletedBy is not null)
         {
@@ -27,11 +28,11 @@ public class SourceUpdatedToEvent1DeletedEventMapper : IMapSourceUpdateToIntegra
 
             _logger.LogInformation($"{nameof(Event1ChangedEvent)} met criteria required to emit inetegration event '{nameof(Event1DeletedEvent)}'");
 
-            return Task.FromResult(@event);
+            return Task.FromResult<Event1DeletedEvent?>(@event);
         }
 
         _logger.LogInformation($"{nameof(Event1ChangedEvent)} did not meet criteria required to emit inetegration event '{nameof(Event1DeletedEvent)}'");
 
-        return Task.FromResult<Event1DeletedEvent>(null);
+        return Task.FromResult<Event1DeletedEvent?>(null);
     }
 }
