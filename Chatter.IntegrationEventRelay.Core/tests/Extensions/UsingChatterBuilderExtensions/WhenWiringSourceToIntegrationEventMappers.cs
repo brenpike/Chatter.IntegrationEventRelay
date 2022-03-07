@@ -1,4 +1,5 @@
 ﻿using Chatter.CQRS.Events;
+using Chatter.IntegrationEventRelay.Core.Configuration;
 using Chatter.IntegrationEventRelay.Core.Extensions;
 using Chatter.IntegrationEventRelay.Core.Mapping;
 using Chatter.IntegrationEventRelay.Core.Tests.TestContext;
@@ -215,26 +216,26 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
 
         private class FakeSource : ISourceEvent { }
         private class FakeEvent : IEvent { }
-        private class FakeMapper : IMapSourceUpdateToIntegrationEvent<FakeSource, FakeEvent>
+        private class FakeMapper : IMapSourceUpdateToIntegrationEvent<FakeSource, FakeEvent?>
         {
-            public Task<FakeEvent> MapAsync(MappingData<FakeSource> mappingData)
+            public Task<FakeEvent?> MapAsync(MappingData<FakeSource> mappingData, EventMappingConfigurationItem? mappingConfig)
             {
                 throw new NotImplementedException();
             }
         }
-        private class FakeMapper2 : IMapSourceDeleteToIntegrationEvent<FakeSource, FakeEvent>
+        private class FakeMapper2 : IMapSourceDeleteToIntegrationEvent<FakeSource, FakeEvent?>
         {
-            public Task<FakeEvent> MapAsync(MappingData<FakeSource> mappingData)
+            public Task<FakeEvent?> MapAsync(MappingData<FakeSource> mappingData, EventMappingConfigurationItem? mappingConfig)
             {
                 throw new NotImplementedException();
             }
         }
-        private class FakeMapper3 : IMapSourceDeleteToIntegrationEvent<FakeSource, FakeEvent>
+        private class FakeMapper3 : IMapSourceDeleteToIntegrationEvent<FakeSource, FakeEvent?>
         {
-            public Task<FakeEvent> MapAsync(MappingData<FakeSource> mappingData)
+            public Task<FakeEvent?> MapAsync(MappingData<FakeSource> mappingData, EventMappingConfigurationItem? mappingConfig)
             {
                 throw new NotImplementedException();
             }
-        }
+		}
     }
 }

@@ -13,12 +13,12 @@ public class RowDeletedEventHandler<TSourceEvent, TIntegrationEvent> : IMessageH
     where TIntegrationEvent : class, IEvent
 {
     private readonly ILogger<RowDeletedEventHandler<TSourceEvent, TIntegrationEvent>> _logger;
-    private readonly IMapSourceDeleteToIntegrationEvent<TSourceEvent, TIntegrationEvent> _integrationEventMapper;
+    private readonly IMapSourceDeleteToIntegrationEvent<TSourceEvent, TIntegrationEvent?> _integrationEventMapper;
     private readonly IEventMappingConfigItemProvider _eventMappingConfigProvider;
     private readonly IRowChangeHandlerExecutor<TSourceEvent, TIntegrationEvent> _handlerExecutor;
 
     public RowDeletedEventHandler(ILogger<RowDeletedEventHandler<TSourceEvent, TIntegrationEvent>> logger,
-                                  IMapSourceDeleteToIntegrationEvent<TSourceEvent, TIntegrationEvent> integrationEventMapper,
+                                  IMapSourceDeleteToIntegrationEvent<TSourceEvent, TIntegrationEvent?> integrationEventMapper,
                                   IEventMappingConfigItemProvider eventMappingConfigProvider,
                                   IRowChangeHandlerExecutor<TSourceEvent, TIntegrationEvent> handlerExecutor)
     {

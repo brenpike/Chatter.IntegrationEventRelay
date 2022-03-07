@@ -2,8 +2,8 @@
 
 namespace Chatter.IntegrationEventRelay.Core.Mapping;
 
-public interface IMapSourceInsertToIntegrationEvent<TSourceEvent, TIntegrationEvent> : IMapSourceToIntegrationEvent<TSourceEvent, TIntegrationEvent>
+public interface IMapSourceInsertToIntegrationEvent<TSourceEvent, TIntegrationEvent> : IMapSourceToIntegrationEvent<TSourceEvent, TIntegrationEvent?>
     where TSourceEvent : class, ISourceEvent
-    where TIntegrationEvent : class, IEvent
+    where TIntegrationEvent : IEvent?
 {
 }

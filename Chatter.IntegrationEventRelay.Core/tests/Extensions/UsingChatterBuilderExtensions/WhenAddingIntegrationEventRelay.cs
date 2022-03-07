@@ -390,23 +390,23 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
         private class AnotherFakeSourceEvent : ISourceEvent { }
         private class FakeEvent : IEvent { }
         private class AnotherFakeEvent : IEvent { }
-        private class FakeMapper : IMapSourceUpdateToIntegrationEvent<FakeSourceEvent, FakeEvent>
+        private class FakeMapper : IMapSourceUpdateToIntegrationEvent<FakeSourceEvent, FakeEvent?>
         {
-            public Task<FakeEvent> MapAsync(MappingData<FakeSourceEvent> mappingData)
+            public Task<FakeEvent?> MapAsync(MappingData<FakeSourceEvent> mappingData, EventMappingConfigurationItem? mappingConfig)
             {
                 throw new NotImplementedException();
             }
         }
-        private class FakeMapper2 : IMapSourceDeleteToIntegrationEvent<AnotherFakeSourceEvent, AnotherFakeEvent>
+        private class FakeMapper2 : IMapSourceDeleteToIntegrationEvent<AnotherFakeSourceEvent, AnotherFakeEvent?>
         {
-            public Task<AnotherFakeEvent> MapAsync(MappingData<AnotherFakeSourceEvent> mappingData)
+            public Task<AnotherFakeEvent?> MapAsync(MappingData<AnotherFakeSourceEvent> mappingData, EventMappingConfigurationItem? mappingConfig)
             {
                 throw new NotImplementedException();
             }
         }
-        private class FakeMapper3 : IMapSourceInsertToIntegrationEvent<AnotherFakeSourceEvent, AnotherFakeEvent>
+        private class FakeMapper3 : IMapSourceInsertToIntegrationEvent<AnotherFakeSourceEvent, AnotherFakeEvent?>
         {
-            public Task<AnotherFakeEvent> MapAsync(MappingData<AnotherFakeSourceEvent> mappingData)
+            public Task<AnotherFakeEvent?> MapAsync(MappingData<AnotherFakeSourceEvent> mappingData, EventMappingConfigurationItem? mappingConfig)
             {
                 throw new NotImplementedException();
             }
