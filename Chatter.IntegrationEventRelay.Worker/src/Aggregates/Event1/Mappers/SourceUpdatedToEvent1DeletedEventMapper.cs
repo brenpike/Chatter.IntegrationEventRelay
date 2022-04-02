@@ -26,12 +26,12 @@ public class SourceUpdatedToEvent1DeletedEventMapper : IMapSourceUpdateToIntegra
                 DeletedBy = data.NewValue.DeletedBy
             };
 
-            _logger.LogInformation($"{nameof(Event1ChangedEvent)} met criteria required to emit inetegration event '{nameof(Event1DeletedEvent)}'");
+            _logger.LogInformation($"{nameof(Event1ChangedEvent)} met criteria required to emit integration event '{nameof(Event1DeletedEvent)}'");
 
             return Task.FromResult<Event1DeletedEvent?>(@event);
         }
 
-        _logger.LogInformation($"{nameof(Event1ChangedEvent)} did not meet criteria required to emit inetegration event '{nameof(Event1DeletedEvent)}'");
+        _logger.LogInformation($"{nameof(Event1ChangedEvent)} did not meet criteria required to emit integration event '{nameof(Event1DeletedEvent)}'");
 
         return Task.FromResult<Event1DeletedEvent?>(null);
     }
