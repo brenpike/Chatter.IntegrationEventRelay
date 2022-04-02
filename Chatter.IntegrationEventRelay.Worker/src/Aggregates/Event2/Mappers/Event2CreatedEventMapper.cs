@@ -2,6 +2,7 @@
 using Chatter.IntegrationEventRelay.Core.Mapping;
 using Chatter.IntegrationEventRelay.Worker.Aggregates.Event2.IntegrationEvents;
 using Chatter.IntegrationEventRelay.Worker.Aggregates.Event2.SourceEvents;
+using Chatter.MessageBrokers.Context;
 
 namespace Chatter.IntegrationEventRelay.Worker.Aggregates.Event2.Mappers;
 
@@ -14,7 +15,7 @@ public class Event2CreatedEventMapper : IMapSourceInsertToIntegrationEvent<Event
 		_logger = logger ?? throw new ArgumentNullException(nameof(logger));
 	}
 
-	public Task<Event2CreatedEvent?> MapAsync(MappingData<Event2ChangedEvent> data, EventMappingConfigurationItem? mappingConfig)
+	public Task<Event2CreatedEvent?> MapAsync(MappingData<Event2ChangedEvent> data, IMessageBrokerContext context, EventMappingConfigurationItem? mappingConfig)
 	{
 		var @event = new Event2CreatedEvent()
 		{
@@ -24,6 +25,8 @@ public class Event2CreatedEventMapper : IMapSourceInsertToIntegrationEvent<Event
 			MoreStringData = data.NewValue.MoreStringData,
 			StringData = data.NewValue.StringData
 		};
+
+		_logger.LogInformation("{SourceEventTypeName} met criteria required to emit integration event '{IntegrationEventType}'", nameof(Event2ChangedEvent), nameof(Event2CreatedEvent));
 
 		return Task.FromResult<Event2CreatedEvent?>(@event);
 	}

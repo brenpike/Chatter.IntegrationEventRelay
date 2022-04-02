@@ -1,8 +1,8 @@
-﻿using Chatter.CQRS.Context;
-using Chatter.CQRS.Events;
+﻿using Chatter.CQRS.Events;
 using Chatter.IntegrationEventRelay.Core.Tests.TestContext;
 using Chatter.IntegrationEventRelay.Core.Tests.TestContext.Common;
 using Chatter.IntegrationEventRelay.Core.Tests.TestContext.Core.Configuration;
+using Chatter.MessageBrokers.Context;
 using Microsoft.Extensions.Logging;
 using Moq;
 using System;
@@ -25,21 +25,21 @@ public class WhenRelayingIntegrationEvent : MockContext
     [Fact]
     public async Task MustLogWarningIfNullEventMappingConfigSupplied()
     {
-        await _sut.Relay(It.IsAny<IEvent>(), It.IsAny<IMessageHandlerContext>(), null);
+        await _sut.RelayAsync(It.IsAny<IEvent>(), It.IsAny<IMessageBrokerContext>(), null);
         _logger.VerifyWasCalled(LogLevel.Warning, times: Times.Once());
     }
 
     [Fact]
     public async Task MustNotLogSuccessMessageIfNullEventMappingConfigSupplied()
     {
-        await _sut.Relay(It.IsAny<IEvent>(), It.IsAny<IMessageHandlerContext>(), null);
+        await _sut.RelayAsync(It.IsAny<IEvent>(), It.IsAny<IMessageBrokerContext>(), null);
         _logger.VerifyWasCalled(LogLevel.Information, "Successfully published integration event to messaging infrastructure", Times.Never());
     }
 
     [Fact]
     public async Task MustLogInformationIfIntegrationEventIsNull()
     {
-        await _sut.Relay<IEvent>(null, It.IsAny<IMessageHandlerContext>(), Context.Configuration().EventMappingConfigurationItem.Mock);
+        await _sut.RelayAsync<IEvent>(null, It.IsAny<IMessageBrokerContext>(), Context.Configuration().EventMappingConfigurationItem.Mock);
         var str = $"Integration event '{typeof(IEvent).Name}' is null. Skipping publish to messaging infrastructure.";
         _logger.VerifyWasCalled(LogLevel.Information, str, Times.Once());
     }
@@ -47,14 +47,14 @@ public class WhenRelayingIntegrationEvent : MockContext
     [Fact]
     public async Task MustNotLogSuccessMessageIfIntegrationEventIsNull()
     {
-        await _sut.Relay<IEvent>(null, It.IsAny<IMessageHandlerContext>(), Context.Configuration().EventMappingConfigurationItem.Mock);
+        await _sut.RelayAsync<IEvent>(null, It.IsAny<IMessageBrokerContext>(), Context.Configuration().EventMappingConfigurationItem.Mock);
         _logger.VerifyWasCalled(LogLevel.Information, "Successfully published integration event to messaging infrastructure", Times.Never());
     }
 
     [Fact]
     public async Task MustLogErrorIfThrowsException()
     {
-        await Assert.ThrowsAnyAsync<Exception>(() => _sut.Relay(new FakeEvent(), null, Context.Configuration().EventMappingConfigurationItem.Mock));
+        await Assert.ThrowsAnyAsync<Exception>(() => _sut.RelayAsync(new FakeEvent(), null, Context.Configuration().EventMappingConfigurationItem.Mock));
         _logger.VerifyWasCalled(LogLevel.Error, times: Times.Once());
     }
 

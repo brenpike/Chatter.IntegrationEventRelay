@@ -18,8 +18,8 @@ public class Event1RestoredEventHandler : IMessageHandler<Event1RestoredEvent>
     {
         var messageId = context.GetInboundBrokeredMessage()?.MessageId ?? Guid.NewGuid().ToString();
         _inMemoryConsumerCache.Add(messageId, message);
-        _logger.LogInformation($"{nameof(Event1RestoredEvent)} with id '{message.Id}' handled by consumer. Message Id: '{messageId}'");
-        _logger.LogInformation($"{_inMemoryConsumerCache.Count} message consumed");
-        return Task.CompletedTask;
+		_logger.LogInformation("{EventTypeName} with id '{SourceEventId}' handled by consumer. Message Id: '{MessageId}'", nameof(Event1RestoredEvent), message.Id, messageId);
+		_logger.LogInformation("{MessageConsumedCount} message consumed", _inMemoryConsumerCache.Count);
+		return Task.CompletedTask;
     }
 }

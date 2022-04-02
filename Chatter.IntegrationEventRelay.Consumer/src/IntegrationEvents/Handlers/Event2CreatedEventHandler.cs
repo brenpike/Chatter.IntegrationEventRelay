@@ -18,8 +18,8 @@ public class Event2CreatedEventHandler : IMessageHandler<Event2CreatedEvent>
     {
         var messageId = context.GetInboundBrokeredMessage()?.MessageId ?? Guid.NewGuid().ToString();
         _inMemoryConsumerCache.Add(messageId, message);
-        _logger.LogInformation($"{nameof(Event2CreatedEvent)} with id '{message.Id}' handled by consumer. Message Id: '{messageId}'");
-        _logger.LogInformation($"{_inMemoryConsumerCache.Count} message consumed");
-        return Task.CompletedTask;
+		_logger.LogInformation("{EventTypeName} with id '{SourceEventId}' handled by consumer. Message Id: '{MessageId}'", nameof(Event2CreatedEvent), message.Id, messageId);
+		_logger.LogInformation("{MessageConsumedCount} message consumed", _inMemoryConsumerCache.Count);
+		return Task.CompletedTask;
     }
 }

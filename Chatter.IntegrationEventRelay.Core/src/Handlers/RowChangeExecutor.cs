@@ -2,6 +2,7 @@
 using Chatter.CQRS.Events;
 using Chatter.IntegrationEventRelay.Core.Configuration;
 using Chatter.IntegrationEventRelay.Core.Mapping;
+using Chatter.MessageBrokers.Context;
 using Microsoft.Extensions.Logging;
 
 namespace Chatter.IntegrationEventRelay.Core.Handlers;
@@ -33,20 +34,20 @@ public class RowChangeExecutor<TSourceEvent, TIntegrationEvent> : IRowChangeHand
 
             try
             {
-                integrationEvent = await integrationEventMapper.MapAsync(mapping, eventMappingConfiguration);
-                _logger.LogInformation($"Successfully mapped '{typeof(TSourceEvent).Name}' to '{typeof(TIntegrationEvent).Name}'");
+                integrationEvent = await integrationEventMapper.MapAsync(mapping, (IMessageBrokerContext)context, eventMappingConfiguration);
+                _logger.LogInformation("Successfully mapped '{SourceEventTypeName}' to '{IntegrationEventTypeName}'", typeof(TSourceEvent).Name, typeof(TIntegrationEvent).Name);
             }
             catch (Exception e)
             {
-                _logger.LogError(e, $"Error mapping '{typeof(TSourceEvent).Name}' to '{typeof(TIntegrationEvent).Name}'");
+                _logger.LogError(e, "Error mapping '{SourceEventTypeName}' to '{IntegrationEventTypeName}'", typeof(TSourceEvent).Name, typeof(TIntegrationEvent).Name);
                 throw;
             }
 
-            await _relayIntegrationEvent.Relay(integrationEvent, context, eventMappingConfiguration);
+            await _relayIntegrationEvent.RelayAsync(integrationEvent, (IMessageBrokerContext)context, eventMappingConfiguration);
         }
         catch (Exception e)
         {
-            _logger.LogError(e, $"Error relaying '{typeof(TSourceEvent).Name}' to '{typeof(TIntegrationEvent).Name}'");
+            _logger.LogError(e, "Error relaying '{SourceEventTypeName}' to '{IntegrationEventTypeName}'", typeof(TSourceEvent).Name, typeof(TIntegrationEvent).Name);
             throw;
         }
     }

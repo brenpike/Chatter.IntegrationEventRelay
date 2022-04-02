@@ -2,7 +2,7 @@ USE [FakeDb]
 GO
 
 -- Small delay after seeding before triggering events
-WAITFOR DELAY '00:00:05'
+--WAITFOR DELAY '00:00:05'
 
 -- Soft Delete all 25 records in [dbo].[Event1]
 UPDATE [dbo].[Event1] SET [DeletedBy] = 1, [DeletedAt] = GETDATE() WHERE [DeletedBy] IS NULL

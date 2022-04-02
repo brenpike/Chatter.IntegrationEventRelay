@@ -220,12 +220,16 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 CREATE TABLE [dbo].[Orders](
-  [Id] [uniqueidentifier] NOT NULL,
-  [CustomerId] [uniqueidentifier] NOT NULL,
-  [ProductId] [uniqueidentifier] NOT NULL,
-  [Quantity] [smallint] NOT NULL,
-  [OrderStatus] [varchar](25) NULL,
-  [OrderPlacedOn] [smalldatetime] NOT NULL
+	[Id] [uniqueidentifier] NOT NULL,
+	[CustomerId] [uniqueidentifier] NOT NULL,
+	[ProductId] [uniqueidentifier] NOT NULL,
+	[Quantity] [smallint] NOT NULL,
+	[OrderStatus] [varchar](25) NULL,
+	[OrderPlacedOn] [smalldatetime] NOT NULL,
+ CONSTRAINT [PK_Orders] PRIMARY KEY CLUSTERED 
+(
+	[Id] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
 ) ON [PRIMARY]
 GO
 ```
@@ -360,7 +364,7 @@ namespace MyNewIntegrationEventRelay
 {
     public class OrderShippedMapper : IMapSourceUpdateToIntegrationEvent<OrderChangedEvent, OrderShippedEvent>
     {
-        public Task<OrderShippedEvent> MapAsync(MappingData<OrderChangedEvent> mappingData)
+        public Task<OrderShippedEvent> MapAsync(MappingData<OrderChangedEvent> mappingData, IMessageBrokerContext context, EventMappingConfigurationItem? mappingConfig)
         {
             OrderShippedEvent orderShippedEvent = null;
 

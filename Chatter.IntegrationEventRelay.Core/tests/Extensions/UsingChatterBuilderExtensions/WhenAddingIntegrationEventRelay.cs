@@ -9,6 +9,7 @@ using Chatter.IntegrationEventRelay.Core.Tests.TestContext;
 using Chatter.IntegrationEventRelay.Core.Tests.TestContext.Chatter.Cqrs;
 using Chatter.IntegrationEventRelay.Core.Tests.TestContext.Common;
 using Chatter.IntegrationEventRelay.Core.Tests.TestContext.Core.Configuration;
+using Chatter.MessageBrokers.Context;
 using Chatter.SqlChangeFeed;
 using Microsoft.Extensions.DependencyInjection;
 using System;
@@ -392,21 +393,21 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
         private class AnotherFakeEvent : IEvent { }
         private class FakeMapper : IMapSourceUpdateToIntegrationEvent<FakeSourceEvent, FakeEvent?>
         {
-            public Task<FakeEvent?> MapAsync(MappingData<FakeSourceEvent> mappingData, EventMappingConfigurationItem? mappingConfig)
+            public Task<FakeEvent?> MapAsync(MappingData<FakeSourceEvent> mappingData, IMessageBrokerContext context, EventMappingConfigurationItem? mappingConfig)
             {
                 throw new NotImplementedException();
             }
         }
         private class FakeMapper2 : IMapSourceDeleteToIntegrationEvent<AnotherFakeSourceEvent, AnotherFakeEvent?>
         {
-            public Task<AnotherFakeEvent?> MapAsync(MappingData<AnotherFakeSourceEvent> mappingData, EventMappingConfigurationItem? mappingConfig)
+            public Task<AnotherFakeEvent?> MapAsync(MappingData<AnotherFakeSourceEvent> mappingData, IMessageBrokerContext context, EventMappingConfigurationItem? mappingConfig)
             {
                 throw new NotImplementedException();
             }
         }
         private class FakeMapper3 : IMapSourceInsertToIntegrationEvent<AnotherFakeSourceEvent, AnotherFakeEvent?>
         {
-            public Task<AnotherFakeEvent?> MapAsync(MappingData<AnotherFakeSourceEvent> mappingData, EventMappingConfigurationItem? mappingConfig)
+            public Task<AnotherFakeEvent?> MapAsync(MappingData<AnotherFakeSourceEvent> mappingData, IMessageBrokerContext context, EventMappingConfigurationItem? mappingConfig)
             {
                 throw new NotImplementedException();
             }

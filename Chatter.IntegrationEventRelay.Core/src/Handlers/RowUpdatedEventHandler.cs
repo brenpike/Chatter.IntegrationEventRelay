@@ -30,8 +30,8 @@ public class RowUpdatedEventHandler<TSourceEvent, TIntegrationEvent> : IMessageH
 
     public Task Handle(RowUpdatedEvent<TSourceEvent> message, IMessageHandlerContext context)
     {
-        _logger.LogInformation($"Handling '{nameof(RowUpdatedEvent<TSourceEvent>)}' for source changed event '{typeof(TSourceEvent).Name}'");
-        var mappingConfig = _eventMappingConfigProvider.Get<TSourceEvent, TIntegrationEvent>(ChangeTypes.Update);
+		_logger.LogInformation("Handling '{RowChangedEventTypeName}' for source changed event '{SourceEventTypeName}'", nameof(RowUpdatedEvent<TSourceEvent>), typeof(TSourceEvent).Name);
+		var mappingConfig = _eventMappingConfigProvider.Get<TSourceEvent, TIntegrationEvent>(ChangeTypes.Update);
         var mapping = new MappingData<TSourceEvent>(message.OldValue, message.NewValue);
         return _handlerExecutor.Execute(_integrationEventMapper, mapping, mappingConfig, context);
     }

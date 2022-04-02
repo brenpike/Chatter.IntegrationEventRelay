@@ -6,6 +6,7 @@ using Chatter.IntegrationEventRelay.Core.Tests.TestContext;
 using Chatter.IntegrationEventRelay.Core.Tests.TestContext.Chatter.Cqrs;
 using Chatter.IntegrationEventRelay.Core.Tests.TestContext.Common;
 using Chatter.IntegrationEventRelay.Core.Tests.TestContext.Core.Configuration;
+using Chatter.MessageBrokers.Context;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Threading.Tasks;
@@ -13,7 +14,7 @@ using Xunit;
 
 namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilderExtensions
 {
-    public class WhenWiringSourceToIntegrationEventMappers : MockContext
+	public class WhenWiringSourceToIntegrationEventMappers : MockContext
     {
         [Fact]
         public void MustWireMappersForSpecifiedMapperType()
@@ -218,21 +219,21 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
         private class FakeEvent : IEvent { }
         private class FakeMapper : IMapSourceUpdateToIntegrationEvent<FakeSource, FakeEvent?>
         {
-            public Task<FakeEvent?> MapAsync(MappingData<FakeSource> mappingData, EventMappingConfigurationItem? mappingConfig)
+            public Task<FakeEvent?> MapAsync(MappingData<FakeSource> mappingData, IMessageBrokerContext context, EventMappingConfigurationItem? mappingConfig)
             {
                 throw new NotImplementedException();
             }
         }
         private class FakeMapper2 : IMapSourceDeleteToIntegrationEvent<FakeSource, FakeEvent?>
         {
-            public Task<FakeEvent?> MapAsync(MappingData<FakeSource> mappingData, EventMappingConfigurationItem? mappingConfig)
+            public Task<FakeEvent?> MapAsync(MappingData<FakeSource> mappingData, IMessageBrokerContext context, EventMappingConfigurationItem? mappingConfig)
             {
                 throw new NotImplementedException();
             }
         }
         private class FakeMapper3 : IMapSourceDeleteToIntegrationEvent<FakeSource, FakeEvent?>
         {
-            public Task<FakeEvent?> MapAsync(MappingData<FakeSource> mappingData, EventMappingConfigurationItem? mappingConfig)
+            public Task<FakeEvent?> MapAsync(MappingData<FakeSource> mappingData, IMessageBrokerContext context, EventMappingConfigurationItem? mappingConfig)
             {
                 throw new NotImplementedException();
             }
