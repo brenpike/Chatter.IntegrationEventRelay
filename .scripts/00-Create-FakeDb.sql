@@ -4,6 +4,10 @@ GO
 USE [FakeDb]
 GO
 
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[Event1]') AND type in (N'U'))
+DROP TABLE [dbo].[Event1]
+GO
+
 SET ANSI_NULLS ON
 GO
 
@@ -16,11 +20,16 @@ CREATE TABLE [dbo].[Event1](
 	[BoolData] [bit] NULL,
 	[IntData] [int] NULL,
 	[DeletedBy] [int] NULL,
-	[DeletedAt] [datetime] NULL
+	[DeletedAt] [datetime] NULL,
+ CONSTRAINT [PK_Event1] PRIMARY KEY CLUSTERED 
+(
+	[Id] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY]
 GO
 
-USE [FakeDb]
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[Event2]') AND type in (N'U'))
+DROP TABLE [dbo].[Event2]
 GO
 
 SET ANSI_NULLS ON
@@ -33,7 +42,11 @@ CREATE TABLE [dbo].[Event2](
 	[Id] [uniqueidentifier] NOT NULL,
 	[StringData] [varchar](50) NULL,
 	[MoreStringData] [varchar](50) NULL,
-	[DecimalData] [decimal](18, 2) NULL
+	[DecimalData] [decimal](18, 2) NULL,
+ CONSTRAINT [PK_Event2] PRIMARY KEY CLUSTERED 
+(
+	[Id] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY]
 GO
 

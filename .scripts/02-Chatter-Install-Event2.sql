@@ -1,106 +1,111 @@
 USE [FakeDb]
-GO                  
-			   IF EXISTS (SELECT * FROM sys.databases 
-									WHERE name = 'FakeDb' AND is_broker_enabled = 0) 
-				BEGIN
-					ALTER DATABASE [FakeDb] SET ENABLE_BROKER; 
+GO
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
-					ALTER AUTHORIZATION ON DATABASE::[FakeDb] TO [sa]
-				END
+                         DECLARE @ExplicitCols bit = 1
+                            
+                IF EXISTS (SELECT * FROM sys.databases 
+                                    WHERE name = 'FakeDb' AND is_broker_enabled = 0) 
+                BEGIN
+                    ALTER DATABASE [FakeDb] SET ENABLE_BROKER; 
 
-				IF NOT EXISTS (SELECT * FROM sys.service_message_types WHERE name = '//Chatter/BrokeredMessage')
-					CREATE MESSAGE TYPE [//Chatter/BrokeredMessage] VALIDATION = NONE;
+                    ALTER AUTHORIZATION ON DATABASE::[FakeDb] TO [sa]
+                END
 
-				IF NOT EXISTS (SELECT * FROM sys.service_contracts WHERE name = '//Chatter')
-					CREATE CONTRACT [//Chatter] ([//Chatter/BrokeredMessage] SENT BY ANY, [DEFAULT] SENT BY ANY);
+                IF NOT EXISTS (SELECT * FROM sys.service_message_types WHERE name = '//Chatter/BrokeredMessage')
+                    CREATE MESSAGE TYPE [//Chatter/BrokeredMessage] VALIDATION = NONE;
 
-				IF NOT EXISTS (SELECT * FROM sys.service_queues WHERE name = 'Chatter_Queue_Event2ChangedEvent')
-					CREATE QUEUE dbo.[Chatter_Queue_Event2ChangedEvent] WITH POISON_MESSAGE_HANDLING (STATUS = OFF)
+                IF NOT EXISTS (SELECT * FROM sys.service_contracts WHERE name = '//Chatter')
+                    CREATE CONTRACT [//Chatter] ([//Chatter/BrokeredMessage] SENT BY ANY, [DEFAULT] SENT BY ANY);
 
-				IF NOT EXISTS(SELECT * FROM sys.services WHERE name = 'Chatter_Service_Event2ChangedEvent')
-					CREATE SERVICE [Chatter_Service_Event2ChangedEvent] ON QUEUE dbo.[Chatter_Queue_Event2ChangedEvent] ([//Chatter])
+                IF NOT EXISTS (SELECT * FROM sys.service_queues WHERE name = 'Chatter_Queue_Event2ChangedEvent')
+	                CREATE QUEUE dbo.[Chatter_Queue_Event2ChangedEvent] WITH POISON_MESSAGE_HANDLING (STATUS = OFF)
 
-				IF NOT EXISTS (SELECT * FROM sys.service_queues WHERE name = 'Chatter_DeadLetterQueue_Event2ChangedEvent')
-					CREATE QUEUE dbo.[Chatter_DeadLetterQueue_Event2ChangedEvent] WITH POISON_MESSAGE_HANDLING (STATUS = OFF)
+                IF NOT EXISTS(SELECT * FROM sys.services WHERE name = 'Chatter_Service_Event2ChangedEvent')
+	                CREATE SERVICE [Chatter_Service_Event2ChangedEvent] ON QUEUE dbo.[Chatter_Queue_Event2ChangedEvent] ([//Chatter])
 
-				IF NOT EXISTS(SELECT * FROM sys.services WHERE name = 'Chatter_DeadLetterService_Event2ChangedEvent')
-					CREATE SERVICE [Chatter_DeadLetterService_Event2ChangedEvent] ON QUEUE dbo.[Chatter_DeadLetterQueue_Event2ChangedEvent] ([//Chatter]) 
-			
+                IF NOT EXISTS (SELECT * FROM sys.service_queues WHERE name = 'Chatter_DeadLetterQueue_Event2ChangedEvent')
+	                CREATE QUEUE dbo.[Chatter_DeadLetterQueue_Event2ChangedEvent] WITH POISON_MESSAGE_HANDLING (STATUS = OFF)
 
-							IF OBJECT_ID ('dbo.Chatter_ChangeFeedTrigger_Event2ChangedEvent', 'TR') IS NOT NULL
-								RETURN;
+                IF NOT EXISTS(SELECT * FROM sys.services WHERE name = 'Chatter_DeadLetterService_Event2ChangedEvent')
+	                CREATE SERVICE [Chatter_DeadLetterService_Event2ChangedEvent] ON QUEUE dbo.[Chatter_DeadLetterQueue_Event2ChangedEvent] ([//Chatter]) 
+            
 
-							PRINT N'CREATING TRIGGER.';
+                            IF OBJECT_ID ('dbo.Chatter_ChangeFeedTrigger_Event2ChangedEvent', 'TR') IS NOT NULL
+                                RETURN;
 
-							-- Change Feed Trigger configuration statement.
-							DECLARE @triggerStatement NVARCHAR(MAX)
-							DECLARE @select NVARCHAR(MAX)
-							DECLARE @sqlInserted NVARCHAR(MAX)
-							DECLARE @sqlDeleted NVARCHAR(MAX)
-							
-							SET @triggerStatement = N'
-				CREATE TRIGGER dbo.[Chatter_ChangeFeedTrigger_Event2ChangedEvent]
-				ON dbo.[Event2]
-				WITH EXECUTE AS OWNER
-				AFTER INSERT, UPDATE, DELETE 
-				AS
+                            -- Build column collection for target table:
+                            DECLARE @tbl_Columns TABLE (COLUMN_NAME sysname NOT NULL, INCLUDE_OUTPUT bit NOT NULL, PK_ORDINAL int NULL);
+                            INSERT INTO @tbl_Columns (COLUMN_NAME, INCLUDE_OUTPUT, PK_ORDINAL)
+                            SELECT cols.COLUMN_NAME,
+	                            CASE WHEN cols.DATA_TYPE IN ('text','ntext','image','geometry','geography') THEN 0 ELSE 1 END [INCLUDE_OUTPUT],
+	                            colkeys.ORDINAL_POSITION [PK_ORDINAL]
+                             FROM INFORMATION_SCHEMA.TABLES tab
+                             INNER JOIN INFORMATION_SCHEMA.COLUMNS cols ON cols.TABLE_CATALOG = tab.TABLE_CATALOG
+	                            AND cols.TABLE_SCHEMA = tab.TABLE_SCHEMA
+	                            AND cols.TABLE_NAME = tab.TABLE_NAME
+                             LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tabcon ON tabcon.TABLE_CATALOG = tab.TABLE_CATALOG
+	                            AND tabcon.TABLE_SCHEMA = tab.TABLE_SCHEMA
+	                            AND tabcon.TABLE_NAME = tab.TABLE_NAME
+	                            AND tabcon.CONSTRAINT_TYPE = 'PRIMARY KEY'
+                             LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE colkeys ON colkeys.TABLE_CATALOG = cols.TABLE_CATALOG
+	                            AND colkeys.TABLE_SCHEMA = cols.TABLE_SCHEMA
+	                            AND colkeys.TABLE_NAME = cols.TABLE_NAME
+	                            AND colkeys.COLUMN_NAME = cols.COLUMN_NAME
+	                            AND colkeys.CONSTRAINT_NAME = tabcon.CONSTRAINT_NAME
+                             WHERE tab.TABLE_CATALOG = 'FakeDb'
+	                            AND tab.TABLE_SCHEMA = 'dbo'
+	                            AND tab.TABLE_NAME = 'Event2';
 
-				SET NOCOUNT ON;
+                            -- Construct column and join column strings:
+                            DECLARE @ColumnList nvarchar(max) = '';
+                            SELECT @ColumnList = @ColumnList + ',%PFX%.[' + COLUMN_NAME + ']' FROM @tbl_Columns;
+                            DECLARE @JoinColumns nvarchar(max) = '';
+                            SELECT @JoinColumns = @JoinColumns + ' AND del.[' + COLUMN_NAME + '] = ins.[' + COLUMN_NAME + ']'
+                             FROM @tbl_Columns
+                             WHERE PK_ORDINAL IS NOT NULL
+                             ORDER BY PK_ORDINAL;
 
-				IF EXISTS (SELECT * FROM sys.services WHERE name = ''Chatter_Service_Event2ChangedEvent'')
-				BEGIN
-					DECLARE @message NVARCHAR(MAX)
-					SET @message = N''''
+                            -- Construct statement for trigger to actually build message content:
+                            DECLARE @TriggerMessageStatement nvarchar(max) = '
+                            SET @Message = (
+                            SELECT
+	                            JSON_QUERY(NULLIF(JSON_QUERY((SELECT ' + CASE @ExplicitCols WHEN 1 THEN REPLACE(SUBSTRING(@ColumnList, 2, LEN(@ColumnList)), '%PFX%.', 'ins.') ELSE 'ins.*' END + ' FOR JSON PATH, WITHOUT_ARRAY_WRAPPER)), ''{}'')) [Inserted],
+	                            JSON_QUERY(NULLIF(JSON_QUERY((SELECT ' + CASE @ExplicitCols WHEN 1 THEN REPLACE(SUBSTRING(@ColumnList, 2, LEN(@ColumnList)), '%PFX%.', 'del.') ELSE 'del.*' END + ' FOR JSON PATH, WITHOUT_ARRAY_WRAPPER)), ''{}'')) [Deleted]
+                            FROM INSERTED ins
+                            FULL OUTER JOIN DELETED del ON ' + SUBSTRING(@JoinColumns, 6, LEN(@JoinColumns)) + '
+                            FOR JSON AUTO
+                            );
+                            SET @message = (SELECT JSON_QUERY(@message) [Changes] FOR JSON PATH, WITHOUT_ARRAY_WRAPPER);';
 
-					DECLARE @InsertedJSON NVARCHAR(MAX) 
-					DECLARE @DeletedJSON NVARCHAR(MAX) 
-					
-					%inserted_select_statement%
-					
-					%deleted_select_statement% 
-					
-					IF (COALESCE(@DeletedJSON, N'''') = N'''') SET @message = @InsertedJSON
-					ELSE
-						IF (COALESCE(@InsertedJSON, N'''') = N'''') SET @message = @DeletedJSON
-					ELSE
-						SET @message = CONCAT(SUBSTRING(@InsertedJSON,1,LEN(@InsertedJSON) - 1), N'','', SUBSTRING(@DeletedJSON,2,LEN(@DeletedJSON)-1))
+                            -- Change Feed Trigger configuration statement.
+                            DECLARE @triggerStatement NVARCHAR(MAX) = REPLACE(CONVERT(nvarchar(max), N'
+                CREATE TRIGGER dbo.[Chatter_ChangeFeedTrigger_Event2ChangedEvent]
+                ON dbo.[Event2]
+                WITH EXECUTE AS OWNER
+                AFTER INSERT, UPDATE, DELETE 
+                AS
 
-					IF @message IS NOT NULL
+                SET NOCOUNT ON;
+
+                IF EXISTS (SELECT * FROM sys.services WHERE name = ''Chatter_Service_Event2ChangedEvent'')
+                BEGIN
+                    DECLARE @message NVARCHAR(MAX);
+                    %set_message_statement%
+                    IF @message IS NOT NULL
 					BEGIN
-						SET @message = compress(@message)                    
 
-						DECLARE @ConvHandle UNIQUEIDENTIFIER
+                	    DECLARE @ConvHandle UNIQUEIDENTIFIER;
+                	    BEGIN DIALOG @ConvHandle 
+                            FROM SERVICE [Chatter_Service_Event2ChangedEvent] TO SERVICE ''Chatter_Service_Event2ChangedEvent'' ON CONTRACT [//Chatter] WITH ENCRYPTION=OFF; 
 
-						BEGIN DIALOG @ConvHandle 
-							FROM SERVICE [Chatter_Service_Event2ChangedEvent] TO SERVICE ''Chatter_Service_Event2ChangedEvent'' ON CONTRACT [//Chatter] WITH ENCRYPTION=OFF; 
+                        SEND ON CONVERSATION @ConvHandle MESSAGE TYPE [DEFAULT] (COMPRESS(@message));
+                    END
+                END
+            '), '%set_message_statement%', @TriggerMessageStatement);
 
-						SEND ON CONVERSATION @ConvHandle MESSAGE TYPE [DEFAULT] (@message);
-					END
-				END
-			'
-							
-							SET @select = STUFF((SELECT ',' + '[' + COLUMN_NAME + ']'
-							   FROM INFORMATION_SCHEMA.COLUMNS
-							   WHERE DATA_TYPE NOT IN  ('text','ntext','image','geometry','geography') AND TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'Event2' AND TABLE_CATALOG = 'FakeDb'
-							   FOR XML PATH ('')
-							   ), 1, 1, '')
-
-							SET @sqlInserted =
-								N'SET @InsertedJSON = (SELECT ' + @select + N'
-																		 FROM INSERTED
-																		 FOR JSON AUTO, ROOT(''Inserted''))'
-
-							SET @sqlDeleted =
-								N'SET @DeletedJSON = (SELECT ' + @select + N'
-																		 FROM DELETED
-																		 FOR JSON AUTO, ROOT(''Deleted''))'
-
-							SET @triggerStatement = REPLACE(@triggerStatement
-													 , '%inserted_select_statement%', @sqlInserted)
-
-							SET @triggerStatement = REPLACE(@triggerStatement
-													 , '%deleted_select_statement%', @sqlDeleted)
-
-							EXEC sp_executesql @triggerStatement
-
-							PRINT N'TRIGGER CREATED:';
+                            EXEC sp_executesql @triggerStatement
+                        
