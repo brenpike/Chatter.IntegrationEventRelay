@@ -8,10 +8,16 @@ on:
         required: true
         default: 'Manual build from GitHub UI'
   push:
-    branches: [ main ]
+    branches: [ feature/** ]
     paths:
-    - 'Chatter.IntegrationEventRelay.Core/**'
-    
+      - '**/Chatter.IntegrationEventRelay.Core/src/**'
+  pull_request:
+    branches: [ main ]
+    types:
+      - closed
+    paths:
+      - '**/Chatter.IntegrationEventRelay.Core/src/**'
+
 env:
   dotnet-version:  '6.0.x'
       
@@ -54,7 +60,7 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.event.pull_request.merged == true
     
     environment:
       name: Production
