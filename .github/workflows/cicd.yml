@@ -54,6 +54,30 @@ jobs:
         retention-days: 5
         if-no-files-found: error
 
+  e2e:
+    name: e2e (docker compose + Service Bus emulator)
+    runs-on: ubuntu-latest
+    # Validates changes before merge; not needed again once a PR is closed
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Run demo end to end
+      run: ./.devops/e2e.sh
+    - name: Collect container logs
+      if: always()
+      run: docker compose logs --no-color --timestamps > e2e-logs.txt 2>&1 || true
+    - name: Upload container logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: e2e-logs
+        path: e2e-logs.txt
+        retention-days: 5
+    - name: Tear down
+      if: always()
+      run: docker compose down -v
+
   deploy:
     needs: build
     runs-on: ubuntu-latest

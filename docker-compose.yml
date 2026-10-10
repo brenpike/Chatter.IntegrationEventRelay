@@ -1,58 +1,96 @@
-﻿version: '3.7'
+# Runs fully locally against the Azure Service Bus emulator by default.
+# To use a real Azure Service Bus namespace instead, set the ASB_* variables in a .env file next to this file
+# (see README: "Using a real Azure Service Bus namespace").
+
+x-servicebus-env: &servicebus-env
+  Chatter__Infrastructure__AzureServiceBus__ConnectionString: ${ASB_CONNECTION_STRING:-Endpoint=sb://servicebus;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;}
+  Chatter__Infrastructure__AzureServiceBus__Auth__ClientId: ${ASB_CLIENT_ID:-}
+  Chatter__Infrastructure__AzureServiceBus__Auth__ClientSecret: ${ASB_CLIENT_SECRET:-}
+  Chatter__Infrastructure__AzureServiceBus__Auth__Authority: ${ASB_AUTHORITY:-}
+
+x-worker: &worker
+  build:
+    context: .
+    dockerfile: Chatter.IntegrationEventRelay.Worker/src/Worker.Dockerfile
+  environment:
+    <<: *servicebus-env
+    DOTNET_ENVIRONMENT: Local
+    IntegrationEventRelay__ConnectionString: Server=db;Database=FakeDb;User ID=sa;Password=${SA_PASSWORD:-itsAbadP@SSW0RD};TrustServerCertificate=True
+  restart: on-failure
+  depends_on:
+    db:
+      condition: service_healthy
+    servicebus-ready:
+      condition: service_completed_successfully
+
+x-consumer: &consumer
+  build:
+    context: .
+    dockerfile: Chatter.IntegrationEventRelay.Consumer/src/Consumer.Dockerfile
+  environment:
+    <<: *servicebus-env
+    DOTNET_ENVIRONMENT: Local
+  restart: on-failure
+  depends_on:
+    servicebus-ready:
+      condition: service_completed_successfully
 
 services:
   worker:
+    <<: *worker
     container_name: integrationeventrelay_worker1
-    build:
-      context: .
-      dockerfile: Chatter.IntegrationEventRelay.Worker/src/Worker.Dockerfile
-    env_file:
-      - .devops/worker.env
-    depends_on:
-      db:
-        condition: service_healthy
 
   worker2:
+    <<: *worker
     container_name: integrationeventrelay_worker2
-    build:
-      context: .
-      dockerfile: Chatter.IntegrationEventRelay.Worker/src/Worker.Dockerfile
-    env_file:
-      - .devops/worker.env
-    depends_on:
-      db:
-        condition: service_healthy
 
   db:
     container_name: integrationeventrelay_db
     build:
       context: .
       dockerfile: Chatter.IntegrationEventRelay.Worker/src/Sql.Dockerfile
-    env_file:
-      - .devops/sql.env
     environment:
-      - IntegrationEventRelay__ConnectionString=Server=db;Database=FakeDb;Trusted_Connection=false;User ID=sa;Password=${SA_PASSWORD};TrustServerCertificate=True
+      SA_PASSWORD: ${SA_PASSWORD:-itsAbadP@SSW0RD}
+      MSSQL_SA_PASSWORD: ${SA_PASSWORD:-itsAbadP@SSW0RD}
+      ACCEPT_EULA: Y
+    # Healthy once the database has been created and seeded (see .devops/sql-healthcheck.sh)
+    healthcheck:
+      test: ["CMD", "/bin/bash", "sql-healthcheck.sh"]
+      interval: 2s
+      timeout: 10s
+      retries: 90
+      start_period: 30s
     ports:
       - "1401:1433"
 
-  consumer1:
-    container_name: integrationeventrelay_consumer1
-    build:
-      context: .
-      dockerfile: Chatter.IntegrationEventRelay.Consumer/src/Consumer.Dockerfile
-    env_file:
-      - .devops/consumer.env
+  # Azure Service Bus emulator. Entities are declared in .devops/servicebus-emulator/Config.json.
+  # Uses the db container's SQL Server as its backing store.
+  servicebus:
+    container_name: integrationeventrelay_servicebus
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:2.0.1
+    volumes:
+      - ./.devops/servicebus-emulator/Config.json:/ServiceBus_Emulator/ConfigFiles/Config.json:ro
+    environment:
+      SQL_SERVER: db
+      MSSQL_SA_PASSWORD: ${SA_PASSWORD:-itsAbadP@SSW0RD}
+      ACCEPT_EULA: Y
+    ports:
+      - "5672:5672"
     depends_on:
       db:
         condition: service_healthy
 
-  consumer2:
-    container_name: integrationeventrelay_consumer2
-    build:
-      context: .
-      dockerfile: Chatter.IntegrationEventRelay.Consumer/src/Consumer.Dockerfile
-    env_file:
-      - .devops/consumer.env
+  # The emulator image has no health check; wait until it accepts AMQP connections
+  servicebus-ready:
+    image: busybox:1.36
+    command: ["sh", "-c", "until nc -z servicebus 5672; do sleep 2; done; sleep 10"]
     depends_on:
-      db:
-        condition: service_healthy
+      - servicebus
+
+  consumer1:
+    <<: *consumer
+    container_name: integrationeventrelay_consumer1
+
+  consumer2:
+    <<: *consumer
+    container_name: integrationeventrelay_consumer2
