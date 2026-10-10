@@ -15,9 +15,10 @@ cd "$(dirname "$0")/.."
 
 docker compose up -d --build
 
+# grep exits 1 when nothing has been consumed yet; that must not trip set -e/pipefail
 count_consumed() {
 	docker compose logs --no-color consumer1 consumer2 2>/dev/null \
-		| grep -o "handled by consumer. Message Id: '[^']*'" \
+		| { grep -o "handled by consumer. Message Id: '[^']*'" || true; } \
 		| sort -u \
 		| wc -l
 }
@@ -36,4 +37,10 @@ done
 
 echo "E2E failed: ${consumed}/${expected} distinct integration events consumed after ${timeout}s." >&2
 docker compose ps -a >&2
+# Recent logs per service, so the failure can be diagnosed from the job log alone
+for service in $(docker compose config --services); do
+	echo "::group::logs: ${service}" >&2
+	docker compose logs --no-color --tail=150 "$service" >&2 || true
+	echo "::endgroup::" >&2
+done
 exit 1
