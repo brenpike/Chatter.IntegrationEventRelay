@@ -8,10 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Chatter.CQRS" Version="0.6.2" />
-    <PackageReference Include="Chatter.MessageBrokers" Version="0.8.3" />
-    <PackageReference Include="Chatter.MessageBrokers.AzureServiceBus" Version="0.7.3" />
-    <PackageReference Include="Chatter.MessageBrokers.AzureServiceBus.Auth" Version="1.3.0" />
+    <PackageReference Include="Chatter.CQRS" Version="0.21.0" />
+    <PackageReference Include="Chatter.MessageBrokers" Version="0.35.3" />
+    <PackageReference Include="Chatter.MessageBrokers.AzureServiceBus" Version="3.0.2" />
+    <PackageReference Include="Chatter.MessageBrokers.AzureServiceBus.Auth" Version="4.0.1" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
     <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.12" />
   </ItemGroup>

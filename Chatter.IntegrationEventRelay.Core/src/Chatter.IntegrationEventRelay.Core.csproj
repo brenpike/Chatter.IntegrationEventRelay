@@ -17,12 +17,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Chatter.CQRS" Version="0.6.2" />
-    <PackageReference Include="Chatter.MessageBrokers.SqlServiceBroker" Version="0.7.5" />
-    <PackageReference Include="Chatter.SqlChangeFeed" Version="0.8.3" />
+    <PackageReference Include="Chatter.CQRS" Version="0.21.0" />
+    <PackageReference Include="Chatter.MessageBrokers.SqlServiceBroker" Version="0.18.0" />
+    <PackageReference Include="Chatter.SqlChangeFeed" Version="0.16.0" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.3" />
-    <!-- Chatter.SqlChangeFeed depends on System.Data.SqlClient 4.8.3, which has known vulnerabilities; pin the patched version. -->
-    <PackageReference Include="System.Data.SqlClient" Version="4.9.0" />
   </ItemGroup>
 
 </Project>

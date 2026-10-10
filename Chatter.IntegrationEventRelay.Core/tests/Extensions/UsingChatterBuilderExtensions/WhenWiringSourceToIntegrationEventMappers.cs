@@ -130,7 +130,7 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
         }
 
         [Fact]
-        public void MustAppendDuplicateServiceTypesToServiceCollection()
+        public void MustNotRegisterSameMapperTwiceWhenScannedFromMultipleAssemblies()
         {
             var assembly1 = Context.Common().Assembly
                 .WithTypes(typeof(FakeMapper)).Mock;
@@ -157,7 +157,7 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
             Assert.Contains(builder.Services, sd => sd?.ServiceType == typeof(IMapSourceUpdateToIntegrationEvent<FakeSource, FakeEvent>));
             Assert.Contains(builder.Services, sd => sd?.ServiceType == typeof(IMapSourceToIntegrationEvent<FakeSource, FakeEvent>));
             Assert.DoesNotContain(builder.Services, sd => sd.ImplementationType == typeof(FakeMapper2));
-            Assert.Equal(4, builder.Services.Count);
+            Assert.Equal(2, builder.Services.Count);
         }
 
         [Fact]

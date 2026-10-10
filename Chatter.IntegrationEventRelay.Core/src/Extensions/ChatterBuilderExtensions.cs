@@ -101,7 +101,8 @@ public static class ChatterBuilderExtensions
 
 		builder.Services.Scan(s =>
 			s.FromAssemblies(assemblies)
-				.AddClasses(c => c.AssignableTo(closeSourceToIntegrationEventMapperType))
+				// publicOnly: false keeps internal mappers discoverable (Scrutor 3.x ignored its public-only default; newer versions enforce it)
+				.AddClasses(c => c.AssignableTo(closeSourceToIntegrationEventMapperType), publicOnly: false)
 				.UsingRegistrationStrategy(Scrutor.RegistrationStrategy.Append)
 				.AsImplementedInterfaces()
 				.WithTransientLifetime());
@@ -144,7 +145,11 @@ public static class ChatterBuilderExtensions
 		return builder;
 	}
 
+	[Obsolete("Blocking on the asynchronous installation risks deadlocking a caller with a single-threaded SynchronizationContext. Use UseChangeFeedSqlMigrationsAsync instead.")]
 	public static IServiceProvider UseChangeFeedSqlMigrations(this IServiceProvider provider)
+		=> provider.UseChangeFeedSqlMigrationsAsync().GetAwaiter().GetResult();
+
+	public static async Task<IServiceProvider> UseChangeFeedSqlMigrationsAsync(this IServiceProvider provider, CancellationToken cancellationToken = default)
 	{
 		var relayConfiguration = provider.GetRequiredService<EventMappingConfiguration>();
 
@@ -154,7 +159,7 @@ public static class ChatterBuilderExtensions
 		var mappingGroups = relayConfiguration.Mappings.GroupBy(d => (d.ConnectionString, d.DatabaseName, d.TableName, d.SourceEventType));
 		foreach (var mappingGroup in mappingGroups)
 		{
-			provider.UseChangeFeedSqlMigrations(mappingGroup.Key.SourceEventType);
+			await provider.UseChangeFeedSqlMigrationsAsync(mappingGroup.Key.SourceEventType, cancellationToken);
 		}
 
 		return provider;
