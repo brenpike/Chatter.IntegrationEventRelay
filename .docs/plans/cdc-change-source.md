@@ -1,6 +1,6 @@
 # Plan: CDC change source alongside SQL Service Broker
 
-Status: draft, awaiting decisions (see end).
+Status: decisions resolved; ready to start Phase 0.
 
 ## Goal
 Keep the existing trigger + SQL Service Broker (SSB) capture and add SQL Server Change Data Capture (CDC)
@@ -32,7 +32,7 @@ Rules:
 
 | # | Branch | Scope | Behaviour change |
 |---|---|---|---|
-| 0 | `feat/net8-ci` | .NET 8, CI repaired and run on PRs | None |
+| 0 | `feat/net10-ci` | .NET 10, CI repaired and run on PRs | None |
 | 1 | `feat/change-source-abstraction` | Core abstractions; SSB moved behind `IChangeSource` | None (config backward compatible) |
 | 2 | `feat/cdc-change-source` | CDC adapter package | Opt-in |
 | 3 | `feat/cdc-sample-docs` | Demo mixes both sources; README | Demo/docs only |
@@ -41,10 +41,10 @@ Each branch is cut from `main` after the previous PR merges.
 
 ---
 
-## Phase 0 - `feat/net8-ci`
+## Phase 0 - `feat/net10-ci`
 
 Changes:
-- All projects `net6.0` -> `net8.0`; bump `Microsoft.Extensions.*` and test packages accordingly.
+- All projects `net6.0` -> `net10.0` (.NET 10 LTS, supported to Nov 2028; .NET 8 support ends Nov 2026); bump `Microsoft.Extensions.*` and test packages accordingly.
 - Core: `System.Data.SqlClient` -> `Microsoft.Data.SqlClient` (only `SqlConnectionStringBuilder` is used).
 - `.github/workflows/cicd.yml`:
   - `actions/checkout@v4`, `actions/setup-dotnet@v4`, `actions/upload-artifact@v4`, `actions/download-artifact@v4`.
@@ -185,11 +185,11 @@ Acceptance: demo behaves identically (100 events, 50 per consumer); existing con
 
 | Component | Responsibility |
 |---|---|
-| `CdcSourceOptions` | ConnectionString, PollInterval (1s), MaxTransactionsPerBatch (500), StartPosition (`Earliest`/`Latest`), CheckpointConnectionString (defaults to source), CheckpointSchema (`relay`), LeaseTimeout, ErrorPolicy |
+| `CdcSourceOptions` | ConnectionString, PollInterval (1s), MaxTransactionsPerBatch (500), StartPosition (`Earliest`/`Latest`), LeaseTimeout, ErrorPolicy (`Halt`/`ParkRow`), MaxAttemptsBeforePark. Relay tables live in the source database, in the relay-wide `Schema` setting (see 2h) |
 | `CdcLsn` | `binary(10)` value type: compare, increment-aware, hex formatting |
 | `SqlCdcQueries` | `sys.fn_cdc_get_max_lsn()`, `sys.fn_cdc_get_min_lsn(@ci)`, `sys.fn_cdc_increment_lsn(@lsn)`, batch upper bound from `cdc.lsn_time_mapping`, `cdc.fn_cdc_get_all_changes_<ci>(@from, @to, N'all update old')`, captured columns |
 | `CdcRowReader<T>` | Maps captured columns to DTO properties by name (case-insensitive); pairs op 3/4 rows sharing `__$start_lsn` + `__$seqval` into one Update; ops 1/2 -> Delete/Insert |
-| `SqlCheckpointStore` | `relay.Checkpoints(SourceName, CaptureInstance, LastLsn binary(10), UpdatedAt datetime2)`; upsert after batch publish |
+| `SqlCheckpointStore` | `<Schema>.Chatter_RelayCheckpoints(SourceName, CaptureInstance, LastLsn binary(10), UpdatedAt datetime2)`; upsert after batch publish |
 | `SqlAppLockLease` | `sp_getapplock` (session owner) on a dedicated connection; one active poller per capture instance, others standby |
 | `CdcPollerService` | `BackgroundService`, one loop per capture instance (see 2b) |
 | `CdcChangeSource` | `IChangeSource`, Capabilities = `Ordered \| Resumable \| CommitTime` |
@@ -215,9 +215,23 @@ loop:
 - Graceful shutdown: finish in-flight publish, do not save a partial checkpoint.
 
 ### 2c. Error policy for a change that keeps failing
-Ordering means a failing change blocks everything after it. Options (decision below):
-- `Halt` (default): retry with exponential backoff indefinitely; log critical; report unhealthy.
-- `DeadLetter`: after N attempts write the change to `relay.DeadLetters` and continue.
+Transient failures (broker unavailable, SQL timeouts) are always retried with exponential backoff and never
+parked; parking them would park everything during an outage. Policies below apply only to changes that keep
+failing (mapper exceptions, serialization errors, rejected messages) after `MaxAttemptsBeforePark` attempts.
+
+- `Halt` (default): stop the poll loop at the failing change, keep retrying with backoff, log critical,
+  report unhealthy. Nothing after it is published, so ordering is never violated.
+- `ParkRow` (opt-in): per-row parking.
+  - The failing change is written to `<Schema>.Chatter_RelayParkedChanges(SourceName, CaptureInstance,
+    RowKey, Lsn, SeqVal, Operation, Payload, Error, Attempts, ParkedAt)`.
+  - Later changes for the same row key are also parked behind it (in order) instead of published.
+  - All other rows continue normally and the checkpoint advances.
+  - Replay (`relay` admin API / SQL procedure) republishes a row's parked changes in LSN order once the cause
+    is fixed; on success they are removed and the row is unblocked.
+  - Row key = the table's primary key columns, read from the capture instance's index
+    (`sys.sp_cdc_help_change_data_capture` `index_name`); tables without a unique index cannot use `ParkRow`
+    (startup validation error).
+  - Metric + health check: count and age of parked rows.
 
 ### 2d. Edge cases to cover (verify in integration tests)
 - `tran_end_time` is server-local `datetime`: convert with the server's offset (`SYSDATETIMEOFFSET()`) once per batch.
@@ -226,6 +240,16 @@ Ordering means a failing change blocks everything after it. Options (decision be
 - LOB columns in update before-images and primary-key updates: confirm how CDC represents them; document.
 - CDC enabled but no changes yet (`min_lsn` all zeros); capture instance dropped while running (error + backoff).
 
+### 2h. Where relay tables live
+- In the source database (backed up and restored with the data they describe).
+- In the same schema as the rest of the relay's database assets, set once relay-wide:
+  `IntegrationEventRelay:Schema`, default `Chatter`. Table names keep Chatter's `Chatter_` prefix.
+- The same setting is passed to the Service Broker adapter's SqlChangeFeed options so both adapters put
+  their objects in one schema. Note: the current demo creates Chatter's SSB objects in `dbo`, and
+  SqlChangeFeed's `WithSchema` option may refer to the watched table's schema rather than the asset schema;
+  Phase 1 confirms which, and if SqlChangeFeed cannot place its assets in a separate schema, the default
+  becomes whatever schema SqlChangeFeed uses so everything still lands together.
+
 ### 2e. Observability
 - `System.Diagnostics.Metrics`: changes processed, events published, batch duration, lag
   (now - CommittedAt of last checkpointed change).
@@ -233,11 +257,11 @@ Ordering means a failing change blocks everything after it. Options (decision be
 
 ### 2f. SQL scripts
 - `.scripts/cdc/enable-cdc.sql` (`sys.sp_cdc_enable_db`, `sys.sp_cdc_enable_table` per table).
-- `.scripts/cdc/create-relay-schema.sql` (checkpoints, dead letters).
+- `.scripts/cdc/create-relay-tables.sql` (checkpoints, parked changes) parameterised by schema.
 
 ### 2g. Tests
 - Unit (fakes): LSN compare/increment, 3/4 pairing, batch transaction boundaries, checkpoint only after
-  publish, no checkpoint on failure, gap detection, StartPosition, lease standby, error policies.
+  publish, no checkpoint on failure, gap detection, StartPosition, lease standby, Halt, ParkRow (row blocked behind parked change, other rows continue, replay order), transient errors never parked.
 - Integration (Testcontainers, SQL Server 2022, `MSSQL_AGENT_ENABLED=true`): contract suite; restart
   mid-batch resumes with no loss and identical message ids for replays; two pollers -> one active;
   soft-delete then restore yields both events in order.
@@ -261,10 +285,10 @@ Ordering means a failing change blocks everything after it. Options (decision be
 - This cloud environment cannot build or test (.NET SDK host blocked, no Docker daemon); PRs are validated by CI
   unless network access is changed.
 
-## Decisions needed
-1. Phase 0 first (.NET 8 + CI)? Recommended: yes.
-2. Breaking mapper API at 0.3.0 vs `[Obsolete]` shims? Recommended: break.
-3. Four stacked branches vs one `feat/cdc-change-source`? Recommended: four.
-4. Checkpoint location? Recommended: `relay` schema in the source database, connection string overridable.
-5. Default error policy for a persistently failing change? Recommended: `Halt`, `DeadLetter` opt-in.
-6. Keep `ISourceEvent` as a marker or drop it? Recommended: keep as an optional marker for discoverability.
+## Decisions (resolved)
+1. Phase 0 first, targeting .NET 10 (not 8).
+2. Breaking mapper API at 0.3.0, no `[Obsolete]` shims.
+3. Four stacked branches.
+4. Checkpoints (and parked changes) in the source database, in the relay-wide schema (default `Chatter`, overridable), shared with the other relay database assets.
+5. Error policy: `Halt` default; per-row parking (`ParkRow`) opt-in. Transient failures always retried, never parked.
+6. Keep `ISourceEvent` as an optional marker.
