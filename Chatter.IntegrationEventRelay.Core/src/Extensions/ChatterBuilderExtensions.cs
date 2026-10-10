@@ -9,7 +9,7 @@ using Chatter.SqlChangeFeed.Configuration;
 using Chatter.SqlChangeFeed.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 
 namespace Chatter.IntegrationEventRelay.Core.Extensions;
 
