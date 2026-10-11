@@ -31,7 +31,7 @@ services:
     env_file:
       - .devops/sql.env
     environment:
-      - IntegrationEventRelay__ConnectionString=Server=db;Database=FakeDb;Trusted_Connection=false;User ID=sa;Password=${SA_PASSWORD}
+      - IntegrationEventRelay__ConnectionString=Server=db;Database=FakeDb;Trusted_Connection=false;User ID=sa;Password=${SA_PASSWORD};TrustServerCertificate=True
     ports:
       - "1401:1433"
 
