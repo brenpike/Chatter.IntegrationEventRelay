@@ -145,7 +145,7 @@ public static class ChatterBuilderExtensions
 		return builder;
 	}
 
-	[Obsolete("Blocking on the asynchronous installation risks deadlocking a caller with a single-threaded SynchronizationContext. Use UseChangeFeedSqlMigrationsAsync instead.")]
+	[Obsolete("Blocks on the asynchronous installation. Use UseChangeFeedSqlMigrationsAsync instead.")]
 	public static IServiceProvider UseChangeFeedSqlMigrations(this IServiceProvider provider)
 		=> provider.UseChangeFeedSqlMigrationsAsync().GetAwaiter().GetResult();
 
@@ -159,7 +159,8 @@ public static class ChatterBuilderExtensions
 		var mappingGroups = relayConfiguration.Mappings.GroupBy(d => (d.ConnectionString, d.DatabaseName, d.TableName, d.SourceEventType));
 		foreach (var mappingGroup in mappingGroups)
 		{
-			await provider.UseChangeFeedSqlMigrationsAsync(mappingGroup.Key.SourceEventType, cancellationToken);
+			// No context capture, so the obsolete sync wrapper can't deadlock a single-threaded SynchronizationContext
+			await provider.UseChangeFeedSqlMigrationsAsync(mappingGroup.Key.SourceEventType, cancellationToken).ConfigureAwait(false);
 		}
 
 		return provider;
