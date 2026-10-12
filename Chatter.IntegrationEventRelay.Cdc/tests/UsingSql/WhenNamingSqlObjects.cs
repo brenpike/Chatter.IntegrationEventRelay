@@ -41,6 +41,17 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingSql
         {
             Assert.Contains("QUOTENAME(@schema) + N'.[Chatter_RelayCheckpoints]", CdcSqlScripts.CreateRelayTables);
             Assert.DoesNotContain("EXEC (", CdcSqlScripts.CreateRelayTables);
+        }
+
+        [Fact]
+        public void MustCompareIdentitiesIgnoringCaseAndRowKeysExactly()
+        {
+            // Whatever the database's default collation: names are case-insensitive everywhere in the relay, row keys
+            // are serialized key values that must stay distinct
+            Assert.Contains("SourceName nvarchar(128) COLLATE Latin1_General_100_CI_AS", CdcSqlScripts.CreateRelayTables);
+            Assert.Contains("CaptureInstance sysname COLLATE Latin1_General_100_CI_AS", CdcSqlScripts.CreateRelayTables);
+            Assert.Contains("RowKey nvarchar(400) COLLATE Latin1_General_100_BIN2", CdcSqlScripts.CreateRelayTables);
+            Assert.Contains("ChangeRowKey nvarchar(400) COLLATE Latin1_General_100_BIN2", CdcSqlScripts.CreateRelayTables);
             Assert.Contains("LastLsn binary(10)", CdcSqlScripts.CreateRelayTables);
         }
     }

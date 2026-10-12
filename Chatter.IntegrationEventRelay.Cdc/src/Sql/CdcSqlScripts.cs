@@ -23,8 +23,8 @@ internal static class CdcSqlScripts
 		IF OBJECT_ID(QUOTENAME(@schema) + N'.[Chatter_RelayCheckpoints]', N'U') IS NULL
 		BEGIN
 			SET @sql = N'CREATE TABLE ' + QUOTENAME(@schema) + N'.[Chatter_RelayCheckpoints] (
-				SourceName nvarchar(128) NOT NULL,
-				CaptureInstance sysname NOT NULL,
+				SourceName nvarchar(128) COLLATE Latin1_General_100_CI_AS NOT NULL,
+				CaptureInstance sysname COLLATE Latin1_General_100_CI_AS NOT NULL,
 				LastLsn binary(10) NOT NULL,
 				UpdatedAt datetime2 NOT NULL,
 				CONSTRAINT [PK_Chatter_RelayCheckpoints] PRIMARY KEY (SourceName, CaptureInstance)
@@ -36,10 +36,10 @@ internal static class CdcSqlScripts
 		BEGIN
 			SET @sql = N'CREATE TABLE ' + QUOTENAME(@schema) + N'.[Chatter_RelayParkedChanges] (
 				Id bigint IDENTITY NOT NULL,
-				SourceName nvarchar(128) NOT NULL,
-				CaptureInstance sysname NOT NULL,
-				RowKey nvarchar(400) NOT NULL,
-				ChangeRowKey nvarchar(400) NULL,
+				SourceName nvarchar(128) COLLATE Latin1_General_100_CI_AS NOT NULL,
+				CaptureInstance sysname COLLATE Latin1_General_100_CI_AS NOT NULL,
+				RowKey nvarchar(400) COLLATE Latin1_General_100_BIN2 NOT NULL,
+				ChangeRowKey nvarchar(400) COLLATE Latin1_General_100_BIN2 NULL,
 				Lsn binary(10) NOT NULL,
 				SeqVal binary(10) NOT NULL,
 				Operation nvarchar(16) NOT NULL,
