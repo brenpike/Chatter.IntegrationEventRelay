@@ -154,6 +154,27 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingIntegrationEventRelayBuil
         }
 
         [Fact]
+        public void MustRejectCaptureInstancesWhoseChangesCantBeToldApart()
+        {
+            Source("fakedb-cdc");
+            Map(Mapping("fakedb-cdc"), Mapping("fakedb-cdc", RowOperation.Delete, settings: new() { ["TableSchema"] = "archive" }));
+
+            var e = Assert.Throws<ArgumentException>(() => Use());
+            Assert.Contains("'dbo_Event1', 'archive_Event1'", e.Message);
+        }
+
+        [Fact]
+        public void MustAllowTablesWithTheSameNameIntoDifferentSourceEventTypes()
+        {
+            Source("fakedb-cdc");
+            Map(Mapping("fakedb-cdc"), Mapping("fakedb-cdc", settings: new() { ["TableSchema"] = "archive" }, sourceEventType: typeof(AnotherRow)));
+
+            Use();
+
+            Assert.Equal(2, Pollers().Count);
+        }
+
+        [Fact]
         public void MustRejectASourceEventTypeWithoutAParameterlessConstructor()
         {
             Source("fakedb-cdc");

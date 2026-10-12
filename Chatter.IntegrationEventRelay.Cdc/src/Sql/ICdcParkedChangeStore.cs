@@ -6,9 +6,10 @@ namespace Chatter.IntegrationEventRelay.Cdc.Sql;
 internal interface ICdcParkedChangeStore
 {
 	/// <summary>
-	/// The keys of the rows that have parked changes; later changes to them are parked too.
+	/// The keys of the rows that have parked changes, each mapped to the key its changes are parked under (itself,
+	/// unless the row's key changed while it was parked). Later changes to these rows are parked too.
 	/// </summary>
-	Task<IReadOnlySet<string>> GetParkedRowKeysAsync(string sourceName, string captureInstance, CancellationToken cancellationToken);
+	Task<IReadOnlyDictionary<string, string>> GetParkedRowKeysAsync(string sourceName, string captureInstance, CancellationToken cancellationToken);
 
 	/// <summary>
 	/// Parks <paramref name="change"/> unless a change at the same position is already parked (a replayed batch).
@@ -39,6 +40,8 @@ internal interface ICdcParkedChangeStore
 }
 
 /// <param name="Id">Assigned by the store; 0 for a change not parked yet.</param>
+/// <param name="RowKey">The key the change is parked and replayed under: the key of the first parked change of its row.</param>
+/// <param name="ChangeRowKey">The key of the row the change changed, when it differs from <paramref name="RowKey"/> (the row's key changed).</param>
 /// <param name="Position">The change's <see cref="Core.Abstractions.ChangePosition.Value"/>, kept so republishing uses the same message ids.</param>
 /// <param name="Payload">The change's old and new values as JSON.</param>
-internal sealed record ParkedChange(long Id, string RowKey, CdcLsn Lsn, CdcLsn SeqVal, string Operation, string Position, DateTimeOffset? CommittedAt, string Payload, string Error, int Attempts);
+internal sealed record ParkedChange(long Id, string RowKey, string? ChangeRowKey, CdcLsn Lsn, CdcLsn SeqVal, string Operation, string Position, DateTimeOffset? CommittedAt, string Payload, string Error, int Attempts);

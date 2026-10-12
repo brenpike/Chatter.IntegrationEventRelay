@@ -32,9 +32,19 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Fakes
             lock (_lock) return _changes.Any(c => c.Change.RowKey == rowKey && c.ReplayRequested);
         }
 
-        public Task<IReadOnlySet<string>> GetParkedRowKeysAsync(string sourceName, string captureInstance, CancellationToken cancellationToken)
+        public Task<IReadOnlyDictionary<string, string>> GetParkedRowKeysAsync(string sourceName, string captureInstance, CancellationToken cancellationToken)
         {
-            lock (_lock) return Task.FromResult<IReadOnlySet<string>>(_changes.Select(c => c.Change.RowKey).ToHashSet());
+            lock (_lock)
+            {
+                var keys = new Dictionary<string, string>();
+                foreach (var (change, _) in _changes)
+                {
+                    keys[change.RowKey] = change.RowKey;
+                    if (change.ChangeRowKey is { } own)
+                        keys[own] = change.RowKey;
+                }
+                return Task.FromResult<IReadOnlyDictionary<string, string>>(keys);
+            }
         }
 
         public Task ParkAsync(string sourceName, string captureInstance, ParkedChange change, CancellationToken cancellationToken)

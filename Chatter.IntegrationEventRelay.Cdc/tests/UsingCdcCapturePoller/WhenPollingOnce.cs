@@ -139,13 +139,48 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcCapturePoller
         }
 
         [Fact]
-        public async Task MustNotStartUntilSomethingIsCapturedIfStartingAtTheLatestChange()
+        public async Task MustRelayTheFirstChangeCapturedAfterStartingAtTheLatestChangeOfAnEmptyDatabase()
         {
             _harness.Options.StartPosition = CdcStartPosition.Latest;
 
             Assert.False(await PollAsync());
+            Assert.Equal(CdcLsn.Zero, _harness.Checkpoint);
+            var first = Insert(1);
+            await PollAsync();
 
-            Assert.Null(_harness.Checkpoint);
+            Assert.Equal(1, _batches.Single().Single().NewValue.Id);
+            Assert.Equal(first.Lsn, _harness.Checkpoint);
+        }
+
+        [Fact]
+        public async Task MustRelayTheFirstChangeCapturedAfterStartingAtTheLatestChangeBeforeTheCaptureJobRan()
+        {
+            _harness.Options.StartPosition = CdcStartPosition.Latest;
+            var enabledAt = Cdc.MinLsn;
+            Cdc.MinLsn = CdcLsn.Zero;
+
+            Assert.False(await PollAsync());
+            Cdc.MinLsn = enabledAt;
+            Insert(1);
+            await PollAsync();
+
+            Assert.Equal(1, _batches.Single().Single().NewValue.Id);
+        }
+
+        [Fact]
+        public async Task MustKeepTheStartAnchorAcrossRestarts()
+        {
+            _harness.Options.StartPosition = CdcStartPosition.Latest;
+            await PollAsync();
+            Insert(1);
+
+            // A new relay instance with the same checkpoint store
+            var restarted = new PollerHarness<Row>(_harness.Options) { Processor = _processor.Object };
+            restarted.Checkpoint = _harness.Checkpoint;
+            restarted.Queries.Commit((CdcChangeRow.Insert, PollerHarness<Row>.Columns(1, "row 1")));
+            await restarted.Poller.PollOnceAsync(CancellationToken.None);
+
+            Assert.Equal(1, _batches.Single().Single().NewValue.Id);
         }
 
         [Fact]

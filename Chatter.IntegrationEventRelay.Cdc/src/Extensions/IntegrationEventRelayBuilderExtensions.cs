@@ -51,7 +51,10 @@ public static class IntegrationEventRelayBuilderExtensions
 		builder.Services.TryAddSingleton(TimeProvider.System);
 		builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<Microsoft.Extensions.Hosting.IHostedService, CdcPollerService>());
 
-		foreach (var target in mappings.Select(m => GetTarget(configuration, m)).GroupBy(t => (t.SourceName.ToUpperInvariant(), t.CaptureInstance.ToUpperInvariant())))
+		var targets = mappings.Select(m => GetTarget(configuration, m)).ToList();
+		RejectIndistinguishableCaptures(targets);
+
+		foreach (var target in targets.GroupBy(t => (t.SourceName.ToUpperInvariant(), t.CaptureInstance.ToUpperInvariant())))
 		{
 			var first = target.First();
 			var conflicts = target.Select(t => (t.SourceEventType, t.ConnectionString, Table: t.Table.ToString().ToUpperInvariant())).Distinct().ToList();
@@ -75,6 +78,22 @@ public static class IntegrationEventRelayBuilderExtensions
 		}
 
 		return builder;
+	}
+
+	/// <summary>
+	/// The processor picks a change's mappings by source, source event type, table name and database, so two capture
+	/// instances of one source that share all of those (for example tables dbo.Orders and archive.Orders, or two capture
+	/// instances of one table) would each publish the other's mappings.
+	/// </summary>
+	private static void RejectIndistinguishableCaptures(IEnumerable<CaptureTarget> targets)
+	{
+		var clashes = targets
+			.GroupBy(t => (Source: t.SourceName.ToUpperInvariant(), t.SourceEventType, Table: t.Table.Name.ToUpperInvariant(), Database: t.Table.Database?.ToUpperInvariant()))
+			.Select(g => g.Select(t => t.CaptureInstance).Distinct(StringComparer.OrdinalIgnoreCase).ToList())
+			.FirstOrDefault(captureInstances => captureInstances.Count > 1);
+		if (clashes is not null)
+			throw new ArgumentException($"Capture instances {string.Join(", ", clashes.Select(c => $"'{c}'"))} of the same CDC source capture tables with the same name into the same source event type, " +
+				"so their changes couldn't be told apart when picking mappings. Use a separate source event type or source for each.");
 	}
 
 	private static CdcSourceOptions GetOptions(EventMappingConfiguration configuration, string sourceName, Action<CdcSourceOptions>? configure)

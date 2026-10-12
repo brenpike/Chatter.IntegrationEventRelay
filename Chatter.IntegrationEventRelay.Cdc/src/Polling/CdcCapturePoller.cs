@@ -173,6 +173,8 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 				throw new CdcCaptureInstanceNotFoundException(Capture.SourceName, Capture.CaptureInstance);
 
 			_logger.LogDebug("Capture instance '{CaptureInstance}' of source '{SourceName}' has no changes yet; the CDC capture job hasn't scanned the log since it was enabled", Capture.CaptureInstance, Capture.SourceName);
+			if (Options.StartPosition == CdcStartPosition.Latest && await _checkpoints.GetAsync(Capture.SourceName, Capture.CaptureInstance, cancellationToken).ConfigureAwait(false) is null)
+				await AnchorLatestAsync(CdcLsn.Zero, cancellationToken).ConfigureAwait(false);
 			return CaughtUp();
 		}
 
@@ -189,24 +191,20 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 		var checkpoint = await _checkpoints.GetAsync(Capture.SourceName, Capture.CaptureInstance, cancellationToken).ConfigureAwait(false);
 
 		CdcLsn from;
-		if (checkpoint is { } last)
+		if (checkpoint is { IsZero: false } last)
 		{
 			from = last.Increment();
 			if (from < minLsn)
 				throw new CdcGapException(Capture.SourceName, Capture.CaptureInstance, last, minLsn);
 		}
-		else if (Options.StartPosition == CdcStartPosition.Latest)
+		else if (checkpoint is null && Options.StartPosition == CdcStartPosition.Latest)
 		{
-			if (maxLsn.IsZero)
-				return CaughtUp();
-
-			// Anchor the start now, so changes committed while the relay is down later aren't skipped
-			await _checkpoints.SaveAsync(Capture.SourceName, Capture.CaptureInstance, maxLsn, cancellationToken).ConfigureAwait(false);
-			_logger.LogInformation("Capture instance '{CaptureInstance}' of source '{SourceName}' has no checkpoint; starting after the latest change, LSN {Lsn}", Capture.CaptureInstance, Capture.SourceName, maxLsn);
-			return true;
+			await AnchorLatestAsync(maxLsn, cancellationToken).ConfigureAwait(false);
+			return maxLsn.IsZero ? CaughtUp() : true;
 		}
 		else
 		{
+			// No checkpoint, or the start-from-the-oldest-change anchor
 			from = minLsn;
 		}
 
@@ -250,6 +248,21 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 		return true;
 	}
 
+	/// <summary>
+	/// Saves where a capture instance with no checkpoint starts with <see cref="CdcStartPosition.Latest"/>: after the
+	/// latest captured change, or, when nothing is captured yet, the zero LSN, which means "from the oldest change", so
+	/// the first change captured after the relay started isn't skipped. Saved at once, so changes committed while the
+	/// relay is down later aren't skipped either.
+	/// </summary>
+	private async Task AnchorLatestAsync(CdcLsn maxLsn, CancellationToken cancellationToken)
+	{
+		await _checkpoints.SaveAsync(Capture.SourceName, Capture.CaptureInstance, maxLsn, cancellationToken).ConfigureAwait(false);
+		if (maxLsn.IsZero)
+			_logger.LogInformation("Capture instance '{CaptureInstance}' of source '{SourceName}' has no checkpoint and no changes yet; starting with its first change", Capture.CaptureInstance, Capture.SourceName);
+		else
+			_logger.LogInformation("Capture instance '{CaptureInstance}' of source '{SourceName}' has no checkpoint; starting after the latest change, LSN {Lsn}", Capture.CaptureInstance, Capture.SourceName, maxLsn);
+	}
+
 	private async Task RefreshParkedChangesAsync(CancellationToken cancellationToken)
 		=> ParkedChanges = (await _parked.GetSummaryAsync(Capture.SourceName, Capture.CaptureInstance, cancellationToken).ConfigureAwait(false)).Count;
 
@@ -264,20 +277,26 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 	/// batch until it has failed <see cref="CdcSourceOptions.MaxAttemptsBeforePark"/> times, then parked; changes to a
 	/// row with parked changes are parked behind them, so each row's changes stay in order.
 	/// </summary>
+	/// <remarks>
+	/// A row's parked changes form one chain, parked and replayed under the key of its first parked change. A change
+	/// that changes the row's key stays in the chain: CDC records a primary key update as a delete and an insert with
+	/// the same LSN and sequence value, and an update of another unique index's key as an update whose before image
+	/// has the old key. Later changes to the new key join the chain too.
+	/// </remarks>
 	private async Task ProcessParkingFailuresAsync(IRowChangeProcessor<TSource> processor, IReadOnlyList<CdcRowChange<TSource>> changes, CancellationToken cancellationToken)
 	{
-		var parkedKeys = new HashSet<string>(await _parked.GetParkedRowKeysAsync(Capture.SourceName, Capture.CaptureInstance, cancellationToken).ConfigureAwait(false), StringComparer.Ordinal);
+		var chains = new Dictionary<string, string>(await _parked.GetParkedRowKeysAsync(Capture.SourceName, Capture.CaptureInstance, cancellationToken).ConfigureAwait(false), StringComparer.Ordinal);
+		var parkedStatements = new Dictionary<(CdcLsn Lsn, CdcLsn SeqVal), string>();
 
 		foreach (var change in changes)
 		{
 			cancellationToken.ThrowIfCancellationRequested();
-			var rowKey = change.RowKey!;
 			var position = change.Change.Position!.Value;
 
-			if (parkedKeys.Contains(rowKey))
+			if (FindChain(change) is { } chain)
 			{
-				await ParkAsync(change, "Parked behind an earlier parked change to the same row.", 0, cancellationToken).ConfigureAwait(false);
-				_logger.LogWarning("Parked {Operation} at {Position} of capture instance '{CaptureInstance}' behind an earlier parked change to row {RowKey}", change.Change.Operation, position, Capture.CaptureInstance, rowKey);
+				await ParkAsync(change, chain, "Parked behind an earlier parked change to the same row.", 0, cancellationToken).ConfigureAwait(false);
+				_logger.LogWarning("Parked {Operation} at {Position} of capture instance '{CaptureInstance}' behind an earlier parked change to row {RowKey}", change.Change.Operation, position, Capture.CaptureInstance, chain);
 				continue;
 			}
 
@@ -291,21 +310,35 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 				if (attempts < Options.MaxAttemptsBeforePark)
 					throw;
 
-				await ParkAsync(change, e.ToString(), attempts, cancellationToken).ConfigureAwait(false);
-				parkedKeys.Add(rowKey);
+				await ParkAsync(change, change.RowKey!, e.ToString(), attempts, cancellationToken).ConfigureAwait(false);
 				_attempts.Remove(position);
 				_logger.LogError(e, "Parked {Operation} at {Position} of capture instance '{CaptureInstance}' after {Attempts} failed attempts; later changes to row {RowKey} are parked behind it until it's replayed",
-					change.Change.Operation, position, Capture.CaptureInstance, attempts, rowKey);
+					change.Change.Operation, position, Capture.CaptureInstance, attempts, change.RowKey);
 			}
+		}
+
+		string? FindChain(CdcRowChange<TSource> change)
+			=> chains.GetValueOrDefault(change.RowKey!)
+				?? (change.OldRowKey is { } oldKey ? chains.GetValueOrDefault(oldKey) : null)
+				?? parkedStatements.GetValueOrDefault((change.Lsn, change.SeqVal));
+
+		Task ParkAsync(CdcRowChange<TSource> change, string chain, string error, int attempts, CancellationToken cancellationToken)
+		{
+			chains[change.RowKey!] = chain;
+			if (change.OldRowKey is { } oldKey)
+				chains[oldKey] = chain;
+			parkedStatements[(change.Lsn, change.SeqVal)] = chain;
+			return this.ParkAsync(change, chain, error, attempts, cancellationToken);
 		}
 	}
 
-	private Task ParkAsync(CdcRowChange<TSource> change, string error, int attempts, CancellationToken cancellationToken)
+	private Task ParkAsync(CdcRowChange<TSource> change, string chain, string error, int attempts, CancellationToken cancellationToken)
 	{
 		_batchParked++;
 		return _parked.ParkAsync(Capture.SourceName, Capture.CaptureInstance, new ParkedChange(
 			0,
-			change.RowKey!,
+			chain,
+			change.RowKey == chain ? null : change.RowKey,
 			change.Lsn,
 			change.SeqVal,
 			change.Change.Operation.ToString(),

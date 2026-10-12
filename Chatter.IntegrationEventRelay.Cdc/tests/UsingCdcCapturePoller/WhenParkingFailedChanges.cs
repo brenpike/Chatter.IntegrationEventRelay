@@ -152,6 +152,45 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcCapturePoller
         }
 
         [Fact]
+        public async Task MustKeepARowsChangesTogetherWhenItsPrimaryKeyChanges()
+        {
+            Change(2, "poison");
+            await PollUntilSuccessAsync();
+
+            // How CDC records UPDATE ... SET Id = 5 WHERE Id = 2: a delete and an insert with the same sequence value
+            Cdc.CommitPrimaryKeyUpdate(Columns(2, "poison"), Columns(5, "moved"));
+            Change(5, "after move");
+            Change(1, "other row");
+            await PollAsync();
+
+            Assert.All(Parked.Changes, c => Assert.Equal("[2]", c.RowKey));
+            Assert.Equal(new[] { null, null, "[5]", "[5]" }, Parked.Changes.Select(c => c.ChangeRowKey));
+            Assert.Equal(new[] { 1 }, _processor.Published.Select(c => c.NewValue.Id));
+
+            _processor.Poison = "nothing";
+            Parked.RequestReplay("[2]");
+            await PollAsync();
+
+            Assert.Empty(Parked.Changes);
+            Assert.Equal(new[] { "other row", "poison", "poison", "moved", "after move" }, _processor.Published.Select(c => c.NewValue.Name));
+        }
+
+        [Fact]
+        public async Task MustKeepARowsChangesTogetherWhenAnUpdateChangesItsUniqueKey()
+        {
+            Change(2, "poison");
+            await PollUntilSuccessAsync();
+
+            // An update whose before image has the old key, as for a unique index that isn't the primary key
+            Cdc.Commit((CdcChangeRow.UpdateBefore, Columns(2, "poison")), (CdcChangeRow.UpdateAfter, Columns(6, "rekeyed")));
+            Change(6, "later");
+            await PollAsync();
+
+            Assert.Equal(new[] { "[2]", "[2]", "[2]" }, Parked.Changes.Select(c => c.RowKey));
+            Assert.Empty(_processor.Published);
+        }
+
+        [Fact]
         public async Task MustRequireAKeyToIdentifyRows()
         {
             Cdc.KeyColumns.Clear();

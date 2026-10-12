@@ -47,6 +47,22 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Fakes
                 return CommitLocked(rows);
         }
 
+        /// <summary>
+        /// Commits a primary key update as SQL Server's CDC records it: a delete of the old row and an insert of the new
+        /// one, with the same sequence value.
+        /// </summary>
+        public FakeTransaction CommitPrimaryKeyUpdate(IReadOnlyDictionary<string, object> oldRow, IReadOnlyDictionary<string, object> newRow)
+        {
+            lock (_lock)
+            {
+                var transaction = CommitLocked(new[] { (CdcChangeRow.Delete, oldRow), (CdcChangeRow.Insert, newRow) });
+                var insert = transaction.Rows[1] with { SeqVal = transaction.Rows[0].SeqVal };
+                var updated = transaction with { Rows = new[] { transaction.Rows[0], insert } };
+                _transactions[^1] = updated;
+                return updated;
+            }
+        }
+
         private FakeTransaction CommitLocked((int Operation, IReadOnlyDictionary<string, object> Columns)[] rows)
         {
             var lsn = Lsn(_nextLsn += 0x10);

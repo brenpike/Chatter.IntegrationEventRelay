@@ -197,6 +197,47 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
         }
 
         [Fact]
+        public async Task MustKeepAParkedRowsChangesTogetherWhenItsPrimaryKeyChanges()
+        {
+            var processor = new Processor { FailOnId = 2 };
+            var poller = await CreatePollerAsync(processor, options: new CdcSourceOptions { ErrorPolicy = CdcErrorPolicy.ParkRow, MaxAttemptsBeforePark = 1 });
+            await _sql.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id, Name) VALUES (2, N'two');");
+            await _sql.ExecuteAsync($"UPDATE dbo.[{_table}] SET Id = 5 WHERE Id = 2;");
+            await _sql.ExecuteAsync($"UPDATE dbo.[{_table}] SET Name = N'five' WHERE Id = 5;");
+            await WaitForCaptureAsync(5);
+
+            await WaitUntilAsync(async () =>
+            {
+                await poller.PollOnceAsync(CancellationToken.None);
+                return (await Checkpoints().GetAsync("fakedb-cdc", Capture().CaptureInstance, CancellationToken.None)) is not null;
+            });
+
+            Assert.Empty(processor.Changes);
+            var parked = await new SqlParkedChangeStore(_sql.ConnectionString, "Chatter").GetParkedChangesAsync("fakedb-cdc", Capture().CaptureInstance, "[2]", CancellationToken.None);
+            Assert.Equal(new[] { "Insert", "Delete", "Insert", "Update" }, parked.Select(c => c.Operation));
+
+            processor.FailOnId = null;
+            await _sql.ExecuteAsync($"UPDATE Chatter.Chatter_RelayParkedChanges SET ReplayRequestedAt = SYSUTCDATETIME() WHERE CaptureInstance = N'dbo_{_table}' AND RowKey = N'[2]';");
+            await poller.PollOnceAsync(CancellationToken.None);
+
+            Assert.Equal(new[] { RowOperation.Insert, RowOperation.Delete, RowOperation.Insert, RowOperation.Update }, processor.Changes.Select(c => c.Operation));
+            Assert.Equal("five", processor.Changes.Last().NewValue.Name);
+        }
+
+        [Fact]
+        public async Task MustRelayTheFirstChangeAfterStartingAtTheLatestChangeOfANewCaptureInstance()
+        {
+            var processor = new Processor();
+            var poller = await CreatePollerAsync(processor, options: new CdcSourceOptions { StartPosition = CdcStartPosition.Latest });
+            await poller.PollOnceAsync(CancellationToken.None);
+            await _sql.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id, Name) VALUES (1, N'first');");
+
+            var changes = await PollUntilAsync(poller, 1, processor);
+
+            Assert.Equal(1, Assert.Single(changes).NewValue.Id);
+        }
+
+        [Fact]
         public async Task MustLetOnlyOneRelayInstanceHoldTheLease()
         {
             var resource = $"it:{_table}";

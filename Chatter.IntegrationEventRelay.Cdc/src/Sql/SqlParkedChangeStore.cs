@@ -8,7 +8,7 @@ namespace Chatter.IntegrationEventRelay.Cdc.Sql;
 /// </summary>
 internal sealed class SqlParkedChangeStore : ICdcParkedChangeStore
 {
-	private const string Columns = "Id, RowKey, Lsn, SeqVal, Operation, Position, CommittedAt, Payload, Error, Attempts";
+	private const string Columns = "Id, RowKey, ChangeRowKey, Lsn, SeqVal, Operation, Position, CommittedAt, Payload, Error, Attempts";
 
 	private readonly string _connectionString;
 	private readonly string _table;
@@ -19,23 +19,30 @@ internal sealed class SqlParkedChangeStore : ICdcParkedChangeStore
 		_table = $"{SqlIdentifier.Quote(schema)}.{SqlIdentifier.Quote(CdcSqlScripts.ParkedChangesTable)}";
 	}
 
-	public async Task<IReadOnlySet<string>> GetParkedRowKeysAsync(string sourceName, string captureInstance, CancellationToken cancellationToken)
+	public async Task<IReadOnlyDictionary<string, string>> GetParkedRowKeysAsync(string sourceName, string captureInstance, CancellationToken cancellationToken)
 	{
-		var keys = new HashSet<string>(StringComparer.Ordinal);
-		await ReadAsync($"SELECT DISTINCT RowKey FROM {_table} WHERE SourceName = @sourceName AND CaptureInstance = @captureInstance;",
-			r => keys.Add(r.GetString(0)), cancellationToken, Source(sourceName, captureInstance)).ConfigureAwait(false);
+		var keys = new Dictionary<string, string>(StringComparer.Ordinal);
+		await ReadAsync($"SELECT DISTINCT RowKey, ChangeRowKey FROM {_table} WHERE SourceName = @sourceName AND CaptureInstance = @captureInstance;",
+			r =>
+			{
+				keys[r.GetString(0)] = r.GetString(0);
+				if (!r.IsDBNull(1))
+					keys[r.GetString(1)] = r.GetString(0);
+			},
+			cancellationToken, Source(sourceName, captureInstance)).ConfigureAwait(false);
 		return keys;
 	}
 
 	public Task ParkAsync(string sourceName, string captureInstance, ParkedChange change, CancellationToken cancellationToken)
 		=> ExecuteAsync($"""
 			IF NOT EXISTS (SELECT 1 FROM {_table} WHERE SourceName = @sourceName AND CaptureInstance = @captureInstance AND Position = @position)
-				INSERT INTO {_table} (SourceName, CaptureInstance, RowKey, Lsn, SeqVal, Operation, Position, CommittedAt, Payload, Error, Attempts, ParkedAt)
-				VALUES (@sourceName, @captureInstance, @rowKey, @lsn, @seqVal, @operation, @position, @committedAt, @payload, @error, @attempts, SYSUTCDATETIME());
+				INSERT INTO {_table} (SourceName, CaptureInstance, RowKey, ChangeRowKey, Lsn, SeqVal, Operation, Position, CommittedAt, Payload, Error, Attempts, ParkedAt)
+				VALUES (@sourceName, @captureInstance, @rowKey, @changeRowKey, @lsn, @seqVal, @operation, @position, @committedAt, @payload, @error, @attempts, SYSUTCDATETIME());
 			""",
 			cancellationToken,
 			[.. Source(sourceName, captureInstance),
 				SqlCdcQueries.Parameter("@rowKey", change.RowKey),
+				new SqlParameter("@changeRowKey", SqlDbType.NVarChar, 400) { Value = (object?)change.ChangeRowKey ?? DBNull.Value },
 				SqlCdcQueries.Parameter("@lsn", change.Lsn),
 				SqlCdcQueries.Parameter("@seqVal", change.SeqVal),
 				SqlCdcQueries.Parameter("@operation", change.Operation),
@@ -60,14 +67,15 @@ internal sealed class SqlParkedChangeStore : ICdcParkedChangeStore
 			r => changes.Add(new ParkedChange(
 				r.GetInt64(0),
 				r.GetString(1),
-				CdcLsn.FromBytes((byte[])r.GetValue(2)),
+				r.IsDBNull(2) ? null : r.GetString(2),
 				CdcLsn.FromBytes((byte[])r.GetValue(3)),
-				r.GetString(4),
+				CdcLsn.FromBytes((byte[])r.GetValue(4)),
 				r.GetString(5),
-				r.IsDBNull(6) ? null : r.GetFieldValue<DateTimeOffset>(6),
-				r.GetString(7),
+				r.GetString(6),
+				r.IsDBNull(7) ? null : r.GetFieldValue<DateTimeOffset>(7),
 				r.GetString(8),
-				r.GetInt32(9))),
+				r.GetString(9),
+				r.GetInt32(10))),
 			cancellationToken,
 			[.. Source(sourceName, captureInstance), SqlCdcQueries.Parameter("@rowKey", rowKey)]).ConfigureAwait(false);
 		return changes;

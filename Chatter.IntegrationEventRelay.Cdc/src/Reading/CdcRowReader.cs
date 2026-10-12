@@ -64,7 +64,7 @@ internal sealed class CdcRowReader<TSource> where TSource : class, new()
 					var after = i + 1 < rows.Count ? rows[i + 1] : null;
 					if (after is null || after.Operation != CdcChangeRow.UpdateAfter || after.StartLsn != row.StartLsn || after.SeqVal != row.SeqVal)
 						throw new InvalidOperationException($"Capture instance '{capture.CaptureInstance}' returned an update before image at LSN {row.StartLsn}, sequence {row.SeqVal} without its after image.");
-					changes.Add(Create(RowOperation.Update, Materialize(row), after));
+					changes.Add(Create(RowOperation.Update, Materialize(row), after, oldKeyRow: row));
 					i++;
 					break;
 				case CdcChangeRow.UpdateAfter:
@@ -76,8 +76,13 @@ internal sealed class CdcRowReader<TSource> where TSource : class, new()
 
 		return changes;
 
-		CdcRowChange<TSource> Create(RowOperation operation, TSource? oldValue, CdcChangeRow row)
-			=> new(new(capture.SourceName, operation, oldValue, Materialize(row), capture.Table, GetPosition(row), GetCommittedAt(row)), GetRowKey(row, keyColumns), row.StartLsn, row.SeqVal);
+		CdcRowChange<TSource> Create(RowOperation operation, TSource? oldValue, CdcChangeRow row, CdcChangeRow? oldKeyRow = null)
+		{
+			var rowKey = GetRowKey(row, keyColumns);
+			var oldRowKey = oldKeyRow is null ? null : GetRowKey(oldKeyRow, keyColumns);
+			return new(new(capture.SourceName, operation, oldValue, Materialize(row), capture.Table, GetPosition(row), GetCommittedAt(row)),
+				rowKey, oldRowKey == rowKey ? null : oldRowKey, row.StartLsn, row.SeqVal);
+		}
 
 		// Positions identify a change within the source, so the relay's message ids are the same when a batch is replayed.
 		// Commit LSN, sequence value and operation are unique per change; should two rows ever share them, the
@@ -165,4 +170,5 @@ internal sealed class CdcRowReader<TSource> where TSource : class, new()
 /// <summary>
 /// A change read from CDC, with the key of the row it changed (null when not needed) and where CDC recorded it.
 /// </summary>
-internal sealed record CdcRowChange<TSource>(RowChange<TSource> Change, string? RowKey, CdcLsn Lsn, CdcLsn SeqVal) where TSource : class;
+/// <param name="OldRowKey">For an update that changed the row's key, the key before it; otherwise null.</param>
+internal sealed record CdcRowChange<TSource>(RowChange<TSource> Change, string? RowKey, string? OldRowKey, CdcLsn Lsn, CdcLsn SeqVal) where TSource : class;

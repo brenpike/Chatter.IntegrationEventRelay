@@ -39,6 +39,7 @@ internal static class CdcSqlScripts
 				SourceName nvarchar(128) NOT NULL,
 				CaptureInstance sysname NOT NULL,
 				RowKey nvarchar(400) NOT NULL,
+				ChangeRowKey nvarchar(400) NULL,
 				Lsn binary(10) NOT NULL,
 				SeqVal binary(10) NOT NULL,
 				Operation nvarchar(16) NOT NULL,
