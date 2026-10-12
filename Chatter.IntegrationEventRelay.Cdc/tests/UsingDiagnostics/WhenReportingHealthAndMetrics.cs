@@ -90,6 +90,16 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingDiagnostics
             Assert.Contains("behind", result.Description);
         }
 
+        [Theory]
+        [InlineData("Standby")]
+        [InlineData("Starting")]
+        public async Task MustIgnoreLagAndParkedChangesLeftOnAnInstanceWithoutTheLease(string state)
+        {
+            var result = await CheckAsync(new StubPoller(_harness.Capture, Enum.Parse<CdcPollerState>(state), 0, TimeSpan.FromHours(1), 3));
+
+            Assert.Equal(HealthStatus.Healthy, result.Status);
+        }
+
         [Fact]
         public void MustRegisterTheHealthCheck()
         {

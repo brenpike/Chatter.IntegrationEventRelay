@@ -23,6 +23,7 @@ public static class IntegrationEventRelayBuilderExtensions
 	public const string TableSchemaKey = "TableSchema";
 
 	private const string DefaultTableSchema = "dbo";
+	private const int MaxNameLength = 128;
 
 	/// <summary>
 	/// Captures changes with SQL Server Change Data Capture for every mapping whose source is of type "Cdc". Each capture
@@ -137,6 +138,13 @@ public static class IntegrationEventRelayBuilderExtensions
 		var databaseName = string.IsNullOrWhiteSpace(mapping.DatabaseName) ? new SqlConnectionStringBuilder(connectionString).InitialCatalog : mapping.DatabaseName;
 		var tableSchema = mapping.Section?[TableSchemaKey] is { Length: > 0 } schema ? schema : DefaultTableSchema;
 		var captureInstance = mapping.Section?[CaptureInstanceKey] is { Length: > 0 } instance ? instance : $"{tableSchema}_{mapping.TableName}";
+
+		// The relay's tables store both as nvarchar(128)/sysname; longer names would only fail when saving a checkpoint,
+		// after the batch was published, so the same batch would be republished forever
+		if (sourceName.Length > MaxNameLength)
+			throw new ArgumentException($"CDC source name '{sourceName}' is longer than {MaxNameLength} characters.");
+		if (captureInstance.Length > MaxNameLength)
+			throw new ArgumentException($"Capture instance name '{captureInstance}' is longer than {MaxNameLength} characters; set a shorter '{CaptureInstanceKey}' on the mapping.");
 
 		return new CaptureTarget(sourceName, captureInstance, sourceEventType, connectionString, tableSchema, string.IsNullOrWhiteSpace(mapping.DatabaseName) ? null : mapping.DatabaseName,
 			new SourceTable(mapping.TableName, tableSchema, string.IsNullOrWhiteSpace(databaseName) ? null : databaseName));

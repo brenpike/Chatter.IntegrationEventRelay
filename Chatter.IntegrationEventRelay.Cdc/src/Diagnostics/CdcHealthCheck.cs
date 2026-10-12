@@ -41,6 +41,11 @@ internal sealed class CdcHealthCheck : IHealthCheck
 			else if (poller.State == CdcPollerState.Retrying)
 				degraded.Add($"{name}: retrying a failed batch");
 
+			// A standby or starting instance doesn't own the capture; its lag and parked count may be left over from
+			// before it lost the lease, and the active instance reports the real ones
+			if (poller.State is not (CdcPollerState.Active or CdcPollerState.Retrying or CdcPollerState.Gap))
+				continue;
+
 			if (lag > _maxLag)
 				unhealthy.Add($"{name}: {lag.Value.TotalSeconds:0}s behind");
 			if (poller.ParkedChanges > 0)

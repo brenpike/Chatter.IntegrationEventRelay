@@ -212,6 +212,27 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingIntegrationEventRelayBuil
         }
 
         [Fact]
+        public void MustRejectASourceNameLongerThanItsColumn()
+        {
+            var name = new string('s', 129);
+            Source(name);
+            Map(Mapping(name));
+
+            var e = Assert.Throws<ArgumentException>(() => Use());
+            Assert.Contains("longer than 128", e.Message);
+        }
+
+        [Fact]
+        public void MustRejectACaptureInstanceNameLongerThanItsColumn()
+        {
+            Source("fakedb-cdc");
+            Map(Mapping("fakedb-cdc", settings: new() { ["CaptureInstance"] = new string('c', 129) }));
+
+            var e = Assert.Throws<ArgumentException>(() => Use());
+            Assert.Contains("CaptureInstance", e.Message);
+        }
+
+        [Fact]
         public void MustRejectASourceEventTypeWithoutAParameterlessConstructor()
         {
             Source("fakedb-cdc");
