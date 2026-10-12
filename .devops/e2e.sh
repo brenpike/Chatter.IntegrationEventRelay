@@ -23,8 +23,10 @@ dump_logs() {
 	done
 }
 
-# Fails fast when a service the others depend on exits (for example the db container when a seed script fails)
-if ! docker compose up -d --build; then
+# Fails fast when a service the others depend on exits (for example the db container when a seed script fails).
+# Recreates every container so a rerun without `docker compose down` starts from a fresh database and only counts
+# this run's consumer logs.
+if ! docker compose up -d --build --force-recreate --renew-anon-volumes; then
 	echo "E2E failed: the stack did not start." >&2
 	dump_logs
 	exit 1
