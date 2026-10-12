@@ -187,11 +187,40 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
         }
 
         [Fact]
+        public async Task MustFailWhenTheLoginMayNotReadTheCapturedTable()
+        {
+            await _sql.CreateCapturedTableAsync(_table);
+            var login = $"relay_{_table}";
+            await _sql.ExecuteAsync($"""
+                CREATE LOGIN [{login}] WITH PASSWORD = N'Relay!Passw0rd1', CHECK_POLICY = OFF;
+                CREATE USER [{login}] FOR LOGIN [{login}];
+                GRANT SELECT ON SCHEMA::cdc TO [{login}];
+                GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::Chatter TO [{login}];
+                """);
+            var connectionString = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(_sql.ConnectionString) { UserID = login, Password = "Relay!Passw0rd1" }.ConnectionString;
+            await _sql.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id, Name) VALUES (1, N'one');");
+            await WaitForCaptureAsync(1);
+            var poller = new CdcCapturePoller<Row>(Capture(), new SqlCdcQueries(connectionString), new SqlCheckpointStore(connectionString, "Chatter"), new SqlParkedChangeStore(connectionString, "Chatter"),
+                new SqlAppLockLeaseFactory(connectionString), new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, NullLogger<CdcCapturePoller<Row>>.Instance);
+
+            await Assert.ThrowsAsync<CdcCaptureInstanceAccessDeniedException>(() => poller.PollOnceAsync(CancellationToken.None));
+
+            // With the grant on the table it reads the change
+            await _sql.ExecuteAsync($"GRANT SELECT ON dbo.[{_table}] TO [{login}];");
+            var processor = new Processor();
+            var services = new ServiceCollection();
+            services.AddSingleton<IRowChangeProcessor<Row>>(processor);
+            var granted = new CdcCapturePoller<Row>(Capture(), new SqlCdcQueries(connectionString), new SqlCheckpointStore(connectionString, "Chatter"), new SqlParkedChangeStore(connectionString, "Chatter"),
+                new SqlAppLockLeaseFactory(connectionString), services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, NullLogger<CdcCapturePoller<Row>>.Instance);
+            Assert.Equal(1, Assert.Single(await PollUntilAsync(granted, 1, processor)).NewValue.Id);
+        }
+
+        [Fact]
         public async Task MustFailForAMissingCaptureInstance()
         {
             var queries = new SqlCdcQueries(_sql.ConnectionString);
 
-            Assert.True((await queries.GetMinLsnAsync("dbo_DoesNotExist", CancellationToken.None)).IsZero);
+            Assert.Equal(CdcLsn.Zero, await queries.GetMinLsnAsync("dbo_DoesNotExist", CancellationToken.None));
         }
 
         [Fact]

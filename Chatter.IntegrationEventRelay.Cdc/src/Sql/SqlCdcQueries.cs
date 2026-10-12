@@ -13,8 +13,8 @@ internal sealed class SqlCdcQueries : ICdcQueries
 	public SqlCdcQueries(string connectionString)
 		=> _connectionString = string.IsNullOrWhiteSpace(connectionString) ? throw new ArgumentNullException(nameof(connectionString)) : connectionString;
 
-	public async Task<CdcLsn> GetMinLsnAsync(string captureInstance, CancellationToken cancellationToken)
-		=> ToLsn(await ScalarAsync("SELECT sys.fn_cdc_get_min_lsn(@captureInstance);", cancellationToken, Parameter("@captureInstance", captureInstance)).ConfigureAwait(false)) ?? CdcLsn.Zero;
+	public async Task<CdcLsn?> GetMinLsnAsync(string captureInstance, CancellationToken cancellationToken)
+		=> ToLsn(await ScalarAsync("SELECT sys.fn_cdc_get_min_lsn(@captureInstance);", cancellationToken, Parameter("@captureInstance", captureInstance)).ConfigureAwait(false));
 
 	public async Task<bool> CaptureInstanceExistsAsync(string captureInstance, CancellationToken cancellationToken)
 		=> await ScalarAsync("SELECT CASE WHEN EXISTS (SELECT 1 FROM cdc.change_tables WHERE capture_instance = @captureInstance) THEN 1 ELSE 0 END;",

@@ -16,7 +16,8 @@ namespace Chatter.IntegrationEventRelay.Cdc;
 /// committed before a clock change but read after it are off by the change; run SQL Server in UTC to avoid it.
 /// </para>
 /// <para>
-/// Permissions: the relay's login needs <c>SELECT</c> on the <c>cdc</c> schema, since it reads the change tables
+/// Permissions: the relay's login needs <c>SELECT</c> on every captured column of each captured table (and membership
+/// in the capture instance's gating role, if any), <c>SELECT</c> on the <c>cdc</c> schema, since it reads the change tables
 /// directly (the only place SQL Server exposes <c>__$command_id</c>, which orders a transaction's changes) and CDC's
 /// metadata tables; and <c>SELECT</c>, <c>INSERT</c>, <c>UPDATE</c> and <c>DELETE</c> on the relay's
 /// <see cref="Core.Configuration.EventMappingConfiguration.Schema"/>. See <c>.scripts/cdc/enable-cdc.sql</c>.

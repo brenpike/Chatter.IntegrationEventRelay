@@ -373,6 +373,18 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcCapturePoller
         }
 
         [Fact]
+        public async Task MustFailLoudlyWhenTheLoginMayNotReadTheCaptureInstance()
+        {
+            Cdc.Authorized = false;
+            Insert(1);
+
+            var e = await Assert.ThrowsAsync<CdcCaptureInstanceAccessDeniedException>(() => PollAsync());
+
+            Assert.Contains("SELECT on every column", e.Message);
+            Assert.Empty(Cdc.ChangeReads);
+        }
+
+        [Fact]
         public async Task MustWaitForTheCaptureJobAfterCdcIsEnabled()
         {
             Cdc.MinLsn = CdcLsn.Zero;

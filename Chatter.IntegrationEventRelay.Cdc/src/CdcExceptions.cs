@@ -23,12 +23,29 @@ public sealed class CdcGapException : Exception
 }
 
 /// <summary>
-/// The capture instance doesn't exist, or the relay's login can't read it.
+/// The capture instance doesn't exist.
 /// </summary>
 public sealed class CdcCaptureInstanceNotFoundException : Exception
 {
 	public CdcCaptureInstanceNotFoundException(string sourceName, string captureInstance)
-		: base($"Source '{sourceName}' can't read capture instance '{captureInstance}': it doesn't exist (is CDC enabled on the table?) or the relay's login has no access to it.")
+		: base($"Source '{sourceName}' can't find capture instance '{captureInstance}'. Is CDC enabled on the table, and does the mapping's CaptureInstance name it?")
+	{
+		SourceName = sourceName;
+		CaptureInstance = captureInstance;
+	}
+
+	public string SourceName { get; }
+	public string CaptureInstance { get; }
+}
+
+/// <summary>
+/// The capture instance exists, but the relay's login may not read its changes.
+/// </summary>
+public sealed class CdcCaptureInstanceAccessDeniedException : Exception
+{
+	public CdcCaptureInstanceAccessDeniedException(string sourceName, string captureInstance)
+		: base($"Source '{sourceName}' may not read capture instance '{captureInstance}'. The relay's login needs SELECT on every column the capture instance captures " +
+			"(for example GRANT SELECT ON <schema>.<table>) and membership in its gating role, if it has one, as well as SELECT on the cdc schema.")
 	{
 		SourceName = sourceName;
 		CaptureInstance = captureInstance;

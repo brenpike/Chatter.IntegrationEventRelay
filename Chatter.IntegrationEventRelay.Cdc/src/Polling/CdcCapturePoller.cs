@@ -189,12 +189,17 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 		// Read first: with StartPosition Latest and no checkpoint, it's the boundary between changes skipped as older than
 		// the relay and changes relayed, so it's taken as close to the start of the poll as possible
 		var maxLsn = await _queries.GetMaxLsnAsync(cancellationToken).ConfigureAwait(false);
-		var minLsn = await _queries.GetMinLsnAsync(Capture.CaptureInstance, cancellationToken).ConfigureAwait(false);
-		if (minLsn.IsZero)
+		var oldest = await _queries.GetMinLsnAsync(Capture.CaptureInstance, cancellationToken).ConfigureAwait(false);
+		if (oldest is { IsZero: true })
 		{
-			if (!await _queries.CaptureInstanceExistsAsync(Capture.CaptureInstance, cancellationToken).ConfigureAwait(false))
-				throw new CdcCaptureInstanceNotFoundException(Capture.SourceName, Capture.CaptureInstance);
+			// Missing, or the login can't read it: SQL Server returns zero rather than an error in both cases
+			if (await _queries.CaptureInstanceExistsAsync(Capture.CaptureInstance, cancellationToken).ConfigureAwait(false))
+				throw new CdcCaptureInstanceAccessDeniedException(Capture.SourceName, Capture.CaptureInstance);
+			throw new CdcCaptureInstanceNotFoundException(Capture.SourceName, Capture.CaptureInstance);
+		}
 
+		if (oldest is not { } minLsn)
+		{
 			_logger.LogDebug("Capture instance '{CaptureInstance}' of source '{SourceName}' has no changes yet; the CDC capture job hasn't scanned the log since it was enabled", Capture.CaptureInstance, Capture.SourceName);
 			if (Options.StartPosition == CdcStartPosition.Latest && await _checkpoints.GetAsync(Capture.SourceName, Capture.CaptureInstance, cancellationToken).ConfigureAwait(false) is null)
 				await AnchorLatestAsync(CdcLsn.Zero, cancellationToken).ConfigureAwait(false);

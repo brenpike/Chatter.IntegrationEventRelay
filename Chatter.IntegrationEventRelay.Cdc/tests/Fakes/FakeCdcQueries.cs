@@ -100,8 +100,13 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Fakes
             }
         }
 
-        public Task<CdcLsn> GetMinLsnAsync(string captureInstance, CancellationToken cancellationToken)
-            => Result(CaptureInstanceExists ? MinLsn : CdcLsn.Zero);
+        /// <summary>Whether the login may read the capture instance. Default true.</summary>
+        public bool Authorized { get; set; } = true;
+
+        // Like sys.fn_cdc_get_min_lsn: zero for a missing or unreadable capture instance, null before the capture job's
+        // first scan (here: MinLsn set to zero)
+        public Task<CdcLsn?> GetMinLsnAsync(string captureInstance, CancellationToken cancellationToken)
+            => Result(!CaptureInstanceExists || !Authorized ? CdcLsn.Zero : MinLsn.IsZero ? (CdcLsn?)null : MinLsn);
 
         public Task<bool> CaptureInstanceExistsAsync(string captureInstance, CancellationToken cancellationToken)
             => Result(CaptureInstanceExists);

@@ -6,14 +6,14 @@ namespace Chatter.IntegrationEventRelay.Cdc.Sql;
 internal interface ICdcQueries
 {
 	/// <summary>
-	/// <c>sys.fn_cdc_get_min_lsn</c>: the oldest LSN still available to the capture instance; <see cref="CdcLsn.Zero"/>
-	/// when the capture instance doesn't exist or the caller can't read it.
+	/// <c>sys.fn_cdc_get_min_lsn</c>: the oldest LSN still available to the capture instance; null until the capture job
+	/// first scans the log after CDC is enabled on the table; <see cref="CdcLsn.Zero"/> when the capture instance doesn't
+	/// exist or the caller can't read it (it lacks <c>SELECT</c> on a captured column, or the gating role).
 	/// </summary>
-	Task<CdcLsn> GetMinLsnAsync(string captureInstance, CancellationToken cancellationToken);
+	Task<CdcLsn?> GetMinLsnAsync(string captureInstance, CancellationToken cancellationToken);
 
 	/// <summary>
-	/// True if the capture instance exists. Its minimum LSN stays zero until the capture job first scans the log after
-	/// CDC is enabled on the table, so a zero minimum alone doesn't mean it's missing.
+	/// True if the capture instance exists, whether or not the caller may read its changes.
 	/// </summary>
 	Task<bool> CaptureInstanceExistsAsync(string captureInstance, CancellationToken cancellationToken);
 
