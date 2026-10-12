@@ -198,6 +198,17 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcCapturePoller
         }
 
         [Fact]
+        public async Task MustWaitForTheCaptureJobAfterCdcIsEnabled()
+        {
+            Cdc.MinLsn = CdcLsn.Zero;
+
+            Assert.False(await PollAsync());
+
+            Assert.Empty(Cdc.ChangeReads);
+            Assert.Null(_harness.Checkpoint);
+        }
+
+        [Fact]
         public async Task MustWarnOnceAboutPropertiesNoColumnSets()
         {
             Cdc.CapturedColumns.Remove("Name");

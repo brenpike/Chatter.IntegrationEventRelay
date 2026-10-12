@@ -40,6 +40,7 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingSql
         public void MustCreateTheCheckpointTableInTheRelaySchema()
         {
             Assert.Contains("QUOTENAME(@schema) + N'.[Chatter_RelayCheckpoints]", CdcSqlScripts.CreateRelayTables);
+            Assert.DoesNotContain("EXEC (", CdcSqlScripts.CreateRelayTables);
             Assert.Contains("LastLsn binary(10)", CdcSqlScripts.CreateRelayTables);
         }
     }

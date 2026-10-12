@@ -70,6 +70,9 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Fakes
         public Task<CdcLsn> GetMinLsnAsync(string captureInstance, CancellationToken cancellationToken)
             => Result(CaptureInstanceExists ? MinLsn : CdcLsn.Zero);
 
+        public Task<bool> CaptureInstanceExistsAsync(string captureInstance, CancellationToken cancellationToken)
+            => Result(CaptureInstanceExists);
+
         public Task<CdcLsn> GetMaxLsnAsync(CancellationToken cancellationToken)
         {
             var transactions = Transactions;

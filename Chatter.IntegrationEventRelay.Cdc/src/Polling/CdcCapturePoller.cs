@@ -168,7 +168,13 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 	{
 		var minLsn = await _queries.GetMinLsnAsync(Capture.CaptureInstance, cancellationToken).ConfigureAwait(false);
 		if (minLsn.IsZero)
-			throw new CdcCaptureInstanceNotFoundException(Capture.SourceName, Capture.CaptureInstance);
+		{
+			if (!await _queries.CaptureInstanceExistsAsync(Capture.CaptureInstance, cancellationToken).ConfigureAwait(false))
+				throw new CdcCaptureInstanceNotFoundException(Capture.SourceName, Capture.CaptureInstance);
+
+			_logger.LogDebug("Capture instance '{CaptureInstance}' of source '{SourceName}' has no changes yet; the CDC capture job hasn't scanned the log since it was enabled", Capture.CaptureInstance, Capture.SourceName);
+			return CaughtUp();
+		}
 
 		await WarnAboutUnmappedPropertiesAsync(cancellationToken).ConfigureAwait(false);
 		var keyColumns = await GetKeyColumnsAsync(cancellationToken).ConfigureAwait(false);

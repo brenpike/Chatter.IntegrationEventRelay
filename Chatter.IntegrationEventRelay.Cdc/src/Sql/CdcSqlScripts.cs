@@ -12,20 +12,29 @@ internal static class CdcSqlScripts
 	/// Creates schema <c>@schema</c> and the checkpoint and parked change tables in it, if missing.
 	/// </summary>
 	public const string CreateRelayTables = """
+		DECLARE @sql nvarchar(max);
+
 		IF SCHEMA_ID(@schema) IS NULL
-			EXEC (N'CREATE SCHEMA ' + QUOTENAME(@schema));
+		BEGIN
+			SET @sql = N'CREATE SCHEMA ' + QUOTENAME(@schema);
+			EXEC sys.sp_executesql @sql;
+		END
 
 		IF OBJECT_ID(QUOTENAME(@schema) + N'.[Chatter_RelayCheckpoints]', N'U') IS NULL
-			EXEC (N'CREATE TABLE ' + QUOTENAME(@schema) + N'.[Chatter_RelayCheckpoints] (
+		BEGIN
+			SET @sql = N'CREATE TABLE ' + QUOTENAME(@schema) + N'.[Chatter_RelayCheckpoints] (
 				SourceName nvarchar(128) NOT NULL,
 				CaptureInstance sysname NOT NULL,
 				LastLsn binary(10) NOT NULL,
 				UpdatedAt datetime2 NOT NULL,
 				CONSTRAINT [PK_Chatter_RelayCheckpoints] PRIMARY KEY (SourceName, CaptureInstance)
-			);');
+			);';
+			EXEC sys.sp_executesql @sql;
+		END
 
 		IF OBJECT_ID(QUOTENAME(@schema) + N'.[Chatter_RelayParkedChanges]', N'U') IS NULL
-			EXEC (N'CREATE TABLE ' + QUOTENAME(@schema) + N'.[Chatter_RelayParkedChanges] (
+		BEGIN
+			SET @sql = N'CREATE TABLE ' + QUOTENAME(@schema) + N'.[Chatter_RelayParkedChanges] (
 				Id bigint IDENTITY NOT NULL,
 				SourceName nvarchar(128) NOT NULL,
 				CaptureInstance sysname NOT NULL,
@@ -43,7 +52,9 @@ internal static class CdcSqlScripts
 				CONSTRAINT [PK_Chatter_RelayParkedChanges] PRIMARY KEY (Id),
 				CONSTRAINT [UQ_Chatter_RelayParkedChanges_Position] UNIQUE (SourceName, CaptureInstance, Position)
 			);
-			CREATE INDEX [IX_Chatter_RelayParkedChanges_RowKey] ON ' + QUOTENAME(@schema) + N'.[Chatter_RelayParkedChanges] (SourceName, CaptureInstance, RowKey, Lsn, SeqVal);');
+			CREATE INDEX [IX_Chatter_RelayParkedChanges_RowKey] ON ' + QUOTENAME(@schema) + N'.[Chatter_RelayParkedChanges] (SourceName, CaptureInstance, RowKey, Lsn, SeqVal);';
+			EXEC sys.sp_executesql @sql;
+		END
 		""";
 
 	/// <summary>

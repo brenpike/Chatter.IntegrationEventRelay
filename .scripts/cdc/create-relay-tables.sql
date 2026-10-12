@@ -3,19 +3,26 @@
 -- Not run by the demo's SQL container: it runs only the scripts directly in .scripts.
 
 DECLARE @schema sysname = N'Chatter';
+DECLARE @sql nvarchar(max);
 
 IF SCHEMA_ID(@schema) IS NULL
-	EXEC (N'CREATE SCHEMA ' + QUOTENAME(@schema));
+BEGIN
+	SET @sql = N'CREATE SCHEMA ' + QUOTENAME(@schema);
+	EXEC sys.sp_executesql @sql;
+END
 
 -- The last LSN fully published per source and capture instance. Delete a row (or set LastLsn) to replay or skip changes.
 IF OBJECT_ID(QUOTENAME(@schema) + N'.[Chatter_RelayCheckpoints]', N'U') IS NULL
-	EXEC (N'CREATE TABLE ' + QUOTENAME(@schema) + N'.[Chatter_RelayCheckpoints] (
+BEGIN
+	SET @sql = N'CREATE TABLE ' + QUOTENAME(@schema) + N'.[Chatter_RelayCheckpoints] (
 		SourceName nvarchar(128) NOT NULL,
 		CaptureInstance sysname NOT NULL,
 		LastLsn binary(10) NOT NULL,
 		UpdatedAt datetime2 NOT NULL,
 		CONSTRAINT [PK_Chatter_RelayCheckpoints] PRIMARY KEY (SourceName, CaptureInstance)
-	);');
+	);';
+	EXEC sys.sp_executesql @sql;
+END
 
 -- Changes parked by the ParkRow error policy, and later changes to the same rows parked behind them.
 -- To republish a row's parked changes once the cause is fixed, request a replay; the relay republishes them in order
@@ -23,7 +30,8 @@ IF OBJECT_ID(QUOTENAME(@schema) + N'.[Chatter_RelayCheckpoints]', N'U') IS NULL
 --   UPDATE Chatter.Chatter_RelayParkedChanges SET ReplayRequestedAt = SYSUTCDATETIME()
 --   WHERE SourceName = N'<source>' AND CaptureInstance = N'<capture instance>' AND RowKey = N'<row key, e.g. [42]>';
 IF OBJECT_ID(QUOTENAME(@schema) + N'.[Chatter_RelayParkedChanges]', N'U') IS NULL
-	EXEC (N'CREATE TABLE ' + QUOTENAME(@schema) + N'.[Chatter_RelayParkedChanges] (
+BEGIN
+	SET @sql = N'CREATE TABLE ' + QUOTENAME(@schema) + N'.[Chatter_RelayParkedChanges] (
 		Id bigint IDENTITY NOT NULL,
 		SourceName nvarchar(128) NOT NULL,
 		CaptureInstance sysname NOT NULL,
@@ -41,5 +49,7 @@ IF OBJECT_ID(QUOTENAME(@schema) + N'.[Chatter_RelayParkedChanges]', N'U') IS NUL
 		CONSTRAINT [PK_Chatter_RelayParkedChanges] PRIMARY KEY (Id),
 		CONSTRAINT [UQ_Chatter_RelayParkedChanges_Position] UNIQUE (SourceName, CaptureInstance, Position)
 	);
-	CREATE INDEX [IX_Chatter_RelayParkedChanges_RowKey] ON ' + QUOTENAME(@schema) + N'.[Chatter_RelayParkedChanges] (SourceName, CaptureInstance, RowKey, Lsn, SeqVal);');
+	CREATE INDEX [IX_Chatter_RelayParkedChanges_RowKey] ON ' + QUOTENAME(@schema) + N'.[Chatter_RelayParkedChanges] (SourceName, CaptureInstance, RowKey, Lsn, SeqVal);';
+	EXEC sys.sp_executesql @sql;
+END
 GO

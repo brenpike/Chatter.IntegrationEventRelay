@@ -12,6 +12,12 @@ internal interface ICdcQueries
 	Task<CdcLsn> GetMinLsnAsync(string captureInstance, CancellationToken cancellationToken);
 
 	/// <summary>
+	/// True if the capture instance exists. Its minimum LSN stays zero until the capture job first scans the log after
+	/// CDC is enabled on the table, so a zero minimum alone doesn't mean it's missing.
+	/// </summary>
+	Task<bool> CaptureInstanceExistsAsync(string captureInstance, CancellationToken cancellationToken);
+
+	/// <summary>
 	/// <c>sys.fn_cdc_get_max_lsn</c>: the newest LSN captured in the database; <see cref="CdcLsn.Zero"/> when nothing has been captured.
 	/// </summary>
 	Task<CdcLsn> GetMaxLsnAsync(CancellationToken cancellationToken);
