@@ -1,4 +1,4 @@
-using Chatter.IntegrationEventRelay.Core.Abstractions;
+﻿using Chatter.IntegrationEventRelay.Core.Abstractions;
 using Chatter.IntegrationEventRelay.Core.Configuration;
 using Chatter.IntegrationEventRelay.Core.Mapping;
 using Microsoft.Extensions.DependencyInjection;
@@ -28,7 +28,8 @@ public class MappingStartupCheck : IRelayStartupCheck
 				continue;
 			}
 
-			var source = sources.FirstOrDefault(s => string.Equals(s.Name, sourceName, StringComparison.OrdinalIgnoreCase));
+			var source = sources.FirstOrDefault(s => string.Equals(s.Name, sourceName, StringComparison.OrdinalIgnoreCase)
+				&& string.Equals(s.Type, sourceType, StringComparison.OrdinalIgnoreCase));
 			if (source is null)
 			{
 				yield return $"{description} reads from source '{sourceName}' of type '{sourceType}', but no change source adapter for that type is registered (for example UseServiceBrokerChangeSource()).";

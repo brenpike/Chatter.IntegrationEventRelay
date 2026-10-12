@@ -1,4 +1,4 @@
-using Chatter.CQRS.Events;
+﻿using Chatter.CQRS.Events;
 using Chatter.IntegrationEventRelay.Core.Abstractions;
 using Chatter.IntegrationEventRelay.Core.Configuration;
 using Chatter.IntegrationEventRelay.Core.Mapping;
@@ -55,6 +55,16 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Validation.UsingMappingStartu
         }
 
         [Fact]
+        public void MustFailWhenTheRegisteredSourceWithThatNameIsOfAnotherType()
+        {
+            _services.AddSingleton<IChangeSource>(new FakeChangeSource("cdc", ChangeSourceCapabilities.None, "ServiceBroker"));
+            _services.AddTransient<IMapSourceUpdateToIntegrationEvent<FakeSourceEvent, FakeEvent>, FakeMapper>();
+
+            var problem = Assert.Single(Validate(Mapping("cdc")));
+            Assert.Contains("no change source adapter", problem);
+        }
+
+        [Fact]
         public void MustFailWhenTheSourceLacksARequiredCapability()
         {
             _services.AddSingleton<IChangeSource>(new FakeChangeSource("ssb", ChangeSourceCapabilities.CommitTime));
@@ -69,7 +79,7 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Validation.UsingMappingStartu
         [Fact]
         public void MustPassWhenTheSourceProvidesTheRequiredCapabilities()
         {
-            _services.AddSingleton<IChangeSource>(new FakeChangeSource("cdc", ChangeSourceCapabilities.Ordered | ChangeSourceCapabilities.Resumable));
+            _services.AddSingleton<IChangeSource>(new FakeChangeSource("cdc", ChangeSourceCapabilities.Ordered | ChangeSourceCapabilities.Resumable, "Cdc"));
             _services.AddTransient<IMapSourceUpdateToIntegrationEvent<FakeSourceEvent, FakeEvent>, FakeMapper>();
             var mapping = Mapping("cdc");
             mapping.RequiredCapabilities = ChangeSourceCapabilities.Ordered;
@@ -123,10 +133,7 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Validation.UsingMappingStartu
                 .WithChangeType(RowOperation.Update)
                 .Mock;
 
-        private sealed record FakeChangeSource(string Name, ChangeSourceCapabilities Capabilities) : IChangeSource
-        {
-            public string Type => "Fake";
-        }
+        private sealed record FakeChangeSource(string Name, ChangeSourceCapabilities Capabilities, string Type = "ServiceBroker") : IChangeSource;
 
         public class FakeSourceEvent { }
         public class FakeEvent : IEvent { }

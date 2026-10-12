@@ -1,4 +1,4 @@
-using Chatter.CQRS.DependencyInjection;
+﻿using Chatter.CQRS.DependencyInjection;
 using Chatter.CQRS.Events;
 using Chatter.IntegrationEventRelay.Core.Builder;
 using Chatter.IntegrationEventRelay.Core.Configuration;
@@ -85,7 +85,8 @@ public static class ChatterBuilderExtensions
 				// publicOnly: false keeps internal mappers discoverable (Scrutor 3.x ignored its public-only default; newer versions enforce it)
 				.AddClasses(c => c.AssignableTo(closeSourceToIntegrationEventMapperType), publicOnly: false)
 				.UsingRegistrationStrategy(Scrutor.RegistrationStrategy.Append)
-				.AsImplementedInterfaces()
+				// Only the requested interface: a mapper implementing several operations is scanned once per operation
+				.As(closeSourceToIntegrationEventMapperType)
 				.WithTransientLifetime());
 
 		return builder;

@@ -1,4 +1,4 @@
-using Chatter.CQRS.Events;
+﻿using Chatter.CQRS.Events;
 using Chatter.IntegrationEventRelay.Core.Abstractions;
 using Chatter.IntegrationEventRelay.Core.Configuration;
 using Chatter.IntegrationEventRelay.Core.Mapping;
@@ -56,8 +56,12 @@ public class MappingInvoker<TSource, TIntegrationEvent> : IMappingInvoker<TSourc
 	/// <summary>
 	/// A message id that stays the same when a change is replayed, so the broker can drop the duplicate. Null when the source has no positions.
 	/// </summary>
+	/// <remarks>
+	/// Positions are only unique within a source, so the id is namespaced by source name. Every mapping of one change
+	/// produces a different event type, so the event type keeps their ids apart.
+	/// </remarks>
 	public static string? GetMessageId(RowChange<TSource> change)
-		=> change.Position is null ? null : $"{change.Position.ToMessageId()}:{typeof(TIntegrationEvent).Name}";
+		=> change.Position is null ? null : $"{change.SourceName}:{change.Position.ToMessageId()}:{typeof(TIntegrationEvent).Name}";
 
 	private IMapSourceToIntegrationEvent<TSource, TIntegrationEvent?> GetMapper(RowOperation operation) => operation switch
 	{

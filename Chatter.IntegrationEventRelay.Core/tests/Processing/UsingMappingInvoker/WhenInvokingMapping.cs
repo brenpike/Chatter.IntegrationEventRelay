@@ -1,4 +1,4 @@
-using Chatter.CQRS.Events;
+﻿using Chatter.CQRS.Events;
 using Chatter.IntegrationEventRelay.Core.Abstractions;
 using Chatter.IntegrationEventRelay.Core.Configuration;
 using Chatter.IntegrationEventRelay.Core.Mapping;
@@ -117,11 +117,21 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Processing.UsingMappingInvoke
         }
 
         [Fact]
-        public async Task MustDeriveTheMessageIdFromThePositionAndIntegrationEventType()
+        public async Task MustDeriveTheMessageIdFromTheSourcePositionAndIntegrationEventType()
         {
             await _sut.InvokeAsync(Change(RowOperation.Insert, new ChangePosition("0x0001:0x0002")), _mapping, CancellationToken.None);
 
-            _publisher.Verify(p => p.PublishAsync(It.IsAny<FakeEvent>(), It.IsAny<EventMappingConfigurationItem>(), $"0x0001:0x0002:{nameof(FakeEvent)}", It.IsAny<CancellationToken>()), Times.Once());
+            _publisher.Verify(p => p.PublishAsync(It.IsAny<FakeEvent>(), It.IsAny<EventMappingConfigurationItem>(), $"source:0x0001:0x0002:{nameof(FakeEvent)}", It.IsAny<CancellationToken>()), Times.Once());
+        }
+
+        [Fact]
+        public async Task MustGiveTheSamePositionFromDifferentSourcesDifferentMessageIds()
+        {
+            var position = new ChangePosition("0x0001");
+            var first = MappingInvoker<FakeSource, FakeEvent>.GetMessageId(Change(RowOperation.Insert, position) with { SourceName = "db1-cdc" });
+            var second = MappingInvoker<FakeSource, FakeEvent>.GetMessageId(Change(RowOperation.Insert, position) with { SourceName = "db2-cdc" });
+
+            Assert.NotEqual(first, second);
         }
 
         [Fact]
