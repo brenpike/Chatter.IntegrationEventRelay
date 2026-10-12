@@ -1,3 +1,4 @@
+using Chatter.IntegrationEventRelay.Cdc.Diagnostics;
 using Chatter.IntegrationEventRelay.Cdc.Reading;
 using Chatter.IntegrationEventRelay.Cdc.Sql;
 using Chatter.IntegrationEventRelay.Core.Abstractions;
@@ -27,6 +28,7 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 	private readonly ILogger<CdcCapturePoller<TSource>> _logger;
 	private readonly CdcRowReader<TSource> _reader;
 	private readonly Dictionary<string, int> _attempts = new(StringComparer.Ordinal);
+	private int _batchParked;
 	private bool _columnsChecked;
 	private IReadOnlyList<string>? _keyColumns;
 
@@ -48,10 +50,30 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 
 	public CdcPollerState State { get; private set; } = CdcPollerState.Starting;
 
+	public int ConsecutiveFailures { get; private set; }
+
+	public int? ParkedChanges { get; private set; }
+
+	// Written by the poll loop, read by metrics and health checks
+	private volatile bool _caughtUp;
+	private long _lastRelayedCommitUtcTicks; // 0 until a change is relayed
+
+	public TimeSpan? GetLag(DateTimeOffset now)
+	{
+		if (_caughtUp)
+			return TimeSpan.Zero;
+		var ticks = Interlocked.Read(ref _lastRelayedCommitUtcTicks);
+		if (ticks == 0)
+			return null;
+		var lag = now.UtcTicks - ticks;
+		return lag > 0 ? TimeSpan.FromTicks(lag) : TimeSpan.Zero;
+	}
+
 	private CdcSourceOptions Options => Capture.Options;
 
 	public async Task RunAsync(CancellationToken stoppingToken)
 	{
+		CdcMetrics.Track(this);
 		try
 		{
 			while (!stoppingToken.IsCancellationRequested)
@@ -77,6 +99,10 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 		}
 		catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
 		{
+		}
+		finally
+		{
+			CdcMetrics.Untrack(this);
 		}
 
 		_logger.LogInformation("Stopped polling capture instance '{CaptureInstance}' of source '{SourceName}'", Capture.CaptureInstance, Capture.SourceName);
@@ -113,12 +139,13 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 				processedBatch = await PollOnceAsync(stoppingToken).ConfigureAwait(false);
 				if (failures > 0)
 					_logger.LogInformation("Capture instance '{CaptureInstance}' of source '{SourceName}' recovered after {FailureCount} failed attempt(s)", Capture.CaptureInstance, Capture.SourceName, failures);
-				failures = 0;
+				failures = ConsecutiveFailures = 0;
 				State = CdcPollerState.Active;
 			}
 			catch (Exception e) when (e is not CdcLeaseLostException && !(e is OperationCanceledException && stoppingToken.IsCancellationRequested))
 			{
-				failures++;
+				ConsecutiveFailures = ++failures;
+				CdcMetrics.RecordBatchFailure(Capture);
 				State = e is CdcGapException ? CdcPollerState.Gap : CdcPollerState.Retrying;
 				var delay = GetRetryDelay(failures);
 				var level = e is CdcGapException || failures >= Options.FailuresBeforeCritical ? LogLevel.Critical : LogLevel.Error;
@@ -146,7 +173,11 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 		await WarnAboutUnmappedPropertiesAsync(cancellationToken).ConfigureAwait(false);
 		var keyColumns = await GetKeyColumnsAsync(cancellationToken).ConfigureAwait(false);
 		if (Options.ErrorPolicy == CdcErrorPolicy.ParkRow)
-			await ReplayRequestedRowsAsync(cancellationToken).ConfigureAwait(false);
+		{
+			var replayed = await ReplayRequestedRowsAsync(cancellationToken).ConfigureAwait(false);
+			if (replayed || ParkedChanges is null)
+				await RefreshParkedChangesAsync(cancellationToken).ConfigureAwait(false);
+		}
 
 		var maxLsn = await _queries.GetMaxLsnAsync(cancellationToken).ConfigureAwait(false);
 		var checkpoint = await _checkpoints.GetAsync(Capture.SourceName, Capture.CaptureInstance, cancellationToken).ConfigureAwait(false);
@@ -161,7 +192,7 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 		else if (Options.StartPosition == CdcStartPosition.Latest)
 		{
 			if (maxLsn.IsZero)
-				return false;
+				return CaughtUp();
 
 			// Anchor the start now, so changes committed while the relay is down later aren't skipped
 			await _checkpoints.SaveAsync(Capture.SourceName, Capture.CaptureInstance, maxLsn, cancellationToken).ConfigureAwait(false);
@@ -174,17 +205,21 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 		}
 
 		if (maxLsn.IsZero || from > maxLsn)
-			return false;
+			return CaughtUp();
 
 		var to = await _queries.GetBatchUpperBoundAsync(from, maxLsn, Options.MaxTransactionsPerBatch, cancellationToken).ConfigureAwait(false);
 		if (to is not { } upperBound)
-			return false;
+			return CaughtUp();
+
+		var started = _timeProvider.GetTimestamp();
+		_batchParked = 0;
+		IReadOnlyList<CdcRowChange<TSource>> changes = Array.Empty<CdcRowChange<TSource>>();
 
 		var rows = await _queries.GetChangesAsync(Capture.CaptureInstance, from, upperBound, cancellationToken).ConfigureAwait(false);
 		if (rows.Count > 0)
 		{
 			var offset = await _queries.GetServerUtcOffsetAsync(cancellationToken).ConfigureAwait(false);
-			var changes = _reader.Read(rows, Capture, offset, keyColumns);
+			changes = _reader.Read(rows, Capture, offset, keyColumns);
 
 			// The publisher is scoped (Chatter's dispatcher), so each batch gets its own scope
 			await using var scope = _scopeFactory.CreateAsyncScope();
@@ -199,7 +234,23 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 		// Only after every change in the batch is published (or parked); a failure above leaves the checkpoint where it was
 		await _checkpoints.SaveAsync(Capture.SourceName, Capture.CaptureInstance, upperBound, cancellationToken).ConfigureAwait(false);
 		_attempts.Clear();
+
+		if (changes.Count > 0 && changes[^1].Change.CommittedAt is { } committedAt)
+			Interlocked.Exchange(ref _lastRelayedCommitUtcTicks, committedAt.UtcTicks);
+		_caughtUp = false;
+		if (_batchParked > 0)
+			await RefreshParkedChangesAsync(cancellationToken).ConfigureAwait(false);
+		CdcMetrics.RecordBatch(Capture, changes.Count, _batchParked, _timeProvider.GetElapsedTime(started));
 		return true;
+	}
+
+	private async Task RefreshParkedChangesAsync(CancellationToken cancellationToken)
+		=> ParkedChanges = (await _parked.GetSummaryAsync(Capture.SourceName, Capture.CaptureInstance, cancellationToken).ConfigureAwait(false)).Count;
+
+	private bool CaughtUp()
+	{
+		_caughtUp = true;
+		return false;
 	}
 
 	/// <summary>
@@ -244,7 +295,9 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 	}
 
 	private Task ParkAsync(CdcRowChange<TSource> change, string error, int attempts, CancellationToken cancellationToken)
-		=> _parked.ParkAsync(Capture.SourceName, Capture.CaptureInstance, new ParkedChange(
+	{
+		_batchParked++;
+		return _parked.ParkAsync(Capture.SourceName, Capture.CaptureInstance, new ParkedChange(
 			0,
 			change.RowKey!,
 			change.Lsn,
@@ -255,16 +308,18 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 			JsonSerializer.Serialize(new ParkedPayload(change.Change.OldValue, change.Change.NewValue)),
 			error,
 			attempts), cancellationToken);
+	}
 
 	/// <summary>
 	/// Republishes, in order, the parked changes of every row an operator asked to replay. A row whose replay fails
 	/// again stays parked, and its replay request is cleared.
 	/// </summary>
-	private async Task ReplayRequestedRowsAsync(CancellationToken cancellationToken)
+	/// <returns>True if any row was replayed (successfully or not).</returns>
+	private async Task<bool> ReplayRequestedRowsAsync(CancellationToken cancellationToken)
 	{
 		var rowKeys = await _parked.GetRowKeysToReplayAsync(Capture.SourceName, Capture.CaptureInstance, cancellationToken).ConfigureAwait(false);
 		if (rowKeys.Count == 0)
-			return;
+			return false;
 
 		await using var scope = _scopeFactory.CreateAsyncScope();
 		var processor = scope.ServiceProvider.GetRequiredService<IRowChangeProcessor<TSource>>();
@@ -293,6 +348,8 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 			if (replayed == parked.Count)
 				_logger.LogInformation("Replayed {ChangeCount} parked change(s) of row {RowKey} of capture instance '{CaptureInstance}'; the row is no longer parked", replayed, rowKey, Capture.CaptureInstance);
 		}
+
+		return true;
 	}
 
 	private RowChange<TSource> ToRowChange(ParkedChange change)

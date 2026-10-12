@@ -102,6 +102,7 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcCapturePoller
             await RunUntilAsync(() => WaitForAsync(() => _harness.Logger.Entries.Any(e => e.Level == LogLevel.Critical)));
 
             Assert.Equal(CdcPollerState.Retrying, _harness.Poller.State);
+            Assert.True(_harness.Poller.ConsecutiveFailures >= 2);
             Assert.Null(_harness.Checkpoint);
         }
 

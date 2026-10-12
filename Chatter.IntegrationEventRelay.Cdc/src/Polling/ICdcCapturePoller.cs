@@ -9,6 +9,17 @@ internal interface ICdcCapturePoller
 
 	CdcPollerState State { get; }
 
+	/// <summary>Failed attempts at the current batch; 0 once a batch succeeds.</summary>
+	int ConsecutiveFailures { get; }
+
+	/// <summary>Changes parked for this capture instance, as of the last batch; null unless the error policy is ParkRow.</summary>
+	int? ParkedChanges { get; }
+
+	/// <summary>
+	/// Time since the last relayed change was committed; zero when the last poll found nothing new; null before anything is relayed.
+	/// </summary>
+	TimeSpan? GetLag(DateTimeOffset now);
+
 	Task RunAsync(CancellationToken stoppingToken);
 }
 
