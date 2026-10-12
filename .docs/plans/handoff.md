@@ -21,17 +21,16 @@ and the resolved design decisions. Both files live on branch `claude/repo-overvi
    `CdcRowReader<T>` (plan 2a), then the poll loop (2b). Build on #29's notes in plan section 1a: the poller must create
    a DI scope per batch (the publisher is scoped), call `IRowChangeProcessor<T>.ProcessBatchAsync`, and pass
    `ChangePosition` so message ids are stable for replays. Write `ChangeSourceContractTests<TAdapter>` here.
-3. **Open question for the user:** confirm the relay `Schema` default `dbo` (plan 2h).
 
 ## Resolved decisions (details in the plan)
 
 - Keep SQL Service Broker and add CDC as a second, independent capture adapter. Each mapping picks its source.
   **No Change Tracking:** it has no old values and no intermediate changes, and the mappers detect transitions.
 - Target .NET 10. The breaking mapper API change has no `[Obsolete]` shims. Four stacked PRs on `feat/<slug>` branches.
-- CDC checkpoints and parked changes live in the **source database**, in the relay-wide `Schema` setting (default `dbo`,
+- CDC checkpoints and parked changes live in the **source database**, in the relay-wide `Schema` setting (default `Chatter`,
   overridable). Tables use the `Chatter_` prefix. SqlChangeFeed's `WithSchema` is both the watched table's schema and the
-  schema of its trigger, queues and procedures (it can't separate them), so the default follows it (plan 2h). The plan's
-  earlier `Chatter` default changed for this reason; the user should confirm.
+  schema of its trigger, queues and procedures, so SSB objects stay with each table (documented); the relay's own tables
+  don't depend on that. Possible Chatter follow-up: an asset-schema option in SqlChangeFeed.
 - Error policy: `Halt` by default, with **per-row parking** (`ParkRow`) as an opt-in. Transient failures are always retried and never parked.
 - Keep `ISourceEvent` as an optional marker.
 

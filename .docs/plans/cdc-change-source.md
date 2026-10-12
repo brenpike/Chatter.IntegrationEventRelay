@@ -298,14 +298,16 @@ failing (mapper exceptions, serialization errors, rejected messages) after `MaxA
 ### 2h. Where relay tables live
 - In the source database (backed up and restored with the data they describe).
 - In the same schema as the rest of the relay's database assets, set once relay-wide:
-  `IntegrationEventRelay:Schema`, default `dbo` (see finding below). Table names keep Chatter's `Chatter_` prefix.
+  `IntegrationEventRelay:Schema`, default `Chatter`, overridable. Table names keep Chatter's `Chatter_` prefix.
 - **Finding (SqlChangeFeed 0.16, decompiled):** `WithSchema` sets a single `SchemaName` (default `dbo`) that is
   both the watched table's schema (`ON {schema}.{table}`) and the schema of every asset it creates: the trigger,
   the conversation and dead-letter queues and the install/uninstall procedures. SqlChangeFeed cannot place its
   assets in a separate schema, and SQL Server requires a DML trigger to be in its table's schema anyway.
-- So, per the fallback this plan set, the relay-wide `Schema` default is **`dbo`** (SqlChangeFeed's default), and
-  the CDC relay tables go there too, so in the default setup everything lands together. `Schema` stays
-  overridable for the CDC tables; SSB assets keep following each table's schema.
+- So the relay `Schema` setting (default `Chatter`) covers the objects the relay owns: the CDC checkpoint and
+  parked-change tables (and any future relay tables). SqlChangeFeed's SSB objects stay in each watched table's schema;
+  the docs say so. A CDC-only deployment never creates SSB objects, so nothing is split there. (An earlier revision
+  changed the default to `dbo` to keep everything together; reverted at the user's call, since the relay's own
+  tables can live in `Chatter` regardless.)
 - Possible Chatter follow-up (not required here): a separate asset schema option in SqlChangeFeed for the queues,
   services and procedures (the trigger must stay with the table).
 
@@ -348,6 +350,6 @@ failing (mapper exceptions, serialization errors, rejected messages) after `MaxA
 1. Phase 0 first, targeting .NET 10 (not 8).
 2. Breaking mapper API at 0.4.0 (0.3.0 shipped with Phase 0), no `[Obsolete]` shims.
 3. Four stacked branches.
-4. Checkpoints (and parked changes) in the source database, in the relay-wide schema (default `dbo`, matching SqlChangeFeed; overridable). See 2h.
+4. Checkpoints (and parked changes) in the source database, in the relay-wide schema (default `Chatter`, overridable). SSB objects stay in the watched table's schema (SqlChangeFeed limitation). See 2h.
 5. Error policy: `Halt` default; per-row parking (`ParkRow`) opt-in. Transient failures always retried, never parked.
 6. Keep `ISourceEvent` as an optional marker.
