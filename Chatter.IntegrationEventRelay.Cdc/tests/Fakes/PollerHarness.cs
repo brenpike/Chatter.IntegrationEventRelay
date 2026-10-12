@@ -31,13 +31,14 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Fakes
             });
             _services = services.BuildServiceProvider();
 
-            Poller = new CdcCapturePoller<TSource>(Capture, Queries, Checkpoints, Leases, _services.GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, Logger);
+            Poller = new CdcCapturePoller<TSource>(Capture, Queries, Checkpoints, Parked, Leases, _services.GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, Logger);
         }
 
         public CdcSourceOptions Options { get; }
         public CdcCapture Capture { get; }
         public FakeCdcQueries Queries { get; } = new();
         public FakeCheckpointStore Checkpoints { get; } = new();
+        public FakeParkedChangeStore Parked { get; } = new();
         public FakeLeaseFactory Leases { get; } = new();
         public RecordingLogger<CdcCapturePoller<TSource>> Logger { get; } = new();
         public CdcCapturePoller<TSource> Poller { get; }

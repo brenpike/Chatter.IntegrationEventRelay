@@ -30,6 +30,7 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Fakes
         public TimeSpan ServerUtcOffset { get; set; } = TimeSpan.FromHours(-5);
         public DateTime NextCommitTime { get; set; } = new(2026, 10, 12, 8, 0, 0);
         public List<string> CapturedColumns { get; } = new() { "Id", "Name" };
+        public List<string> KeyColumns { get; } = new() { "Id" };
         public List<(CdcLsn From, CdcLsn To)> ChangeReads { get; } = new();
         public List<int> BatchSizes { get; } = new();
         public Exception FailWith { get; set; }
@@ -95,6 +96,9 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Fakes
 
         public Task<IReadOnlyList<string>> GetCapturedColumnsAsync(string captureInstance, CancellationToken cancellationToken)
             => Result<IReadOnlyList<string>>(CaptureInstanceExists ? CapturedColumns.ToList() : new List<string>());
+
+        public Task<IReadOnlyList<string>> GetKeyColumnsAsync(string captureInstance, CancellationToken cancellationToken)
+            => Result<IReadOnlyList<string>>(KeyColumns.ToList());
 
         private Task<T> Result<T>(T value) => FailWith is null ? Task.FromResult(value) : Task.FromException<T>(FailWith);
     }

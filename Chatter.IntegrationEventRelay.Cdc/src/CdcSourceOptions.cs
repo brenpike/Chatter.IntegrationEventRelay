@@ -40,6 +40,24 @@ public class CdcSourceOptions
 	/// </summary>
 	public int FailuresBeforeCritical { get; set; } = 5;
 
+	/// <summary>
+	/// What to do with a change that keeps failing. Default <see cref="CdcErrorPolicy.Halt"/>.
+	/// </summary>
+	public CdcErrorPolicy ErrorPolicy { get; set; } = CdcErrorPolicy.Halt;
+
+	/// <summary>
+	/// With <see cref="CdcErrorPolicy.ParkRow"/>: the attempts at a change, failing with errors that aren't transient,
+	/// before it's parked. Default 5.
+	/// </summary>
+	public int MaxAttemptsBeforePark { get; set; } = 5;
+
+	/// <summary>
+	/// Decides which failures are transient (for example the broker is unavailable). Transient failures are retried
+	/// and never parked, since parking them would park every change during an outage. Default
+	/// <see cref="CdcTransientErrors.IsTransient"/>.
+	/// </summary>
+	public Func<Exception, bool> IsTransient { get; set; } = CdcTransientErrors.IsTransient;
+
 	internal IEnumerable<string> Validate()
 	{
 		if (PollInterval <= TimeSpan.Zero)
@@ -54,6 +72,10 @@ public class CdcSourceOptions
 			yield return $"{nameof(MaxRetryDelay)} must be at least {nameof(RetryDelay)}.";
 		if (FailuresBeforeCritical <= 0)
 			yield return $"{nameof(FailuresBeforeCritical)} must be positive.";
+		if (MaxAttemptsBeforePark <= 0)
+			yield return $"{nameof(MaxAttemptsBeforePark)} must be positive.";
+		if (IsTransient is null)
+			yield return $"{nameof(IsTransient)} is required.";
 	}
 }
 
@@ -66,4 +88,21 @@ public enum CdcStartPosition
 	Earliest,
 	/// <summary>Changes committed after the relay first starts; older changes are skipped.</summary>
 	Latest
+}
+
+/// <summary>
+/// What a CDC source does with a change that keeps failing with errors that aren't transient.
+/// </summary>
+public enum CdcErrorPolicy
+{
+	/// <summary>
+	/// Stop at the change and keep retrying it with backoff, logging critical. Nothing after it is published, so ordering always holds.
+	/// </summary>
+	Halt,
+	/// <summary>
+	/// After <see cref="CdcSourceOptions.MaxAttemptsBeforePark"/> attempts, park the change, and every later change to
+	/// the same row behind it, in <c>&lt;Schema&gt;.Chatter_RelayParkedChanges</c>. Other rows carry on. Parked
+	/// changes are republished in order once a replay is requested. Needs a table with a primary key or unique index.
+	/// </summary>
+	ParkRow
 }

@@ -71,7 +71,7 @@ public static class IntegrationEventRelayBuilderExtensions
 
 			builder.Services.AddSingleton(new CdcMigrationTarget(connectionString, schema, first.TableSchema, first.Table.Name, first.CaptureInstance));
 			builder.Services.AddSingleton(sp => (ICdcCapturePoller)ActivatorUtilities.CreateInstance(sp, pollerType,
-				capture, (ICdcQueries)new SqlCdcQueries(connectionString), (ICdcCheckpointStore)new SqlCheckpointStore(connectionString, schema), (ICdcLeaseFactory)new SqlAppLockLeaseFactory(connectionString)));
+				capture, (ICdcQueries)new SqlCdcQueries(connectionString), (ICdcCheckpointStore)new SqlCheckpointStore(connectionString, schema), (ICdcParkedChangeStore)new SqlParkedChangeStore(connectionString, schema), (ICdcLeaseFactory)new SqlAppLockLeaseFactory(connectionString)));
 		}
 
 		return builder;

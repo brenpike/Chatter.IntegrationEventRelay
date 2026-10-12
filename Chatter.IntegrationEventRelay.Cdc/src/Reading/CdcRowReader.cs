@@ -3,6 +3,9 @@ using Chatter.IntegrationEventRelay.Cdc.Sql;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 
 namespace Chatter.IntegrationEventRelay.Cdc.Reading;
 
@@ -36,8 +39,14 @@ internal sealed class CdcRowReader<TSource> where TSource : class, new()
 	/// <param name="rows">Rows in commit order, as <see cref="ICdcQueries.GetChangesAsync"/> returns them.</param>
 	/// <param name="serverUtcOffset">The offset of the server's local time, which commit times are in.</param>
 	public IReadOnlyList<RowChange<TSource>> Read(IReadOnlyList<CdcChangeRow> rows, CdcCapture capture, TimeSpan serverUtcOffset)
+		=> Read(rows, capture, serverUtcOffset, Array.Empty<string>()).Select(c => c.Change).ToList();
+
+	/// <summary>
+	/// Reads changes with the key of the row each one changed, made of <paramref name="keyColumns"/>' values.
+	/// </summary>
+	public IReadOnlyList<CdcRowChange<TSource>> Read(IReadOnlyList<CdcChangeRow> rows, CdcCapture capture, TimeSpan serverUtcOffset, IReadOnlyList<string> keyColumns)
 	{
-		var changes = new List<RowChange<TSource>>(rows.Count);
+		var changes = new List<CdcRowChange<TSource>>(rows.Count);
 		var positions = new Dictionary<string, int>(StringComparer.Ordinal);
 
 		for (var i = 0; i < rows.Count; i++)
@@ -67,8 +76,8 @@ internal sealed class CdcRowReader<TSource> where TSource : class, new()
 
 		return changes;
 
-		RowChange<TSource> Create(RowOperation operation, TSource? oldValue, CdcChangeRow row)
-			=> new(capture.SourceName, operation, oldValue, Materialize(row), capture.Table, GetPosition(row), GetCommittedAt(row));
+		CdcRowChange<TSource> Create(RowOperation operation, TSource? oldValue, CdcChangeRow row)
+			=> new(new(capture.SourceName, operation, oldValue, Materialize(row), capture.Table, GetPosition(row), GetCommittedAt(row)), GetRowKey(row, keyColumns), row.StartLsn, row.SeqVal);
 
 		// Positions identify a change within the source, so the relay's message ids are the same when a batch is replayed.
 		// Commit LSN, sequence value and operation are unique per change; should two rows ever share them, the
@@ -84,6 +93,21 @@ internal sealed class CdcRowReader<TSource> where TSource : class, new()
 		DateTimeOffset? GetCommittedAt(CdcChangeRow row)
 			=> row.CommitTime is { } time ? new DateTimeOffset(DateTime.SpecifyKind(time, DateTimeKind.Unspecified), serverUtcOffset) : null;
 	}
+
+	/// <summary>
+	/// The changed row's key as a JSON array of its key column values, or null without key columns.
+	/// </summary>
+	/// <remarks>Keys longer than <see cref="MaxRowKeyLength"/> are replaced by their SHA-256 hash.</remarks>
+	internal static string? GetRowKey(CdcChangeRow row, IReadOnlyList<string> keyColumns)
+	{
+		if (keyColumns.Count == 0)
+			return null;
+
+		var key = JsonSerializer.Serialize(keyColumns.Select(c => row.Columns.TryGetValue(c, out var value) ? value : null));
+		return key.Length <= MaxRowKeyLength ? key : $"sha256:{System.Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)))}";
+	}
+
+	internal const int MaxRowKeyLength = 400;
 
 	private TSource Materialize(CdcChangeRow row)
 	{
@@ -137,3 +161,8 @@ internal sealed class CdcRowReader<TSource> where TSource : class, new()
 		return System.Convert.ChangeType(value, type, CultureInfo.InvariantCulture);
 	}
 }
+
+/// <summary>
+/// A change read from CDC, with the key of the row it changed (null when not needed) and where CDC recorded it.
+/// </summary>
+internal sealed record CdcRowChange<TSource>(RowChange<TSource> Change, string? RowKey, CdcLsn Lsn, CdcLsn SeqVal) where TSource : class;

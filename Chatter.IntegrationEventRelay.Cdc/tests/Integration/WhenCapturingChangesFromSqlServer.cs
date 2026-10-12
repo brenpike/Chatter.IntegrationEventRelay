@@ -147,6 +147,7 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             var columns = await new SqlCdcQueries(_sql.ConnectionString).GetCapturedColumnsAsync(captureInstance, CancellationToken.None);
 
             Assert.Equal(new[] { "Id", "Name", "Flag", "DeletedAt" }, columns);
+            Assert.Equal(new[] { "Id" }, await new SqlCdcQueries(_sql.ConnectionString).GetKeyColumnsAsync(captureInstance, CancellationToken.None));
         }
 
         [Fact]
@@ -161,6 +162,38 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
 
             Assert.Equal(lsn.Increment(), await store.GetAsync("fakedb-cdc", "dbo_X", CancellationToken.None));
             Assert.Equal(1, await _sql.ScalarAsync<int>("SELECT COUNT(*) FROM relay_it.Chatter_RelayCheckpoints WHERE CaptureInstance = N'dbo_X';"));
+        }
+
+        [Fact]
+        public async Task MustParkAFailingRowAndReplayItOnRequest()
+        {
+            var processor = new Processor { FailOnId = 2 };
+            var poller = await CreatePollerAsync(processor, options: new CdcSourceOptions { ErrorPolicy = CdcErrorPolicy.ParkRow, MaxAttemptsBeforePark = 1 });
+            await _sql.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id, Name) VALUES (1, N'one'), (2, N'two');");
+            await _sql.ExecuteAsync($"UPDATE dbo.[{_table}] SET Name = N'deux' WHERE Id = 2;");
+            await _sql.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id, Name) VALUES (3, N'three');");
+            await WaitForCaptureAsync(5);
+
+            await WaitUntilAsync(async () =>
+            {
+                await poller.PollOnceAsync(CancellationToken.None);
+                return processor.Changes.Count >= 2;
+            });
+
+            Assert.Equal(new[] { 1, 3 }, processor.Changes.Select(c => c.NewValue.Id));
+            var parked = new SqlParkedChangeStore(_sql.ConnectionString, "Chatter");
+            var rows = await parked.GetParkedChangesAsync("fakedb-cdc", Capture().CaptureInstance, "[2]", CancellationToken.None);
+            Assert.Equal(new[] { "Insert", "Update" }, rows.Select(r => r.Operation));
+            Assert.Equal(2, (await parked.GetSummaryAsync("fakedb-cdc", Capture().CaptureInstance, CancellationToken.None)).Count);
+
+            processor.FailOnId = null;
+            await _sql.ExecuteAsync($"UPDATE Chatter.Chatter_RelayParkedChanges SET ReplayRequestedAt = SYSUTCDATETIME() WHERE CaptureInstance = N'dbo_{_table}' AND RowKey = N'[2]';");
+            await poller.PollOnceAsync(CancellationToken.None);
+
+            Assert.Equal(new[] { 1, 3, 2, 2 }, processor.Changes.Select(c => c.NewValue.Id));
+            Assert.Equal("deux", processor.Changes.Last().NewValue.Name);
+            Assert.Equal(rows.Select(r => r.Position), processor.Changes.Skip(2).Select(c => c.Position.Value));
+            Assert.Empty(await parked.GetParkedRowKeysAsync("fakedb-cdc", Capture().CaptureInstance, CancellationToken.None));
         }
 
         [Fact]
@@ -219,7 +252,7 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             var services = new ServiceCollection();
             services.AddSingleton<IRowChangeProcessor<Row>>(processor ?? _processor);
 
-            return new CdcCapturePoller<Row>(Capture(options), new SqlCdcQueries(_sql.ConnectionString), Checkpoints(), new SqlAppLockLeaseFactory(_sql.ConnectionString),
+            return new CdcCapturePoller<Row>(Capture(options), new SqlCdcQueries(_sql.ConnectionString), Checkpoints(), new SqlParkedChangeStore(_sql.ConnectionString, "Chatter"), new SqlAppLockLeaseFactory(_sql.ConnectionString),
                 services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, NullLogger<CdcCapturePoller<Row>>.Instance);
         }
 

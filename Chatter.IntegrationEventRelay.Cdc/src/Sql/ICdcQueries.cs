@@ -37,4 +37,10 @@ internal interface ICdcQueries
 	/// The names of the columns the capture instance captures.
 	/// </summary>
 	Task<IReadOnlyList<string>> GetCapturedColumnsAsync(string captureInstance, CancellationToken cancellationToken);
+
+	/// <summary>
+	/// The columns of the unique index that identifies the capture instance's rows (its <c>index_name</c>, usually the
+	/// primary key), in index order; empty when the table has none.
+	/// </summary>
+	Task<IReadOnlyList<string>> GetKeyColumnsAsync(string captureInstance, CancellationToken cancellationToken);
 }

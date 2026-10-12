@@ -81,16 +81,26 @@ internal sealed class SqlCdcQueries : ICdcQueries
 	public async Task<TimeSpan> GetServerUtcOffsetAsync(CancellationToken cancellationToken)
 		=> TimeSpan.FromMinutes(Convert.ToInt32(await ScalarAsync("SELECT DATEPART(TZOFFSET, SYSDATETIMEOFFSET());", cancellationToken).ConfigureAwait(false)));
 
-	public async Task<IReadOnlyList<string>> GetCapturedColumnsAsync(string captureInstance, CancellationToken cancellationToken)
-	{
-		const string sql = """
+	public Task<IReadOnlyList<string>> GetCapturedColumnsAsync(string captureInstance, CancellationToken cancellationToken)
+		=> ColumnNamesAsync("""
 			SELECT cc.column_name
 			FROM cdc.captured_columns AS cc
 			JOIN cdc.change_tables AS ct ON ct.object_id = cc.object_id
 			WHERE ct.capture_instance = @captureInstance
 			ORDER BY cc.column_ordinal;
-			""";
+			""", captureInstance, cancellationToken);
 
+	public Task<IReadOnlyList<string>> GetKeyColumnsAsync(string captureInstance, CancellationToken cancellationToken)
+		=> ColumnNamesAsync("""
+			SELECT ic.column_name
+			FROM cdc.index_columns AS ic
+			JOIN cdc.change_tables AS ct ON ct.object_id = ic.object_id
+			WHERE ct.capture_instance = @captureInstance
+			ORDER BY ic.index_ordinal;
+			""", captureInstance, cancellationToken);
+
+	private async Task<IReadOnlyList<string>> ColumnNamesAsync(string sql, string captureInstance, CancellationToken cancellationToken)
+	{
 		await using var connection = new SqlConnection(_connectionString);
 		await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 		await using var command = CreateCommand(connection, sql, Parameter("@captureInstance", captureInstance));
@@ -120,8 +130,9 @@ internal sealed class SqlCdcQueries : ICdcQueries
 	internal static SqlParameter Parameter(string name, CdcLsn value)
 		=> new(name, SqlDbType.Binary, CdcLsn.Length) { Value = value.ToArray() };
 
+	// Sized for the longest value the relay stores (row keys and positions), so nothing is truncated
 	internal static SqlParameter Parameter(string name, string value)
-		=> new(name, SqlDbType.NVarChar, 128) { Value = value };
+		=> new(name, SqlDbType.NVarChar, 400) { Value = value };
 
 	internal static SqlParameter Parameter(string name, int value)
 		=> new(name, SqlDbType.Int) { Value = value };

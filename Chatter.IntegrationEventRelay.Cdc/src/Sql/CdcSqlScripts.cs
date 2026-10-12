@@ -6,9 +6,10 @@ namespace Chatter.IntegrationEventRelay.Cdc.Sql;
 internal static class CdcSqlScripts
 {
 	public const string CheckpointsTable = "Chatter_RelayCheckpoints";
+	public const string ParkedChangesTable = "Chatter_RelayParkedChanges";
 
 	/// <summary>
-	/// Creates schema <c>@schema</c> and the checkpoint table in it, if missing.
+	/// Creates schema <c>@schema</c> and the checkpoint and parked change tables in it, if missing.
 	/// </summary>
 	public const string CreateRelayTables = """
 		IF SCHEMA_ID(@schema) IS NULL
@@ -22,6 +23,27 @@ internal static class CdcSqlScripts
 				UpdatedAt datetime2 NOT NULL,
 				CONSTRAINT [PK_Chatter_RelayCheckpoints] PRIMARY KEY (SourceName, CaptureInstance)
 			);');
+
+		IF OBJECT_ID(QUOTENAME(@schema) + N'.[Chatter_RelayParkedChanges]', N'U') IS NULL
+			EXEC (N'CREATE TABLE ' + QUOTENAME(@schema) + N'.[Chatter_RelayParkedChanges] (
+				Id bigint IDENTITY NOT NULL,
+				SourceName nvarchar(128) NOT NULL,
+				CaptureInstance sysname NOT NULL,
+				RowKey nvarchar(400) NOT NULL,
+				Lsn binary(10) NOT NULL,
+				SeqVal binary(10) NOT NULL,
+				Operation nvarchar(16) NOT NULL,
+				Position nvarchar(400) NOT NULL,
+				CommittedAt datetimeoffset NULL,
+				Payload nvarchar(max) NOT NULL,
+				Error nvarchar(max) NOT NULL,
+				Attempts int NOT NULL,
+				ParkedAt datetime2 NOT NULL,
+				ReplayRequestedAt datetime2 NULL,
+				CONSTRAINT [PK_Chatter_RelayParkedChanges] PRIMARY KEY (Id),
+				CONSTRAINT [UQ_Chatter_RelayParkedChanges_Position] UNIQUE (SourceName, CaptureInstance, Position)
+			);
+			CREATE INDEX [IX_Chatter_RelayParkedChanges_RowKey] ON ' + QUOTENAME(@schema) + N'.[Chatter_RelayParkedChanges] (SourceName, CaptureInstance, RowKey, Lsn, SeqVal);');
 		""";
 
 	/// <summary>
