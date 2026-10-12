@@ -1,6 +1,6 @@
 # Plan: CDC change source alongside SQL Service Broker
 
-Status: Phase 0 merged (#27); Phase 0.5 in review (#28); Phase 1 spike done.
+Status: Phase 0 merged (#27); Phase 0.5 merged (#28); Phase 1 in review (#29).
 
 ## Goal
 Keep the existing trigger + SQL Service Broker (SSB) capture and add SQL Server Change Data Capture (CDC)
@@ -97,6 +97,27 @@ Outcome recorded in the PR description.
 - Caveat: when the outbox is enabled, `OutboxBrokeredMessageRouter` routes to the outbox using the transaction
   context; the relay does not enable the outbox, and the CDC adapter documents that it does not support it.
 - Constraint: `T : IEvent`, so integration events stay `IEvent`; only source DTOs drop the `IEvent` requirement.
+- `IBrokeredMessagePublisher` isn't registered on its own; `AddMessageBrokers` registers the scoped
+  `IBrokeredMessageDispatcher`, which extends it. The publisher (and so the processor) is scoped; SqlChangeFeed's
+  receiver dispatches inside a scope per message, and the CDC poller must create one per batch.
+- Behaviour is unchanged for SSB: the SSB receiver opens no ambient `TransactionScope`, so sending with a null
+  transaction context is equivalent to sending with the inbound `ReceiveOnly` context.
+
+**Implementation notes (#29), where it differs from 1b-1i below:**
+- `ISourceEvent` extends `IMessage` (not nothing): SqlChangeFeed's `Row*Event<T>` need `T : IMessage`. Core only
+  requires `class`; CDC DTOs can be plain classes.
+- Type names resolve by assembly-qualified name, then full name, then unique simple name (full/simple names
+  ignoring case, as before); only the suffix match is gone.
+- `RowChange<T>` also carries `SourceName`; `SourceTable` is nullable (sources that can't tell). The processor
+  matches mappings by source name, source type, operation and table (when known).
+- Mappers are resolved per integration event type by `IMappingInvoker<TSource>` (`MappingInvoker<TSource, TEvent>`),
+  avoiding runtime reflection. Message id = `<position>:<integration event type Name>`.
+- `IChangeSource` also has `Type`. Adapters register one `IChangeSource` per source name; the startup check
+  (`IRelayStartupCheck` + `StartupValidationService`) matches mappings to them.
+- `ChangeSourceConfiguration.Section` exposes the raw config section for adapter-specific keys (e.g. `PollInterval`).
+- SSB: a source event type can be watched in only one table/source (one SqlChangeFeed queue per type), now
+  enforced at startup. Each type gets a `ServiceBrokerBinding<T>` (source name, table).
+- Deferred to Phase 2: `ChangeSourceContractTests<TAdapter>` (shape it once a second adapter exists).
 
 ### 1b. New core types (`Chatter.IntegrationEventRelay.Core/src/Abstractions/`)
 

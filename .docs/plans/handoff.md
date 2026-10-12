@@ -9,17 +9,19 @@ and the resolved design decisions. Both files live on branch `claude/repo-overvi
 |---|---|
 | Phase 0: PR #27, `feat/net10-ci` (.NET 10, latest Chatter packages, CI repaired) | **Merged** into `main` (squash), commit `e8150e1` |
 | Phase 0.5: PR #28, `feat/servicebus-emulator` (Service Bus emulator demo, e2e CI job) | **Merged** into `main` (squash), commit `73b961f` |
-| Phase 1: `feat/change-source-abstraction` | Spike 1a **done** (outcome in plan section 1a); implementation in progress |
+| Phase 1: PR #29, `feat/change-source-abstraction` (abstractions, ServiceBroker package, 0.4.0) | **PR #29 open**; session subscribed |
 | Phase 2: `feat/cdc-change-source` | Not started |
 | Phase 3: `feat/cdc-sample-docs` | Not started |
-| Open PRs | None |
+| Open PRs | #29 |
 
 ## Next steps
 
-1. **Phase 1** (`feat/change-source-abstraction`), cut from `main` (#28 is merged). The spike settled the publisher
-   question: `IBrokeredMessagePublisher.Publish(event, destination, transactionContext: null, options)` with
-   `PublishOptions.MessageId` works without an inbound context. Start with 1b (core types) and 1c (mapper API, **0.4.0**).
-   Put the spike outcome in the Phase 1 PR description.
+1. **Drive PR #29 to green and merged.** Address CI (including the e2e job) and Codex findings.
+2. **Phase 2** (`feat/cdc-change-source`), cut from `main` after #29 merges. Start with `CdcLsn`, `SqlCdcQueries` and
+   `CdcRowReader<T>` (plan 2a), then the poll loop (2b). Build on #29's notes in plan section 1a: the poller must create
+   a DI scope per batch (the publisher is scoped), call `IRowChangeProcessor<T>.ProcessBatchAsync`, and pass
+   `ChangePosition` so message ids are stable for replays. Write `ChangeSourceContractTests<TAdapter>` here.
+3. **Open question for the user:** confirm the relay `Schema` default `dbo` (plan 2h).
 
 ## Resolved decisions (details in the plan)
 
