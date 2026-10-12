@@ -7,6 +7,7 @@
     - [Chatter.IntegrationEventRelay.Core](#chatterintegrationeventrelaycore)
     - [Chatter.IntegrationEventRelay.Worker](#chatterintegrationeventrelayworker)
     - [Chatter.IntegrationEventRelay.Consumer](#chatterintegrationeventrelayconsumer)
+  - [Upgrading to 0.3.0](#upgrading-to-030)
   - [Running this repo locally](#running-this-repo-locally)
     - [Setup Azure Service Bus](#setup-azure-service-bus)
       - [Create namespace, topics and subscriptions](#create-namespace-topics-and-subscriptions)
@@ -56,6 +57,12 @@ This Worker Service implementation is a sample showing how [Chatter.IntegrationE
 
 The Consumer Service has been kept simple. It has [IEvent](https://github.com/brenpike/Chatter/blob/master/src/Chatter.CQRS/src/Chatter.CQRS/Events/IEvent.cs) implementations matching the integration events published by the Worker Service as well as [IMessageHandler<>](https://github.com/brenpike/Chatter/blob/master/src/Chatter.CQRS/src/Chatter.CQRS/IMessageHandler.cs) implementations. The Consumer Service leverages [Chatter.MessageBrokers.AzureServiceBus](https://github.com/brenpike/Chatter/tree/master/src/Chatter.MessageBrokers.AzureServiceBus) as its message broker infrastructure and subscribes to the integration events published by the Worker Services. The [IMessageHandler<>](https://github.com/brenpike/Chatter/blob/master/src/Chatter.CQRS/src/Chatter.CQRS/IMessageHandler.cs) handles the integration events and displays information to console. The handled messages are cached in memory and all handled messages are displayed on shutdown.
 
+## Upgrading to 0.3.0
+
+- Targets .NET 10 (`net10.0`); .NET 6 is no longer supported.
+- Uses the latest Chatter packages, which connect to SQL Server with `Microsoft.Data.SqlClient` instead of `System.Data.SqlClient`. `Microsoft.Data.SqlClient` encrypts connections and validates the server certificate by default. If your SQL Server does not present a trusted certificate (for example a local or containerized SQL Server with a self-signed certificate), connections that worked before will now fail. Either provision a trusted certificate, or add `TrustServerCertificate=True` to the connection string (development only; it disables certificate validation).
+- `UseChangeFeedSqlMigrations()` is obsolete; use `await UseChangeFeedSqlMigrationsAsync()`.
+
 ## Running this repo locally
 
 ### Setup Azure Service Bus
@@ -94,7 +101,7 @@ Chatter__Infrastructure__AzureServiceBus__ConnectionString="Endpoint=sb://<inser
 Chatter__Infrastructure__AzureServiceBus__Auth__ClientSecret=<insert client secret>
 Chatter__Infrastructure__AzureServiceBus__Auth__ClientId=<insert client id>
 Chatter__Infrastructure__AzureServiceBus__Auth__Authority="https://login.microsoftonline.com/<tenant id>/"
-IntegrationEventRelay__ConnectionString=Server=db;Database=FakeDb;Trusted_Connection=false;User ID=sa;Password=itsAbadP@SSW0RD
+IntegrationEventRelay__ConnectionString=Server=db;Database=FakeDb;Trusted_Connection=false;User ID=sa;Password=itsAbadP@SSW0RD;TrustServerCertificate=True
 IntegrationEventRelay__Mappings__0__SourceEventTypeName=Event1ChangedEvent
 IntegrationEventRelay__Mappings__0__IntegrationEventTypeName=Chatter.IntegrationEventRelay.Worker.Aggregates.Event1.IntegrationEvents.Event1RestoredEvent
 IntegrationEventRelay__Mappings__0__SourceChangeType=Update

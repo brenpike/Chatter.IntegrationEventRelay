@@ -1,10 +1,10 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.2.5</Version>
+    <Version>0.3.0</Version>
     <Authors>Brennan Pike</Authors>
     <Owners>Brennan Pike</Owners>
     <Description>Capture domain events from changes in a SQL database and relay them to message broker infrastructure as integration events</Description>
@@ -17,9 +17,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Chatter.CQRS" Version="0.6.2" />
-    <PackageReference Include="Chatter.MessageBrokers.SqlServiceBroker" Version="0.7.5" />
-    <PackageReference Include="Chatter.SqlChangeFeed" Version="0.8.3" />
+    <PackageReference Include="Chatter.CQRS" Version="0.21.0" />
+    <PackageReference Include="Chatter.MessageBrokers.SqlServiceBroker" Version="0.18.0" />
+    <PackageReference Include="Chatter.SqlChangeFeed" Version="0.16.0" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.3" />
   </ItemGroup>
 
 </Project>

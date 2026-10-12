@@ -10,7 +10,7 @@ using Chatter.MessageBrokers.SqlServiceBroker.Configuration;
 using Chatter.SqlChangeFeed;
 using Microsoft.Extensions.DependencyInjection;
 using System;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using Xunit;
 
 namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilderExtensions

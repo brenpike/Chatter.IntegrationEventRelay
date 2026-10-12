@@ -8,28 +8,25 @@ on:
         required: true
         default: 'Manual build from GitHub UI'
   push:
-    branches: [ feature/** ]
-    paths:
-      - '**/Chatter.IntegrationEventRelay.Core/src/**'
+    branches: [ feat/** ]
   pull_request:
     branches: [ main ]
-    types:
-      - closed
-    paths:
-      - '**/Chatter.IntegrationEventRelay.Core/src/**'
+    types: [ opened, synchronize, reopened, closed ]
 
 env:
-  dotnet-version:  '6.0.x'
-      
+  dotnet-version: '10.0.x'
+
 jobs:
   build:
     name: build
     runs-on: ubuntu-latest
-    
+    # Skip PRs that were closed without merging
+    if: github.event_name != 'pull_request' || github.event.action != 'closed' || github.event.pull_request.merged == true
+
     steps:
-    - uses: actions/checkout@v2
-    - name: Setup .NET Core
-      uses: actions/setup-dotnet@v1
+    - uses: actions/checkout@v4
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
       with:
         dotnet-version: ${{ env.dotnet-version }}
     - name: Install dependencies
@@ -37,34 +34,34 @@ jobs:
     - name: Build
       run: dotnet build --configuration Release --no-restore
     - name: Test
-      run: dotnet test --no-restore --verbosity normal
+      run: dotnet test --configuration Release --no-build --verbosity normal
     - name: Publish
       run: dotnet publish Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj -c Release -o publish/source
     - name: Create nupkg
       run: dotnet pack Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj -c Release -o publish/nuget
     - name: Upload Source
-      uses: actions/upload-artifact@v2.3.1
+      uses: actions/upload-artifact@v4
       with:
         name: source
-        path: /home/runner/work/Chatter.IntegrationEventRelay/Chatter.IntegrationEventRelay/publish/source/**
+        path: publish/source/**
         retention-days: 5
         if-no-files-found: error
     - name: Upload NuGet
-      uses: actions/upload-artifact@v2.3.1
+      uses: actions/upload-artifact@v4
       with:
         name: nuget
-        path: /home/runner/work/Chatter.IntegrationEventRelay/Chatter.IntegrationEventRelay/publish/nuget/**
+        path: publish/nuget/**
         retention-days: 5
         if-no-files-found: error
-        
+
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true
-    
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
+
     environment:
       name: Production
-    
+
     env:
       NUGET_AUTH_TOKEN: ${{ secrets.NUGET_API_KEY_INTEGRATIONEVENTRELAY }}
       NUGET_URL: https://api.nuget.org/v3/index.json
@@ -72,30 +69,23 @@ jobs:
       packages: write
       contents: read
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-dotnet@v1
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.dotnet-version }}
           source-url: ${{ env.NUGET_URL }}
-          
-      - name: Download Source
-        uses: actions/download-artifact@v2.1.0
-        with:
-          name: source
-          path: ./dist/source
-      
+
       - name: Download NuGet
-        uses: actions/download-artifact@v2.1.0
-        id: download-nuget
+        uses: actions/download-artifact@v4
         with:
           name: nuget
           path: ./dist/nuget
-      
+
       - name: Display structure of downloaded files
         run: ls -R
         working-directory: ./dist
-        
+
+      # --skip-duplicate: merges that don't bump the package version (docs, samples, CI) must not fail the deploy
       - name: Push Nuget packages
         shell: bash
         run: |
-          dotnet nuget push "./dist/nuget/*.nupkg" -k '${{ env.NUGET_AUTH_TOKEN }}' -s '${{ env.NUGET_URL }}'
+          dotnet nuget push "./dist/nuget/*.nupkg" -k '${{ env.NUGET_AUTH_TOKEN }}' -s '${{ env.NUGET_URL }}' --skip-duplicate

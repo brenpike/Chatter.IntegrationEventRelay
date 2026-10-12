@@ -94,7 +94,7 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
 
             builder.WireRowChangeEventHandlerFromConfig(typeof(RowUpdatedEvent<>), typeof(RowUpdatedEventHandler<,>), config);
 
-            Assert.Equal(1, builder.Services.Count);
+            Assert.Single(builder.Services);
             Assert.All(builder.Services, sd => Assert.Equal(typeof(RowUpdatedEventHandler<ISourceEvent, ISourceEvent>), sd?.ImplementationType));
             Assert.All(builder.Services, sd => Assert.Equal(typeof(IMessageHandler<RowUpdatedEvent<ISourceEvent>>), sd?.ServiceType));
         }
