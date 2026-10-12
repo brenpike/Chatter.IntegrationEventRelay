@@ -22,6 +22,16 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcChangeSource
         public void MustNotClaimCommitOrderWhenParkingRows()
             => Assert.Equal(ChangeSourceCapabilities.Resumable | ChangeSourceCapabilities.CommitTime, new CdcChangeSource("fakedb-cdc", CdcErrorPolicy.ParkRow).Capabilities);
 
+        [Fact]
+        public void MustShareOneLeaseHoweverTheNamesAreSpelled()
+        {
+            var table = new SourceTable("Event1", "dbo", "FakeDb");
+            var a = new CdcCapture("fakedb-cdc", "dbo_Event1", table, typeof(object), new CdcSourceOptions());
+            var b = new CdcCapture("FakeDb-CDC", "DBO_event1", table, typeof(object), new CdcSourceOptions());
+
+            Assert.Equal(a.LeaseResource, b.LeaseResource);
+        }
+
         [Theory]
         [InlineData(null)]
         [InlineData("")]

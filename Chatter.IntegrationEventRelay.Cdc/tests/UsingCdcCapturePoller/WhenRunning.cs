@@ -51,7 +51,7 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcCapturePoller
             Assert.Equal(CdcPollerState.Standby, _harness.Poller.State);
             Assert.Empty(_processor.Ids);
             Assert.All(_harness.Leases.Leases, l => Assert.True(l.Disposed));
-            Assert.All(_harness.Leases.Resources, r => Assert.Equal("Chatter.IntegrationEventRelay.Cdc:fakedb-cdc:dbo_Event1", r));
+            Assert.All(_harness.Leases.Resources, r => Assert.Equal("Chatter.IntegrationEventRelay.Cdc:FAKEDB-CDC:DBO_EVENT1", r));
         }
 
         [Fact]

@@ -14,5 +14,9 @@ internal sealed record CdcCapture(string SourceName, string CaptureInstance, Sou
 	/// <summary>
 	/// The application lock that makes one relay instance the active poller of this capture instance.
 	/// </summary>
-	public string LeaseResource => $"Chatter.IntegrationEventRelay.Cdc:{SourceName}:{CaptureInstance}";
+	/// <remarks>
+	/// Application lock names compare as binary, while source and capture instance names are case-insensitive, so the
+	/// name is normalized: relay instances that spell them differently still share one lease.
+	/// </remarks>
+	public string LeaseResource => $"Chatter.IntegrationEventRelay.Cdc:{SourceName.ToUpperInvariant()}:{CaptureInstance.ToUpperInvariant()}";
 }
