@@ -15,6 +15,12 @@ namespace Chatter.IntegrationEventRelay.Cdc;
 /// server's UTC offset when the batch is read. If the server's time zone observes daylight saving time, changes
 /// committed before a clock change but read after it are off by the change; run SQL Server in UTC to avoid it.
 /// </para>
+/// <para>
+/// Permissions: the relay's login needs <c>SELECT</c> on the <c>cdc</c> schema, since it reads the change tables
+/// directly (the only place SQL Server exposes <c>__$command_id</c>, which orders a transaction's changes) and CDC's
+/// metadata tables; and <c>SELECT</c>, <c>INSERT</c>, <c>UPDATE</c> and <c>DELETE</c> on the relay's
+/// <see cref="Core.Configuration.EventMappingConfiguration.Schema"/>. See <c>.scripts/cdc/enable-cdc.sql</c>.
+/// </para>
 /// </remarks>
 public sealed class CdcChangeSource : IChangeSource
 {

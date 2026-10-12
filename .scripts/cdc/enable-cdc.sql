@@ -30,3 +30,8 @@ IF @capturedObjectId IS NULL
 		@capture_instance = @captureInstance,
 		@allow_partition_switch = @allowPartitionSwitch;
 GO
+
+-- The relay's login needs to read CDC's change and metadata tables, and to use the relay's own tables (created by
+-- create-relay-tables.sql, in schema 'Chatter' unless IntegrationEventRelay:Schema says otherwise):
+--   GRANT SELECT ON SCHEMA::cdc TO [relay_user];
+--   GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::Chatter TO [relay_user];
