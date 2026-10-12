@@ -17,6 +17,10 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Chatter.IntegrationEventRel
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Chatter.IntegrationEventRelay.ServiceBroker.Tests", "Chatter.IntegrationEventRelay.ServiceBroker\tests\Chatter.IntegrationEventRelay.ServiceBroker.Tests.csproj", "{A3E0F6B2-7C41-4D8E-9B25-3F1C6D2E8A47}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Chatter.IntegrationEventRelay.Cdc", "Chatter.IntegrationEventRelay.Cdc\src\Chatter.IntegrationEventRelay.Cdc.csproj", "{6061EA1F-2644-44B7-9AF8-63AE25D49C8A}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Chatter.IntegrationEventRelay.Cdc.Tests", "Chatter.IntegrationEventRelay.Cdc\tests\Chatter.IntegrationEventRelay.Cdc.Tests.csproj", "{AE3C9BCB-B007-46BF-875B-11BD3AD7B59B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -47,6 +51,14 @@ Global
 		{A3E0F6B2-7C41-4D8E-9B25-3F1C6D2E8A47}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A3E0F6B2-7C41-4D8E-9B25-3F1C6D2E8A47}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A3E0F6B2-7C41-4D8E-9B25-3F1C6D2E8A47}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6061EA1F-2644-44B7-9AF8-63AE25D49C8A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6061EA1F-2644-44B7-9AF8-63AE25D49C8A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6061EA1F-2644-44B7-9AF8-63AE25D49C8A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6061EA1F-2644-44B7-9AF8-63AE25D49C8A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AE3C9BCB-B007-46BF-875B-11BD3AD7B59B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AE3C9BCB-B007-46BF-875B-11BD3AD7B59B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AE3C9BCB-B007-46BF-875B-11BD3AD7B59B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AE3C9BCB-B007-46BF-875B-11BD3AD7B59B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -54,6 +66,7 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{946007F2-0DE7-4107-852F-90DF40DBCB12} = {90BE6DF5-F9EF-4644-A454-27142FB7EDF4}
 		{A3E0F6B2-7C41-4D8E-9B25-3F1C6D2E8A47} = {90BE6DF5-F9EF-4644-A454-27142FB7EDF4}
+		{AE3C9BCB-B007-46BF-875B-11BD3AD7B59B} = {90BE6DF5-F9EF-4644-A454-27142FB7EDF4}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {6F2EC69A-45E3-40FD-A1F8-504E1B46DB0F}
