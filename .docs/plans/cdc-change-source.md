@@ -109,7 +109,7 @@ Outcome recorded in the PR description.
 - Type names resolve by assembly-qualified name, then full name, then unique simple name (full/simple names
   ignoring case, as before); only the suffix match is gone.
 - `RowChange<T>` also carries `SourceName`; `SourceTable` is nullable (sources that can't tell). The processor
-  matches mappings by source name, source type, operation and table (when known).
+  matches mappings by source name, source type, operation, table (when known) and database (when the change and the mapping both name one).
 - Mappers are resolved per integration event type by `IMappingInvoker<TSource>` (`MappingInvoker<TSource, TEvent>`),
   avoiding runtime reflection. Message id = `<source name>:<position>:<event type Name>:<8-hex SHA-256 of its FullName>` (positions are only unique within a source; the hash separates same-named types; fits the 128-char ASB limit).
 - `IChangeSource` also has `Type`. Adapters register one `IChangeSource` per source name; the startup check
