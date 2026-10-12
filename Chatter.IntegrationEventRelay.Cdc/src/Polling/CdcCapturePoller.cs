@@ -183,6 +183,9 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 	/// <returns>True if it moved the checkpoint, so more changes may be waiting; false if there was nothing to read.</returns>
 	internal async Task<bool> PollOnceAsync(CancellationToken cancellationToken)
 	{
+		// Read first: with StartPosition Latest and no checkpoint, it's the boundary between changes skipped as older than
+		// the relay and changes relayed, so it's taken as close to the start of the poll as possible
+		var maxLsn = await _queries.GetMaxLsnAsync(cancellationToken).ConfigureAwait(false);
 		var minLsn = await _queries.GetMinLsnAsync(Capture.CaptureInstance, cancellationToken).ConfigureAwait(false);
 		if (minLsn.IsZero)
 		{
@@ -204,7 +207,6 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 				await RefreshParkedChangesAsync(cancellationToken).ConfigureAwait(false);
 		}
 
-		var maxLsn = await _queries.GetMaxLsnAsync(cancellationToken).ConfigureAwait(false);
 		var checkpoint = await _checkpoints.GetAsync(Capture.SourceName, Capture.CaptureInstance, cancellationToken).ConfigureAwait(false);
 
 		CdcLsn from;

@@ -35,6 +35,7 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Fakes
         public List<(CdcLsn From, CdcLsn To)> ChangeReads { get; } = new();
         public List<int> BatchSizes { get; } = new();
         public Exception FailWith { get; set; }
+        public System.Action OnGetCapturedColumns { get; set; }
 
         public IReadOnlyList<FakeTransaction> Transactions
         {
@@ -126,6 +127,12 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Fakes
         public Task<TimeSpan> GetServerUtcOffsetAsync(CancellationToken cancellationToken) => Result(ServerUtcOffset);
 
         public Task<IReadOnlyList<string>> GetCapturedColumnsAsync(string captureInstance, CancellationToken cancellationToken)
+        {
+            OnGetCapturedColumns?.Invoke();
+            return GetCapturedColumnsCoreAsync();
+        }
+
+        private Task<IReadOnlyList<string>> GetCapturedColumnsCoreAsync()
             => Result<IReadOnlyList<string>>(CaptureInstanceExists ? CapturedColumns.ToList() : new List<string>());
 
         public Task<(string Schema, string Name)?> GetCapturedTableAsync(string captureInstance, CancellationToken cancellationToken)

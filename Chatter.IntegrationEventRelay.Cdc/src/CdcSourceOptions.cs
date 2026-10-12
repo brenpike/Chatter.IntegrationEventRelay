@@ -86,7 +86,11 @@ public enum CdcStartPosition
 {
 	/// <summary>The oldest change still in the change table.</summary>
 	Earliest,
-	/// <summary>Changes committed after the relay first starts; older changes are skipped.</summary>
+	/// <summary>
+	/// Changes captured after the relay's first poll of the capture instance; older changes are skipped. The boundary is
+	/// the newest LSN read at the start of that poll, so a change committed at the moment the relay starts may fall on
+	/// either side.
+	/// </summary>
 	Latest
 }
 

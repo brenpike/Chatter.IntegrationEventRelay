@@ -249,6 +249,22 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcCapturePoller
         }
 
         [Fact]
+        public async Task MustTakeTheLatestBoundaryBeforeTheFirstPollsOtherQueries()
+        {
+            _harness.Options.StartPosition = CdcStartPosition.Latest;
+            var old = Insert(1);
+
+            // A change captured while the poll checks the capture instance's columns
+            Cdc.OnGetCapturedColumns = () => Insert(2);
+            await PollAsync();
+            Cdc.OnGetCapturedColumns = null;
+            await PollAsync();
+
+            Assert.Equal(old.Lsn, _harness.Checkpoints.Saves[0]);
+            Assert.Equal(2, _batches.Single().Single().NewValue.Id);
+        }
+
+        [Fact]
         public async Task MustKeepTheStartAnchorAcrossRestarts()
         {
             _harness.Options.StartPosition = CdcStartPosition.Latest;
