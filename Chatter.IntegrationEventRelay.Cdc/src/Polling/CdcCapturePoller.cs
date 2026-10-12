@@ -108,6 +108,9 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 				catch (CdcLeaseLostException)
 				{
 					_logger.LogWarning("Lost the lease on capture instance '{CaptureInstance}' of source '{SourceName}'; another relay instance may take over", Capture.CaptureInstance, Capture.SourceName);
+					// No longer the owner: health checks and gauges ignore it while another instance may be relaying
+					State = CdcPollerState.Standby;
+					ConsecutiveFailures = 0;
 					await DelayAsync(Options.LeaseRetryInterval, stoppingToken).ConfigureAwait(false);
 				}
 			}

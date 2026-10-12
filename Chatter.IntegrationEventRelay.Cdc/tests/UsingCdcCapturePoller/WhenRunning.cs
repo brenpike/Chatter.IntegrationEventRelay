@@ -101,6 +101,26 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcCapturePoller
         }
 
         [Fact]
+        public async Task MustStandByAsSoonAsTheLeaseIsLost()
+        {
+            // A long wait before retaking the lease, so the state during it can be observed
+            var harness = new PollerHarness<Row>(new CdcSourceOptions { PollInterval = TimeSpan.FromMilliseconds(5), LeaseRetryInterval = TimeSpan.FromMinutes(1) })
+            {
+                Processor = _processor
+            };
+            harness.Leases.HeldChecks = 1;
+            using var cts = new CancellationTokenSource();
+            var run = harness.Poller.RunAsync(cts.Token);
+
+            await WaitForAsync(() => harness.Logger.Entries.Any(e => e.Message.Contains("Lost the lease")));
+            await WaitForAsync(() => harness.Poller.State == CdcPollerState.Standby);
+
+            Assert.Equal(0, harness.Poller.ConsecutiveFailures);
+            cts.Cancel();
+            await run.WaitAsync(Timeout);
+        }
+
+        [Fact]
         public async Task MustStopPollingWhenTheLeaseIsLostAndTryToRetakeIt()
         {
             _harness.Leases.HeldChecks = 1;
