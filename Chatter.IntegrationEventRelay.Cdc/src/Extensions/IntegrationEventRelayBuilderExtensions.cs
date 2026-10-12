@@ -24,6 +24,7 @@ public static class IntegrationEventRelayBuilderExtensions
 
 	private const string DefaultTableSchema = "dbo";
 	private const int MaxNameLength = 128;
+	private const int MaxCaptureInstanceLength = 100; // sys.sp_cdc_enable_table's limit
 
 	/// <summary>
 	/// Captures changes with SQL Server Change Data Capture for every mapping whose source is of type "Cdc". Each capture
@@ -139,12 +140,13 @@ public static class IntegrationEventRelayBuilderExtensions
 		var tableSchema = mapping.Section?[TableSchemaKey] is { Length: > 0 } schema ? schema : DefaultTableSchema;
 		var captureInstance = mapping.Section?[CaptureInstanceKey] is { Length: > 0 } instance ? instance : $"{tableSchema}_{mapping.TableName}";
 
-		// The relay's tables store both as nvarchar(128)/sysname; longer names would only fail when saving a checkpoint,
-		// after the batch was published, so the same batch would be republished forever
+		// The relay's tables store the source name as nvarchar(128); a longer one would only fail when saving a checkpoint,
+		// after the batch was published, so the same batch would be republished forever. SQL Server allows capture
+		// instance names of up to 100 characters.
 		if (sourceName.Length > MaxNameLength)
 			throw new ArgumentException($"CDC source name '{sourceName}' is longer than {MaxNameLength} characters.");
-		if (captureInstance.Length > MaxNameLength)
-			throw new ArgumentException($"Capture instance name '{captureInstance}' is longer than {MaxNameLength} characters; set a shorter '{CaptureInstanceKey}' on the mapping.");
+		if (captureInstance.Length > MaxCaptureInstanceLength)
+			throw new ArgumentException($"Capture instance name '{captureInstance}' is longer than {MaxCaptureInstanceLength} characters, SQL Server's limit for capture instances; set a shorter '{CaptureInstanceKey}' on the mapping.");
 
 		return new CaptureTarget(sourceName, captureInstance, sourceEventType, connectionString, tableSchema, string.IsNullOrWhiteSpace(mapping.DatabaseName) ? null : mapping.DatabaseName,
 			new SourceTable(mapping.TableName, tableSchema, string.IsNullOrWhiteSpace(databaseName) ? null : databaseName));

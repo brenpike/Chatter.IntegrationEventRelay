@@ -223,13 +223,24 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingIntegrationEventRelayBuil
         }
 
         [Fact]
-        public void MustRejectACaptureInstanceNameLongerThanItsColumn()
+        public void MustRejectACaptureInstanceNameLongerThanSqlServerAllows()
         {
             Source("fakedb-cdc");
-            Map(Mapping("fakedb-cdc", settings: new() { ["CaptureInstance"] = new string('c', 129) }));
+            Map(Mapping("fakedb-cdc", settings: new() { ["CaptureInstance"] = new string('c', 101) }));
 
             var e = Assert.Throws<ArgumentException>(() => Use());
-            Assert.Contains("CaptureInstance", e.Message);
+            Assert.Contains("longer than 100", e.Message);
+        }
+
+        [Fact]
+        public void MustAcceptACaptureInstanceNameOfSqlServersMaximumLength()
+        {
+            Source("fakedb-cdc");
+            Map(Mapping("fakedb-cdc", settings: new() { ["CaptureInstance"] = new string('c', 100) }));
+
+            Use();
+
+            Assert.Single(Pollers());
         }
 
         [Fact]
