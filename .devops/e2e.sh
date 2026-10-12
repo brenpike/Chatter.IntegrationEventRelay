@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 # End-to-end check of the docker-compose demo: builds and starts the stack, then waits until the consumers have
-# handled the expected number of distinct integration events. Leaves the stack running; tear down with
+# handled exactly the expected number of distinct integration events. Leaves the stack running; tear down with
 # `docker compose down -v`.
 #
 #   EXPECTED_EVENTS        number of distinct integration events the seed script should produce (default 100)
 #   E2E_TIMEOUT_SECONDS    how long to wait for them once the stack is up (default 600)
+#   E2E_SETTLE_SECONDS     how long the count must stay unchanged before it is checked (default 20)
 
 set -euo pipefail
 
 expected=${EXPECTED_EVENTS:-100}
 timeout=${E2E_TIMEOUT_SECONDS:-600}
+settle=${E2E_SETTLE_SECONDS:-20}
 
 cd "$(dirname "$0")/.."
 
@@ -46,8 +48,19 @@ while [ $SECONDS -lt $deadline ]; do
 	consumed=$(count_consumed)
 	echo "$(date -u +%H:%M:%S) consumed ${consumed}/${expected} distinct integration events"
 	if [ "$consumed" -ge "$expected" ]; then
-		echo "E2E passed: ${consumed} distinct integration events consumed (expected ${expected})."
-		exit 0
+		# Wait until no more events arrive, so duplicate publications can't stand in for missing events
+		sleep "$settle"
+		settled=$(count_consumed)
+		if [ "$settled" -ne "$consumed" ]; then
+			continue
+		fi
+		if [ "$settled" -eq "$expected" ]; then
+			echo "E2E passed: ${settled} distinct integration events consumed (expected ${expected})."
+			exit 0
+		fi
+		echo "E2E failed: ${settled} distinct integration events consumed, expected exactly ${expected}." >&2
+		dump_logs
+		exit 1
 	fi
 	sleep 5
 done
