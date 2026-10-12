@@ -59,16 +59,27 @@ public class MappingInvoker<TSource, TIntegrationEvent> : IMappingInvoker<TSourc
 	/// A message id that stays the same when a change is replayed, so the broker can drop the duplicate. Null when the source has no positions.
 	/// </summary>
 	/// <remarks>
-	/// Positions are only unique within a source, so the id is namespaced by source name. Every mapping of one change
-	/// produces a different event type, so the event type keeps their ids apart: its name for readability, plus a hash
-	/// of its full name so types with the same name in different namespaces differ. Kept short for brokers that limit
-	/// message ids (Azure Service Bus: 128 characters).
+	/// Positions are only unique within a source, and every mapping of one change produces a different event type, so
+	/// the id identifies the source, the position and the event type (its assembly name and full name; not the assembly
+	/// version, so ids survive upgrades). The parts are length-prefixed before hashing so no two combinations encode
+	/// alike, and the 128-bit hash keeps the id at 32 characters whatever their length (Azure Service Bus allows 128).
 	/// </remarks>
 	public static string? GetMessageId(RowChange<TSource> change)
-		=> change.Position is null ? null : $"{change.SourceName}:{change.Position.ToMessageId()}:{typeof(TIntegrationEvent).Name}:{EventTypeHash}";
+	{
+		if (change.Position is null)
+			return null;
 
-	private static readonly string EventTypeHash = Convert.ToHexString(
-		SHA256.HashData(Encoding.UTF8.GetBytes(typeof(TIntegrationEvent).FullName ?? typeof(TIntegrationEvent).Name)), 0, 4).ToLowerInvariant();
+		var eventType = typeof(TIntegrationEvent);
+		var parts = new[] { change.SourceName, change.Position.ToMessageId(), eventType.Assembly.GetName().Name ?? string.Empty, eventType.FullName ?? eventType.Name };
+		using var buffer = new MemoryStream();
+		using (var writer = new BinaryWriter(buffer, Encoding.UTF8, leaveOpen: true))
+		{
+			foreach (var part in parts)
+				writer.Write(part); // length-prefixed
+		}
+
+		return Convert.ToHexString(SHA256.HashData(buffer.ToArray()), 0, 16).ToLowerInvariant();
+	}
 
 	private IMapSourceToIntegrationEvent<TSource, TIntegrationEvent?> GetMapper(RowOperation operation) => operation switch
 	{

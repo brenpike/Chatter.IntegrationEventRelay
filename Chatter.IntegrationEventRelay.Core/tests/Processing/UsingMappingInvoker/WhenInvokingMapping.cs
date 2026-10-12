@@ -117,11 +117,30 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Processing.UsingMappingInvoke
         }
 
         [Fact]
-        public async Task MustDeriveTheMessageIdFromTheSourcePositionAndIntegrationEventType()
+        public async Task MustPublishWithTheMessageIdDerivedFromThePosition()
         {
-            await _sut.InvokeAsync(Change(RowOperation.Insert, new ChangePosition("0x0001:0x0002")), _mapping, CancellationToken.None);
+            var change = Change(RowOperation.Insert, new ChangePosition("0x0001:0x0002"));
 
-            _publisher.Verify(p => p.PublishAsync(It.IsAny<FakeEvent>(), It.IsAny<EventMappingConfigurationItem>(), It.Is<string>(id => id.StartsWith($"source:0x0001:0x0002:{nameof(FakeEvent)}:")), It.IsAny<CancellationToken>()), Times.Once());
+            await _sut.InvokeAsync(change, _mapping, CancellationToken.None);
+
+            _publisher.Verify(p => p.PublishAsync(It.IsAny<FakeEvent>(), It.IsAny<EventMappingConfigurationItem>(), MappingInvoker<FakeSource, FakeEvent>.GetMessageId(change), It.IsAny<CancellationToken>()), Times.Once());
+        }
+
+        [Fact]
+        public void MustNotConfuseWhereTheSourceNameEndsAndThePositionStarts()
+        {
+            var first = MappingInvoker<FakeSource, FakeEvent>.GetMessageId(Change(RowOperation.Insert, new ChangePosition("c")) with { SourceName = "a:b" });
+            var second = MappingInvoker<FakeSource, FakeEvent>.GetMessageId(Change(RowOperation.Insert, new ChangePosition("b:c")) with { SourceName = "a" });
+
+            Assert.NotEqual(first, second);
+        }
+
+        [Fact]
+        public void MustGiveDifferentPositionsDifferentMessageIds()
+        {
+            Assert.NotEqual(
+                MappingInvoker<FakeSource, FakeEvent>.GetMessageId(Change(RowOperation.Insert, new ChangePosition("0x0001"))),
+                MappingInvoker<FakeSource, FakeEvent>.GetMessageId(Change(RowOperation.Insert, new ChangePosition("0x0002"))));
         }
 
         [Fact]
@@ -139,11 +158,10 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Processing.UsingMappingInvoke
         }
 
         [Fact]
-        public void MustKeepMessageIdsWithinTheAzureServiceBusLimitForCdcPositions()
+        public void MustKeepMessageIdsShortWhateverTheLengthOfTheSourceNameAndPosition()
         {
-            var cdcPosition = new ChangePosition("dbo_Event1:0x0000002A000001F80003:0x0000002A000001F80002:2");
-            var id = MappingInvoker<FakeSource, FakeEvent>.GetMessageId(Change(RowOperation.Insert, cdcPosition) with { SourceName = "fakedb-cdc" });
-            Assert.True(id.Length <= 128, $"{id.Length} characters: {id}");
+            var id = MappingInvoker<FakeSource, FakeEvent>.GetMessageId(Change(RowOperation.Insert, new ChangePosition(new string('p', 500))) with { SourceName = new string('s', 500) });
+            Assert.Equal(32, id.Length);
         }
 
         [Fact]
