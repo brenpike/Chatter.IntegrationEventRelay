@@ -40,7 +40,7 @@ public static class IntegrationEventRelayBuilderExtensions
 		var configuration = builder.Configuration;
 		var mappings = configuration.GetMappingsForSourceType(CdcChangeSource.SourceType).ToList();
 		if (mappings.Count > 0)
-			_ = SqlIdentifier.Quote(configuration.Schema ?? string.Empty); // fail now, not when the first poller starts
+			_ = SqlIdentifier.Quote(configuration.Schema); // fail now, not when the first poller starts
 
 		var sourceNames = mappings.Select(EventMappingConfiguration.GetSourceName)
 			.Concat(configuration.Sources.Where(s => string.Equals(s.Value.Type, CdcChangeSource.SourceType, StringComparison.OrdinalIgnoreCase)).Select(s => s.Key))

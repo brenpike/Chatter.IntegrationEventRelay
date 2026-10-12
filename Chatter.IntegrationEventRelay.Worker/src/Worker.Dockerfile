@@ -24,7 +24,7 @@ COPY ["./Chatter.IntegrationEventRelay.Cdc/tests/", "./Chatter.IntegrationEventR
 
 RUN dotnet test "./Chatter.IntegrationEventRelay.Core/tests/Chatter.IntegrationEventRelay.Core.Tests.csproj" -c Release --no-restore
 RUN dotnet test "./Chatter.IntegrationEventRelay.ServiceBroker/tests/Chatter.IntegrationEventRelay.ServiceBroker.Tests.csproj" -c Release --no-restore
-RUN dotnet test "./Chatter.IntegrationEventRelay.Cdc/tests/Chatter.IntegrationEventRelay.Cdc.Tests.csproj" -c Release --no-restore
+RUN dotnet test "./Chatter.IntegrationEventRelay.Cdc/tests/Chatter.IntegrationEventRelay.Cdc.Tests.csproj" -c Release --no-restore --filter "Category!=Integration"
 
 RUN dotnet publish "./Chatter.IntegrationEventRelay.Worker/src/Chatter.IntegrationEventRelay.Worker.csproj" -c Release -o /app/publish
 

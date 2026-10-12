@@ -33,8 +33,9 @@ jobs:
       run: dotnet restore
     - name: Build
       run: dotnet build --configuration Release --no-restore
+    # SQL Server integration tests need Docker and run in the cdc-integration job
     - name: Test
-      run: dotnet test --configuration Release --no-build --verbosity normal
+      run: dotnet test --configuration Release --no-build --verbosity normal --filter "Category!=Integration"
     - name: Publish
       run: |
         dotnet publish Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj -c Release -o publish/source
@@ -59,6 +60,21 @@ jobs:
         path: publish/nuget/**
         retention-days: 5
         if-no-files-found: error
+
+  cdc-integration:
+    name: cdc integration (SQL Server 2022 + CDC)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.dotnet-version }}
+    - name: Test
+      run: dotnet test Chatter.IntegrationEventRelay.Cdc/tests/Chatter.IntegrationEventRelay.Cdc.Tests.csproj --configuration Release --verbosity normal --filter "Category=Integration"
 
   e2e:
     name: e2e (docker compose + Service Bus emulator)
