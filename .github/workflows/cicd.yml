@@ -57,6 +57,8 @@ jobs:
   e2e:
     name: e2e (docker compose + Service Bus emulator)
     runs-on: ubuntu-latest
+    # Backstop for a hung startup; e2e.sh itself waits at most 10 minutes for events
+    timeout-minutes: 20
     # Validates changes before merge; not needed again once a PR is closed
     if: github.event_name != 'pull_request' || github.event.action != 'closed'
 

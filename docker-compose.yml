@@ -81,10 +81,11 @@ services:
       db:
         condition: service_healthy
 
-  # The emulator image has no health check; wait until it accepts AMQP connections
+  # The emulator image has no health check; wait until it accepts AMQP connections.
+  # Gives up after 5 minutes so `docker compose up` fails instead of waiting forever on an emulator that never starts.
   servicebus-ready:
     image: busybox:1.36
-    command: ["sh", "-c", "until nc -z servicebus 5672; do sleep 2; done; sleep 10"]
+    command: ["sh", "-c", "i=0; until nc -z servicebus 5672; do i=$$((i+1)); if [ $$i -ge 150 ]; then echo 'Service Bus emulator did not open port 5672 within 5 minutes' >&2; exit 1; fi; sleep 2; done; sleep 10"]
     depends_on:
       - servicebus
 
