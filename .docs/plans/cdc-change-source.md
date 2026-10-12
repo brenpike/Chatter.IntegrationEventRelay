@@ -111,7 +111,7 @@ Outcome recorded in the PR description.
 - `RowChange<T>` also carries `SourceName`; `SourceTable` is nullable (sources that can't tell). The processor
   matches mappings by source name, source type, operation, table (when known) and database (when the change and the mapping both name one).
 - Mappers are resolved per integration event type by `IMappingInvoker<TSource>` (`MappingInvoker<TSource, TEvent>`),
-  avoiding runtime reflection. Message id = `<source name>:<position>:<event type Name>:<8-hex SHA-256 of its FullName>` (positions are only unique within a source; the hash separates same-named types; fits the 128-char ASB limit).
+  avoiding runtime reflection. Message id = first 128 bits (32 hex) of SHA-256 over the length-prefixed source name, position, event type assembly name and full name: unambiguous, distinct per source and event type, stable across versions and replays, always within the 128-char ASB limit.
 - `IChangeSource` also has `Type`. Adapters register one `IChangeSource` per source name; the startup check
   (`IRelayStartupCheck` + `StartupValidationService`) matches mappings to them.
 - `ChangeSourceConfiguration.Section` exposes the raw config section for adapter-specific keys (e.g. `PollInterval`).
@@ -266,7 +266,7 @@ loop:
   checkpoint.Save(to)                           // only after full batch success
 ```
 - At-least-once: crash before checkpoint -> batch replayed; message ids (`ci:lsn:seqval:op[:eventType]`)
-  let Azure Service Bus duplicate detection drop replays (topic must have duplicate detection enabled).
+  let Azure Service Bus duplicate detection drop replays (Phase 1 derives them as described in 1a's implementation notes) (topic must have duplicate detection enabled).
 - Graceful shutdown: finish in-flight publish, do not save a partial checkpoint.
 
 ### 2c. Error policy for a change that keeps failing
