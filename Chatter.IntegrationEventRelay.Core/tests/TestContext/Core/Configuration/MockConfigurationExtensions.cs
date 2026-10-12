@@ -9,6 +9,5 @@ public static class MockConfigurationExtensions
         public MockConfigurationContext(IMockContext context) => TestContext = context;
         public EventMappingConfigurationItemCreator EventMappingConfigurationItem => new(TestContext);
         public EventMappingConfigurationCreator EventMappingConfiguration => new(TestContext);
-        public EventMappingConfigItemProviderCreator EventMappingConfigItemProvider => new(TestContext);
     }
 }

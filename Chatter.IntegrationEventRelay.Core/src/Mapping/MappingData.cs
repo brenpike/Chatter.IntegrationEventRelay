@@ -1,6 +1,6 @@
 ﻿namespace Chatter.IntegrationEventRelay.Core.Mapping;
 
-public record MappingData<TSourceEvent> where TSourceEvent : class, ISourceEvent
+public record MappingData<TSourceEvent> where TSourceEvent : class
 {
     public MappingData(TSourceEvent? oldValue, TSourceEvent newValue)
     {

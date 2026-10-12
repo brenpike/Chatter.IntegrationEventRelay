@@ -1,91 +1,72 @@
-﻿using Chatter.CQRS;
 using Chatter.CQRS.DependencyInjection;
+using Chatter.CQRS.Events;
+using Chatter.IntegrationEventRelay.Core.Builder;
 using Chatter.IntegrationEventRelay.Core.Configuration;
-using Chatter.IntegrationEventRelay.Core.Extensions;
-using Chatter.IntegrationEventRelay.Core.Handlers;
-using Chatter.IntegrationEventRelay.Core.Mapping;
-using Chatter.SqlChangeFeed;
-using Chatter.SqlChangeFeed.Configuration;
-using Chatter.SqlChangeFeed.DependencyInjection;
+using Chatter.IntegrationEventRelay.Core.Processing;
+using Chatter.IntegrationEventRelay.Core.Publishing;
+using Chatter.IntegrationEventRelay.Core.Validation;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Chatter.IntegrationEventRelay.Core.Extensions;
 
 public static class ChatterBuilderExtensions
 {
-	public static IChatterBuilder AddIntegrationEventRelay(this IChatterBuilder builder, EventMappingConfiguration eventMappingConfig, Action<SqlChangeFeedOptionsBuilder>? optionsBuilder = null)
+	/// <summary>
+	/// Adds the integration event relay: mapping configuration, mappers, the row change processor and the publisher.
+	/// Add a change source next, for example <c>.UseServiceBrokerChangeSource()</c>.
+	/// </summary>
+	public static IIntegrationEventRelayBuilder AddIntegrationEventRelay(this IChatterBuilder builder, EventMappingConfiguration eventMappingConfig)
 	{
+		_ = eventMappingConfig ?? throw new ArgumentNullException(nameof(eventMappingConfig));
+
 		builder.Services.AddSingleton(eventMappingConfig);
-		builder.Services.AddTransient<IEventMappingConfigItemProvider, EventMappingConfigItemProvider>();
-		builder.Services.AddTransient<IRelayIntegrationEvent, IntegrationEventRelayService>();
+		builder.Services.TryAddScoped<IIntegrationEventPublisher, BrokeredIntegrationEventPublisher>();
+		builder.Services.TryAdd(ServiceDescriptor.Scoped(typeof(IRowChangeProcessor<>), typeof(RowChangeProcessor<>)));
+		builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IRelayStartupCheck, MappingStartupCheck>());
+		builder.Services.AddHostedService<StartupValidationService>();
 
 		var assemblies = builder.AssemblySourceFilter.Apply();
+		var wiredMapperInterfaces = new HashSet<Type>();
 
 		foreach (var map in eventMappingConfig.Mappings ?? new List<EventMappingConfigurationItem>())
 		{
 			map.IntegrationEventType = map.IntegrationEventTypeName?.GetTypeFromString(assemblies);
 			map.SourceEventType = map.SourceEventTypeName?.GetTypeFromString(assemblies);
-			_ = map.SourceEventType ?? throw new ArgumentNullException(nameof(map.SourceEventType), $"No type found for {nameof(map.SourceEventTypeName)} for mapping to database '{map.DatabaseName}' and table '{map.TableName}'");
-			_ = map.IntegrationEventType ?? throw new ArgumentNullException(nameof(map.IntegrationEventType), $"No type found for {nameof(map.IntegrationEventTypeName)} for mapping to database '{map.DatabaseName}' and table '{map.TableName}'");
+			_ = map.SourceEventType ?? throw new ArgumentNullException(nameof(map.SourceEventType), $"No type found for {nameof(map.SourceEventTypeName)} '{map.SourceEventTypeName}' for mapping to table '{map.TableName}'");
+			_ = map.IntegrationEventType ?? throw new ArgumentNullException(nameof(map.IntegrationEventType), $"No type found for {nameof(map.IntegrationEventTypeName)} '{map.IntegrationEventTypeName}' for mapping to table '{map.TableName}'");
 
-			builder.WireHandlerExecutor(map);
+			if (!map.SourceEventType.IsClass)
+				throw new ArgumentException($"Source event type '{map.SourceEventType.FullName}' must be a class.", nameof(eventMappingConfig));
+			if (!map.IntegrationEventType.IsClass || !typeof(IEvent).IsAssignableFrom(map.IntegrationEventType))
+				throw new ArgumentException($"Integration event type '{map.IntegrationEventType.FullName}' must be a class that implements {nameof(IEvent)}.", nameof(eventMappingConfig));
 
-			if (map.SourceChangeType == ChangeTypes.Update)
-			{
-				builder.WireRowChangeEventHandlerFromConfig(typeof(RowUpdatedEvent<>), typeof(RowUpdatedEventHandler<,>), map);
-				builder.WireSourceToIntegrationEventMappers(typeof(IMapSourceUpdateToIntegrationEvent<,>), map);
-			}
+			builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped(
+				typeof(IMappingInvoker<>).MakeGenericType(map.SourceEventType),
+				typeof(MappingInvoker<,>).MakeGenericType(map.SourceEventType, map.IntegrationEventType)));
 
-			if (map.SourceChangeType == ChangeTypes.Delete)
-			{
-				builder.WireRowChangeEventHandlerFromConfig(typeof(RowDeletedEvent<>), typeof(RowDeletedEventHandler<,>), map);
-				builder.WireSourceToIntegrationEventMappers(typeof(IMapSourceDeleteToIntegrationEvent<,>), map);
-			}
-
-			if (map.SourceChangeType == ChangeTypes.Insert)
-			{
-				builder.WireRowChangeEventHandlerFromConfig(typeof(RowInsertedEvent<>), typeof(RowInsertedEventHandler<,>), map);
-				builder.WireSourceToIntegrationEventMappers(typeof(IMapSourceInsertToIntegrationEvent<,>), map);
-			}
+			var mapperInterface = MappingStartupCheck.GetMapperInterface(map.SourceChangeType);
+			if (wiredMapperInterfaces.Add(mapperInterface.MakeGenericType(map.SourceEventType, map.IntegrationEventType)))
+				builder.WireSourceToIntegrationEventMappers(mapperInterface, map);
 		}
 
-		builder.AddSqlChangeFeedPerUniqueDataSource(eventMappingConfig, optionsBuilder);
-
-		return builder;
+		return new IntegrationEventRelayBuilder(builder, eventMappingConfig);
 	}
 
-	public static IChatterBuilder AddIntegrationEventRelay(this IChatterBuilder builder, string sectionName = "IntegrationEventRelay", Action<SqlChangeFeedOptionsBuilder>? optionsBuilder = null)
+	/// <summary>
+	/// Adds the integration event relay, binding its configuration from <paramref name="sectionName"/>.
+	/// </summary>
+	public static IIntegrationEventRelayBuilder AddIntegrationEventRelay(this IChatterBuilder builder, string sectionName = "IntegrationEventRelay")
 	{
+		var section = builder.Configuration.GetSection(sectionName);
 		var eventMappingConfig = new EventMappingConfiguration();
-		builder.Configuration.GetSection(sectionName).Bind(eventMappingConfig);
-		return builder.AddIntegrationEventRelay(eventMappingConfig, optionsBuilder);
-	}
+		section.Bind(eventMappingConfig);
 
-	public static IChatterBuilder AddSqlChangeFeedPerUniqueDataSource(this IChatterBuilder builder, EventMappingConfiguration relayConfiguration, Action<SqlChangeFeedOptionsBuilder>? optionsBuilder)
-	{
-		if (relayConfiguration.Mappings is null)
-			return builder;
+		foreach (var (name, source) in eventMappingConfig.Sources)
+			source.Section = section.GetSection(nameof(EventMappingConfiguration.Sources)).GetSection(name);
 
-		var mappingGroups = relayConfiguration.Mappings.GroupBy(d => (d.ConnectionString, d.DatabaseName, d.TableName, d.SourceEventType));
-		foreach (var mappingGroup in mappingGroups)
-		{
-			var connString = string.IsNullOrWhiteSpace(mappingGroup.Key.ConnectionString) ? relayConfiguration.ConnectionString : mappingGroup.Key.ConnectionString;
-			if (string.IsNullOrWhiteSpace(connString))
-				throw new ArgumentNullException(nameof(connString), $"A connection string is required to watch for change events on table '{mappingGroup.Key.TableName}'. " +
-					$"Set 'ConnectionString' on {nameof(EventMappingConfigurationItem)} or {nameof(EventMappingConfiguration)}");
-
-			var connStringBuilder = new SqlConnectionStringBuilder(connString);
-			string databaseName = string.IsNullOrWhiteSpace(mappingGroup.Key.DatabaseName) ? connStringBuilder.InitialCatalog : mappingGroup.Key.DatabaseName;
-			if (string.IsNullOrWhiteSpace(databaseName))
-				throw new ArgumentNullException(nameof(databaseName), $"A database is required to watch for change events on table '{mappingGroup.Key.TableName}'. " +
-					$"Set Database/InitialCatalog of connection string or {nameof(EventMappingConfigurationItem)}.DatabaseName");
-
-			builder.AddSqlChangeFeed(mappingGroup.Key.SourceEventType, connString, databaseName, mappingGroup.Key.TableName, optionsBuilder);
-		}
-
-		return builder;
+		return builder.AddIntegrationEventRelay(eventMappingConfig);
 	}
 
 	public static IChatterBuilder WireSourceToIntegrationEventMappers(this IChatterBuilder builder, Type openSourceToIntegrationEventMapperType, EventMappingConfigurationItem map)
@@ -108,61 +89,5 @@ public static class ChatterBuilderExtensions
 				.WithTransientLifetime());
 
 		return builder;
-	}
-
-	public static IChatterBuilder WireRowChangeEventHandlerFromConfig(this IChatterBuilder builder, Type openGenericConcreteRowChangeEventType, Type openGenericConcreteRowChangeEventHandlerType, EventMappingConfigurationItem map)
-	{
-		_ = map ?? throw new ArgumentNullException(nameof(map), "Event mapping configuration cannot be null");
-		_ = openGenericConcreteRowChangeEventType ?? throw new ArgumentNullException(nameof(openGenericConcreteRowChangeEventType), "A source event type is required.");
-		_ = openGenericConcreteRowChangeEventHandlerType ?? throw new ArgumentNullException(nameof(openGenericConcreteRowChangeEventHandlerType), "An integration event type is required.");
-		_ = map.SourceEventType ?? throw new ArgumentNullException(nameof(map.SourceEventType), "A source event type is required.");
-		_ = map.IntegrationEventType ?? throw new ArgumentNullException(nameof(map.IntegrationEventType), "An integration event type is required.");
-
-		if (!openGenericConcreteRowChangeEventType.IsGenericTypeDefinition)
-			throw new ArgumentException(nameof(openGenericConcreteRowChangeEventType), "An open generic type definition is required.");
-
-		if (!openGenericConcreteRowChangeEventHandlerType.IsGenericTypeDefinition)
-			throw new ArgumentException(nameof(openGenericConcreteRowChangeEventHandlerType), "An open generic type definition is required.");
-
-		var closedGenericConcreteRowChangeEventType = openGenericConcreteRowChangeEventType.MakeGenericType(map.SourceEventType);
-		var closedGenericInterfaceMessageHandlerType = typeof(IMessageHandler<>).MakeGenericType(closedGenericConcreteRowChangeEventType);
-		var closedGenericConcreteRowChangeEventHandlerType = openGenericConcreteRowChangeEventHandlerType.MakeGenericType(map.SourceEventType, map.IntegrationEventType);
-
-		builder.Services.AddTransient(closedGenericInterfaceMessageHandlerType, closedGenericConcreteRowChangeEventHandlerType);
-		return builder;
-	}
-
-	public static IChatterBuilder WireHandlerExecutor(this IChatterBuilder builder, EventMappingConfigurationItem map)
-	{
-		_ = map.SourceEventType ?? throw new ArgumentNullException(nameof(map.SourceEventType), "A source event type is required.");
-		_ = map.IntegrationEventType ?? throw new ArgumentNullException(nameof(map.IntegrationEventType), "An integration event type is required.");
-
-		var closedIRowChangeHandlerExecutor = typeof(IRowChangeHandlerExecutor<,>).MakeGenericType(map.SourceEventType, map.IntegrationEventType);
-		var closedRowChangeExecutor = typeof(RowChangeExecutor<,>).MakeGenericType(map.SourceEventType, map.IntegrationEventType);
-
-		builder.Services.AddTransient(closedIRowChangeHandlerExecutor, closedRowChangeExecutor);
-
-		return builder;
-	}
-
-	[Obsolete("Blocks on the asynchronous installation. Use UseChangeFeedSqlMigrationsAsync instead.")]
-	public static IServiceProvider UseChangeFeedSqlMigrations(this IServiceProvider provider)
-		=> provider.UseChangeFeedSqlMigrationsAsync().GetAwaiter().GetResult();
-
-	public static async Task<IServiceProvider> UseChangeFeedSqlMigrationsAsync(this IServiceProvider provider, CancellationToken cancellationToken = default)
-	{
-		var relayConfiguration = provider.GetRequiredService<EventMappingConfiguration>();
-
-		if (relayConfiguration.Mappings is null)
-			return provider;
-
-		var mappingGroups = relayConfiguration.Mappings.GroupBy(d => (d.ConnectionString, d.DatabaseName, d.TableName, d.SourceEventType));
-		foreach (var mappingGroup in mappingGroups)
-		{
-			// No context capture, so the obsolete sync wrapper can't deadlock a single-threaded SynchronizationContext
-			await provider.UseChangeFeedSqlMigrationsAsync(mappingGroup.Key.SourceEventType, cancellationToken).ConfigureAwait(false);
-		}
-
-		return provider;
 	}
 }

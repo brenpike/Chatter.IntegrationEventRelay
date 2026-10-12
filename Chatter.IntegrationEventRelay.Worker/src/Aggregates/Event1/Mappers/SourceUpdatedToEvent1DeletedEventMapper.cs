@@ -1,9 +1,8 @@
-﻿using Chatter.CQRS.Context;
+﻿using Chatter.IntegrationEventRelay.Core.Abstractions;
 using Chatter.IntegrationEventRelay.Core.Configuration;
 using Chatter.IntegrationEventRelay.Core.Mapping;
 using Chatter.IntegrationEventRelay.Worker.Aggregates.Event1.IntegrationEvents;
 using Chatter.IntegrationEventRelay.Worker.Aggregates.Event1.SourceEvents;
-using Chatter.MessageBrokers.Context;
 
 namespace Chatter.IntegrationEventRelay.Worker.Aggregates.Event1.Mappers;
 
@@ -16,7 +15,7 @@ public class SourceUpdatedToEvent1DeletedEventMapper : IMapSourceUpdateToIntegra
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public Task<Event1DeletedEvent?> MapAsync(MappingData<Event1ChangedEvent> data, IMessageBrokerContext context, EventMappingConfigurationItem? mappingConfig)
+    public Task<Event1DeletedEvent?> MapAsync(MappingData<Event1ChangedEvent> data, RelayContext context, EventMappingConfigurationItem? mappingConfig)
     {
         if (data.OldValue?.DeletedBy is null && data.NewValue?.DeletedBy is not null)
         {

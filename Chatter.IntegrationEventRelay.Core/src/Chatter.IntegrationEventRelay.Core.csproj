@@ -4,10 +4,10 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.3.0</Version>
+    <Version>0.4.0</Version>
     <Authors>Brennan Pike</Authors>
     <Owners>Brennan Pike</Owners>
-    <Description>Capture domain events from changes in a SQL database and relay them to message broker infrastructure as integration events</Description>
+    <Description>Capture domain events from changes in a SQL database and relay them to message broker infrastructure as integration events. Add a change source package, such as Chatter.IntegrationEventRelay.ServiceBroker.</Description>
     <PackageId>Chatter.IntegrationEventRelay</PackageId>
     <RepositoryUrl>https://github.com/brenpike/Chatter.IntegrationEventRelay</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
@@ -18,9 +18,8 @@
 
   <ItemGroup>
     <PackageReference Include="Chatter.CQRS" Version="0.21.0" />
-    <PackageReference Include="Chatter.MessageBrokers.SqlServiceBroker" Version="0.18.0" />
-    <PackageReference Include="Chatter.SqlChangeFeed" Version="0.16.0" />
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.3" />
+    <PackageReference Include="Chatter.MessageBrokers" Version="0.35.3" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
   </ItemGroup>
 
 </Project>

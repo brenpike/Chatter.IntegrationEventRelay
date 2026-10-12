@@ -1,4 +1,4 @@
-﻿using Chatter.SqlChangeFeed;
+﻿using Chatter.IntegrationEventRelay.Core.Abstractions;
 using System.ComponentModel.DataAnnotations;
 
 namespace Chatter.IntegrationEventRelay.Core.Configuration;
@@ -37,7 +37,18 @@ public class EventMappingConfigurationItem
     public Type? IntegrationEventType { get; set; } = null;
 
     /// <summary>
-    /// Optional. The connection string of the sql server to watch for changes that are to be relayed to messaging infrastructure as integration events. If not set, <see cref="EventMappingConfiguration.ConnectionString"/> will be used.
+    /// Optional. The name of the change source to read changes from, as configured in <see cref="EventMappingConfiguration.Sources"/>.
+    /// If not set, the SQL Service Broker source using <see cref="EventMappingConfiguration.ConnectionString"/> is used.
+    /// </summary>
+    public string? Source { get; set; }
+
+    /// <summary>
+    /// Optional. Delivery guarantees this mapping needs from its source, for example "Ordered". Startup fails if the source doesn't provide them.
+    /// </summary>
+    public ChangeSourceCapabilities RequiredCapabilities { get; set; } = ChangeSourceCapabilities.None;
+
+    /// <summary>
+    /// Optional. The connection string of the sql server to watch for changes that are to be relayed to messaging infrastructure as integration events. If not set, the source's connection string or <see cref="EventMappingConfiguration.ConnectionString"/> will be used.
     /// </summary>
     public string? ConnectionString { get; set; }
     /// <summary>
@@ -53,7 +64,7 @@ public class EventMappingConfigurationItem
     /// The type of change to watch <see cref="TableName"/> for, so that <see cref="SourceEventType"/> and be relayed as an integration event of type <see cref="IntegrationEventType"/>
     /// </summary>
     [Required]
-    public ChangeTypes SourceChangeType { get; set; }
+    public RowOperation SourceChangeType { get; set; }
 
     /// <summary>
     /// Optional. The messaging infrastructure where the <see cref="IntegrationEventType"/> should be relayed upon a change to <see cref="SourceEventType"/>. If left empty, the first registered messaging infrastructure will be used.
