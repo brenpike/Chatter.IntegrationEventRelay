@@ -9,13 +9,8 @@
     - [Chatter.IntegrationEventRelay.Consumer](#chatterintegrationeventrelayconsumer)
   - [Upgrading to 0.3.0](#upgrading-to-030)
   - [Running this repo locally](#running-this-repo-locally)
-    - [Setup Azure Service Bus](#setup-azure-service-bus)
-      - [Create namespace, topics and subscriptions](#create-namespace-topics-and-subscriptions)
-      - [Auth](#auth)
-    - [Setting up Docker environment](#setting-up-docker-environment)
-      - [sql.env](#sqlenv)
-      - [worker.env](#workerenv)
-      - [consumer.env](#consumerenv)
+    - [Service Bus emulator](#service-bus-emulator)
+    - [Using a real Azure Service Bus namespace](#using-a-real-azure-service-bus-namespace)
   - [Building a Worker Service](#building-a-worker-service)
     - [Create your dotnet Worker Service](#create-your-dotnet-worker-service)
     - [Add required dependencies](#add-required-dependencies)
@@ -65,77 +60,54 @@ The Consumer Service has been kept simple. It has [IEvent](https://github.com/br
 
 ## Running this repo locally
 
-### Setup Azure Service Bus
+The demo runs entirely in Docker: SQL Server, the [Azure Service Bus emulator](https://learn.microsoft.com/en-us/azure/service-bus-messaging/overview-emulator), two Worker Services and two Consumer Services. No Azure subscription or configuration is needed.
 
-**note: Azure Service Bus is being used as it is one of the only message broker infrastructure implementations for [Chatter](https://github.com/brenpike/Chatter) at this time. Message broker infrastructure is currently being implemented for RabbitMQ, which is much more Docker friendly and will greatly simplify execution of this solution without the following setup*
+From the root of the repo:
 
-#### Create namespace, topics and subscriptions
+```bash
+docker compose up --build
+```
 
-As this solution leverages [Azure Service Bus](https://docs.microsoft.com/en-us/azure/service-bus-messaging/service-bus-messaging-overview) as message broker infrastructure, you must [create your own Service Bus namepsace](https://docs.microsoft.com/en-us/azure/service-bus-messaging/service-bus-dotnet-how-to-use-topics-subscriptions) prior to executing `docker-compose up`. Once the namespace has been created, you'll need to create the Azure Service Bus Topics that will be published as integration events by the Worker Service as well as the Topic Subscriptions that the Consumer Service will subscribe to so that it can receive any integration events that have been published to the ASB namespace. The Topic/Subscription pairs to be created are as follows (in a real situation, it's best to leverage namespacing of your Topics and much better/more descriptive subscription names):
+On startup the database is created and seeded, and 100 database operations are executed against it. The Workers relay them as integration events through the emulator, and each Consumer logs every event it handles. Stop with `Ctrl+C`, then `docker compose down -v` to remove the containers.
+
+To run the same check CI does (start the stack and wait until all 100 integration events have been consumed):
+
+```bash
+./.devops/e2e.sh
+docker compose down -v
+```
+
+*Note: running the demo starts SQL Server and the Service Bus emulator containers with `ACCEPT_EULA=Y`, which accepts the SQL Server Developer Edition and [Service Bus emulator](https://github.com/Azure/azure-service-bus-emulator-installer/blob/main/EMULATOR_EULA.txt) license terms.*
+
+### Service Bus emulator
+
+The emulator's topics and subscriptions are declared in [`.devops/servicebus-emulator/Config.json`](.devops/servicebus-emulator/Config.json), because the emulator cannot create entities at runtime:
 
 - Topic: event-1-deleted, Subscription: sub1
 - Topic: event-1-restored, Subscription: sub1
 - Topic: event-2-created, Subscription: sub1
 
-#### Auth
+The emulator uses the demo's SQL Server container as its backing store and keeps no state between runs. The Workers and Consumers connect with the emulator's shared access key connection string, which `docker-compose.yml` sets by default.
 
-After these are created, you'll need to consider consider authorization and authentication with your service bus namespace. This sample Worker Service leverages the [Chatter.MessageBrokers.AzureServiceBus.Auth](https://github.com/brenpike/Chatter/tree/master/src/Chatter.MessageBrokers.AzureServiceBus.Auth) library, which provides multiple options, such as, client secret and certificate auth but also more development environment friendly choices such as [DefaultAzureCredential](https://docs.microsoft.com/en-us/dotnet/api/azure.identity.defaultazurecredential?view=azure-dotnet). Alternatively, if you use a service bus namespace connection string containing a valid access token (i.e., "Endpoint=sb://[insert service bus name].servicebus.windows.net/;SharedAccessKeyName=[key name];SharedAccessKey=[access key]"), this auth method will be prioritized above the supplied secret and DefaultAzureCredentials (*note: it's strongly advised to go this route for local development only and to leverage [user secrets](https://docs.microsoft.com/en-us/aspnet/core/security/app-secrets?view=aspnetcore-6.0&tabs=windows).
+### Using a real Azure Service Bus namespace
 
-### Setting up Docker environment
-
-To spin-up the docker environment, environment variables are required. The easiest way to approach this is by creating three environment files; one for SQL Server, one for the Worker Service and one for the Consumer Service. Once created, these environment files should be added to the .devops folder at the root of the repo.  From the root of the repo, `docker-compose build` and then `docker-compose up` to start the environment. Sample environment files:
-
-#### sql.env
+To relay to a real namespace instead, create the topics and subscriptions above in your namespace, then create a `.env` file next to `docker-compose.yml` (it is git-ignored):
 
 ```text
-SA_PASSWORD="itsAbadP@SSW0RD"
-ACCEPT_EULA=Y
+# Leave out the emulator (see docker-compose.azure.yml)
+COMPOSE_FILE=docker-compose.yml:docker-compose.azure.yml
+# Either a connection string with a shared access key...
+ASB_CONNECTION_STRING=Endpoint=sb://<your-namespace>.servicebus.windows.net/;SharedAccessKeyName=<key name>;SharedAccessKey=<key>
+# ...or the namespace endpoint plus an Entra ID (AAD) app registration
+# ASB_CONNECTION_STRING=Endpoint=sb://<your-namespace>.servicebus.windows.net/
+# ASB_CLIENT_ID=<app registration client id>
+# ASB_CLIENT_SECRET=<app registration secret>
+# ASB_AUTHORITY=https://login.microsoftonline.com/<tenant id>/
 ```
 
-#### worker.env
+Entra ID auth is used only when `ASB_CLIENT_ID` is set; a connection string with a shared access key always takes priority. The samples use the [Chatter.MessageBrokers.AzureServiceBus.Auth](https://github.com/brenpike/Chatter/tree/master/src/Chatter.MessageBrokers.AzureServiceBus.Auth) library, which also supports certificate, managed identity and interactive auth. Keep secrets out of source control, for example with [user secrets](https://learn.microsoft.com/en-us/aspnet/core/security/app-secrets) when running outside Docker.
 
-```text
-Logging__LogLevel__Default=Trace
-DOTNET_ENVIRONMENT=Local
-Chatter__Infrastructure__AzureServiceBus__ConnectionString="Endpoint=sb://<insert service bus name>.servicebus.windows.net/"
-Chatter__Infrastructure__AzureServiceBus__Auth__ClientSecret=<insert client secret>
-Chatter__Infrastructure__AzureServiceBus__Auth__ClientId=<insert client id>
-Chatter__Infrastructure__AzureServiceBus__Auth__Authority="https://login.microsoftonline.com/<tenant id>/"
-IntegrationEventRelay__ConnectionString=Server=db;Database=FakeDb;Trusted_Connection=false;User ID=sa;Password=itsAbadP@SSW0RD;TrustServerCertificate=True
-IntegrationEventRelay__Mappings__0__SourceEventTypeName=Event1ChangedEvent
-IntegrationEventRelay__Mappings__0__IntegrationEventTypeName=Chatter.IntegrationEventRelay.Worker.Aggregates.Event1.IntegrationEvents.Event1RestoredEvent
-IntegrationEventRelay__Mappings__0__SourceChangeType=Update
-IntegrationEventRelay__Mappings__0__DatabaseName=FakeDb
-IntegrationEventRelay__Mappings__0__TableName=Event1
-IntegrationEventRelay__Mappings__1__SourceEventTypeName=Event1ChangedEvent
-IntegrationEventRelay__Mappings__1__IntegrationEventTypeName=Chatter.IntegrationEventRelay.Worker.Aggregates.Event1.IntegrationEvents.Event1DeletedEvent
-IntegrationEventRelay__Mappings__1__SourceChangeType=Delete
-IntegrationEventRelay__Mappings__1__DatabaseName=FakeDb
-IntegrationEventRelay__Mappings__1__TableName=Event1
-IntegrationEventRelay__Mappings__1__MessagingInfrastructureType=Chatter.Infrastructure.AzureServiceBus
-IntegrationEventRelay__Mappings__1__InfrastructureMessageName=event-1-deleted
-IntegrationEventRelay__Mappings__2__SourceEventTypeName=Event1ChangedEvent
-IntegrationEventRelay__Mappings__2__IntegrationEventTypeName=Chatter.IntegrationEventRelay.Worker.Aggregates.Event1.IntegrationEvents.Event1DeletedEvent
-IntegrationEventRelay__Mappings__2__SourceChangeType=Update
-IntegrationEventRelay__Mappings__2__DatabaseName=FakeDb
-IntegrationEventRelay__Mappings__2__TableName=Event1
-IntegrationEventRelay__Mappings__3__SourceEventTypeName=Chatter.IntegrationEventRelay.Worker.Aggregates.Event2.SourceEvents.Event2ChangedEvent
-IntegrationEventRelay__Mappings__3__IntegrationEventTypeName=Chatter.IntegrationEventRelay.Worker.Aggregates.Event2.IntegrationEvents.Event2CreatedEvent
-IntegrationEventRelay__Mappings__3__SourceChangeType=Insert
-IntegrationEventRelay__Mappings__3__DatabaseName=FakeDb
-IntegrationEventRelay__Mappings__3__TableName=Event2
-```
-
-#### consumer.env
-
-```text
-Logging__LogLevel__Default=Trace
-DOTNET_ENVIRONMENT=Local
-Chatter__Infrastructure__AzureServiceBus__ConnectionString="Endpoint=sb://<insert service bus name>.servicebus.windows.net/"
-Chatter__Infrastructure__AzureServiceBus__Auth__ClientSecret=<insert client secret>
-Chatter__Infrastructure__AzureServiceBus__Auth__ClientId=<insert client id>
-Chatter__Infrastructure__AzureServiceBus__Auth__Authority="https://login.microsoftonline.com/<tenant id>/"
-```
+The SQL Server `sa` password defaults to the demo value; override it with `SA_PASSWORD` in the same `.env` file.
 
 ## Building a Worker Service
 
