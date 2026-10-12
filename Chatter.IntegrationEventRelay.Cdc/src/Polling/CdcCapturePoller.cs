@@ -213,7 +213,13 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 
 		var to = await _queries.GetBatchUpperBoundAsync(from, maxLsn, Options.MaxTransactionsPerBatch, cancellationToken).ConfigureAwait(false);
 		if (to is not { } upperBound)
+		{
+			// Only the capture job's empty heartbeat entries since the checkpoint: nothing to read, but move the checkpoint
+			// up so CDC cleanup passing the old one isn't mistaken for lost changes
+			if (checkpoint is not { } current || current < maxLsn)
+				await _checkpoints.SaveAsync(Capture.SourceName, Capture.CaptureInstance, maxLsn, cancellationToken).ConfigureAwait(false);
 			return CaughtUp();
+		}
 
 		var started = _timeProvider.GetTimestamp();
 		_batchParked = 0;

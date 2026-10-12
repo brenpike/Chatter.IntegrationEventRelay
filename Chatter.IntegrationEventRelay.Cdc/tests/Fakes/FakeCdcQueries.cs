@@ -83,6 +83,17 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Fakes
             return transaction;
         }
 
+        /// <summary>An empty <c>cdc.lsn_time_mapping</c> entry (tran_id 0x00) the capture job writes while the database is idle.</summary>
+        public FakeTransaction CommitHeartbeat()
+        {
+            lock (_lock)
+            {
+                var transaction = new FakeTransaction(Lsn(_nextLsn += 0x10), NextCommitTime, new List<CdcChangeRow>(), IsHeartbeat: true);
+                _transactions.Add(transaction);
+                return transaction;
+            }
+        }
+
         public Task<CdcLsn> GetMinLsnAsync(string captureInstance, CancellationToken cancellationToken)
             => Result(CaptureInstanceExists ? MinLsn : CdcLsn.Zero);
 
@@ -98,7 +109,7 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Fakes
         public Task<CdcLsn?> GetBatchUpperBoundAsync(CdcLsn from, CdcLsn max, int maxTransactions, CancellationToken cancellationToken)
         {
             BatchSizes.Add(maxTransactions);
-            var batch = Transactions.Where(t => t.Lsn >= from && t.Lsn <= max).Take(maxTransactions).ToList();
+            var batch = Transactions.Where(t => !t.IsHeartbeat && t.Lsn >= from && t.Lsn <= max).Take(maxTransactions).ToList();
             return Result(batch.Count == 0 ? (CdcLsn?)null : batch[^1].Lsn);
         }
 
@@ -122,5 +133,5 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Fakes
         private Task<T> Result<T>(T value) => FailWith is null ? Task.FromResult(value) : Task.FromException<T>(FailWith);
     }
 
-    internal sealed record FakeTransaction(CdcLsn Lsn, DateTime CommitTime, IReadOnlyList<CdcChangeRow> Rows);
+    internal sealed record FakeTransaction(CdcLsn Lsn, DateTime CommitTime, IReadOnlyList<CdcChangeRow> Rows, bool IsHeartbeat = false);
 }

@@ -116,6 +116,50 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcCapturePoller
         }
 
         [Fact]
+        public async Task MustMoveTheCheckpointPastHeartbeatsWhileIdle()
+        {
+            var published = Insert(1);
+            _harness.Checkpoint = published.Lsn;
+            var heartbeat = Cdc.CommitHeartbeat();
+
+            Assert.False(await PollAsync());
+
+            Assert.Equal(heartbeat.Lsn, _harness.Checkpoint);
+            Assert.Empty(Cdc.ChangeReads);
+            _processor.Verify(p => p.ProcessBatchAsync(It.IsAny<IReadOnlyList<RowChange<Row>>>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task MustNotReportAGapWhenCleanupPassesACheckpointThatOnlyHeartbeatsFollow()
+        {
+            var published = Insert(1);
+            _harness.Checkpoint = published.Lsn;
+            Cdc.CommitHeartbeat();
+            var last = Cdc.CommitHeartbeat();
+            await PollAsync();
+
+            // Cleanup moves the low watermark past the last real transaction
+            Cdc.MinLsn = last.Lsn;
+            Insert(2);
+
+            Assert.True(await PollAsync());
+            Assert.Equal(2, _batches.Single().Single().NewValue.Id);
+        }
+
+        [Fact]
+        public async Task MustNotRewriteAnUnchangedCheckpointWhileIdle()
+        {
+            Insert(1);
+            await PollAsync();
+            var saves = _harness.Checkpoints.Saves.Count;
+
+            await PollAsync();
+            await PollAsync();
+
+            Assert.Equal(saves, _harness.Checkpoints.Saves.Count);
+        }
+
+        [Fact]
         public async Task MustDoNothingBeforeAnythingIsCaptured()
         {
             Assert.False(await PollAsync());

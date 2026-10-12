@@ -9,6 +9,11 @@ namespace Chatter.IntegrationEventRelay.Cdc;
 /// Changes are delivered in commit order, in batches of whole transactions. A batch is acknowledged by saving its last
 /// LSN as the capture instance's checkpoint once every change in it is published; after a failure or restart the batch
 /// is read again and republished with the same message ids, so broker duplicate detection can drop the replays.
+/// <para>
+/// Commit times come from <c>cdc.lsn_time_mapping</c>, which records them in the server's local time, and are given the
+/// server's UTC offset when the batch is read. If the server's time zone observes daylight saving time, changes
+/// committed before a clock change but read after it are off by the change; run SQL Server in UTC to avoid it.
+/// </para>
 /// </remarks>
 public sealed class CdcChangeSource : IChangeSource
 {
