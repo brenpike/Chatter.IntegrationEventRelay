@@ -51,7 +51,7 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Fakes
 
         /// <summary>
         /// Commits a primary key update as SQL Server's CDC records it: a delete of the old row and an insert of the new
-        /// one, with the same sequence value.
+        /// one, in consecutive commands with the same sequence value.
         /// </summary>
         public FakeTransaction CommitPrimaryKeyUpdate(IReadOnlyDictionary<string, object> oldRow, IReadOnlyDictionary<string, object> newRow)
         {
@@ -69,13 +69,17 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Fakes
         {
             var lsn = Lsn(_nextLsn += 0x10);
             var seqVal = 0UL;
+            var commandId = 0;
             var changeRows = new List<CdcChangeRow>();
             foreach (var (operation, columns) in rows)
             {
-                // An update's after image shares its before image's sequence value
+                // Each row is its own command here; an update's after image shares its before image's command and sequence value
                 if (operation != CdcChangeRow.UpdateAfter)
+                {
                     seqVal++;
-                changeRows.Add(new CdcChangeRow(lsn, Lsn(seqVal), operation, NextCommitTime, new Dictionary<string, object>(columns, StringComparer.OrdinalIgnoreCase)));
+                    commandId++;
+                }
+                changeRows.Add(new CdcChangeRow(lsn, commandId, Lsn(seqVal), operation, NextCommitTime, new Dictionary<string, object>(columns, StringComparer.OrdinalIgnoreCase)));
             }
 
             var transaction = new FakeTransaction(lsn, NextCommitTime, changeRows);

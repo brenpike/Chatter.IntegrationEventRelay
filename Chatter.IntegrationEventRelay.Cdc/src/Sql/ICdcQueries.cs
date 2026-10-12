@@ -30,7 +30,7 @@ internal interface ICdcQueries
 
 	/// <summary>
 	/// Every change of the capture instance committed from <paramref name="from"/> to <paramref name="to"/> (inclusive),
-	/// with update before images, in commit order: by commit LSN, sequence value, then operation.
+	/// with update before images, in commit order: by commit LSN, command, sequence value, then operation.
 	/// </summary>
 	Task<IReadOnlyList<CdcChangeRow>> GetChangesAsync(string captureInstance, CdcLsn from, CdcLsn to, CancellationToken cancellationToken);
 

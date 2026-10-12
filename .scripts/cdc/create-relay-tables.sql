@@ -38,6 +38,7 @@ BEGIN
 		RowKey nvarchar(400) COLLATE Latin1_General_100_BIN2 NOT NULL,
 		ChangeRowKey nvarchar(400) COLLATE Latin1_General_100_BIN2 NULL,
 		Lsn binary(10) NOT NULL,
+		CommandId int NOT NULL,
 		SeqVal binary(10) NOT NULL,
 		Operation nvarchar(16) NOT NULL,
 		Position nvarchar(400) NOT NULL,
@@ -50,7 +51,7 @@ BEGIN
 		CONSTRAINT [PK_Chatter_RelayParkedChanges] PRIMARY KEY (Id),
 		CONSTRAINT [UQ_Chatter_RelayParkedChanges_Position] UNIQUE (SourceName, CaptureInstance, Position)
 	);
-	CREATE INDEX [IX_Chatter_RelayParkedChanges_RowKey] ON ' + QUOTENAME(@schema) + N'.[Chatter_RelayParkedChanges] (SourceName, CaptureInstance, RowKey, Lsn, SeqVal);';
+	CREATE INDEX [IX_Chatter_RelayParkedChanges_RowKey] ON ' + QUOTENAME(@schema) + N'.[Chatter_RelayParkedChanges] (SourceName, CaptureInstance, RowKey, Lsn, CommandId, SeqVal);';
 	EXEC sys.sp_executesql @sql;
 END
 GO

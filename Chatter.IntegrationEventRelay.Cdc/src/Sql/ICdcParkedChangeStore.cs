@@ -44,4 +44,4 @@ internal interface ICdcParkedChangeStore
 /// <param name="ChangeRowKey">The key of the row the change changed, when it differs from <paramref name="RowKey"/> (the row's key changed).</param>
 /// <param name="Position">The change's <see cref="Core.Abstractions.ChangePosition.Value"/>, kept so republishing uses the same message ids.</param>
 /// <param name="Payload">The change's old and new values as JSON.</param>
-internal sealed record ParkedChange(long Id, string RowKey, string? ChangeRowKey, CdcLsn Lsn, CdcLsn SeqVal, string Operation, string Position, DateTimeOffset? CommittedAt, string Payload, string Error, int Attempts);
+internal sealed record ParkedChange(long Id, string RowKey, string? ChangeRowKey, CdcLsn Lsn, int CommandId, CdcLsn SeqVal, string Operation, string Position, DateTimeOffset? CommittedAt, string Payload, string Error, int Attempts);

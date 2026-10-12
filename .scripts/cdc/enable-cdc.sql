@@ -16,10 +16,17 @@ DECLARE @capturedObjectId int = (SELECT source_object_id FROM cdc.change_tables 
 IF @capturedObjectId IS NOT NULL AND @capturedObjectId <> OBJECT_ID(QUOTENAME(@tableSchema) + N'.' + QUOTENAME(@tableName))
 	THROW 50000, N'The capture instance already exists for a different table. Use another capture instance name, or disable the existing one.', 1;
 
+-- A partition switch moves rows without CDC recording them, so a partitioned table is captured with switching
+-- disallowed. For a table that isn't partitioned, SQL Server only accepts 1.
+DECLARE @allowPartitionSwitch bit = CASE WHEN EXISTS (
+	SELECT 1 FROM sys.indexes AS i JOIN sys.partition_schemes AS ps ON ps.data_space_id = i.data_space_id
+	WHERE i.object_id = OBJECT_ID(QUOTENAME(@tableSchema) + N'.' + QUOTENAME(@tableName)) AND i.index_id IN (0, 1)) THEN 0 ELSE 1 END;
+
 IF @capturedObjectId IS NULL
 	EXEC sys.sp_cdc_enable_table
 		@source_schema = @tableSchema,
 		@source_name = @tableName,
 		@role_name = NULL,
-		@capture_instance = @captureInstance;
+		@capture_instance = @captureInstance,
+		@allow_partition_switch = @allowPartitionSwitch;
 GO

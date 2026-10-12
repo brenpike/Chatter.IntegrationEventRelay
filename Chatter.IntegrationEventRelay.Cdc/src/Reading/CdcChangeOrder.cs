@@ -1,13 +1,16 @@
 namespace Chatter.IntegrationEventRelay.Cdc.Reading;
 
 /// <summary>
-/// Orders CDC changes as they were committed: by commit LSN, sequence value within the transaction, then operation.
+/// Orders CDC changes as they were committed: by commit LSN, command within the transaction, sequence value within
+/// the command, then operation.
 /// </summary>
-public readonly record struct CdcChangeOrder(CdcLsn StartLsn, CdcLsn SeqVal, int Operation) : IComparable<CdcChangeOrder>, IComparable
+public readonly record struct CdcChangeOrder(CdcLsn StartLsn, int CommandId, CdcLsn SeqVal, int Operation) : IComparable<CdcChangeOrder>, IComparable
 {
 	public int CompareTo(CdcChangeOrder other)
 	{
 		var result = StartLsn.CompareTo(other.StartLsn);
+		if (result == 0)
+			result = CommandId.CompareTo(other.CommandId);
 		if (result == 0)
 			result = SeqVal.CompareTo(other.SeqVal);
 		return result != 0 ? result : Operation.CompareTo(other.Operation);

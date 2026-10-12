@@ -40,14 +40,19 @@ internal sealed class SqlCdcQueries : ICdcQueries
 			Parameter("@from", from),
 			Parameter("@max", max)).ConfigureAwait(false));
 
+	// Reads the change table rather than cdc.fn_cdc_get_all_changes_<ci>, which doesn't return __$command_id: SQL Server
+	// orders changes within a transaction by command, then sequence value (the table's unique clustered index is
+	// __$start_lsn, __$command_id, __$seqval, __$operation), and __$seqval alone doesn't keep commands in order.
+	// The caller keeps the range within the capture instance's min and max LSN, as the function would require.
 	public async Task<IReadOnlyList<CdcChangeRow>> GetChangesAsync(string captureInstance, CdcLsn from, CdcLsn to, CancellationToken cancellationToken)
 	{
-		var function = $"cdc.{SqlIdentifier.Quote("fn_cdc_get_all_changes_" + captureInstance)}";
+		var changeTable = $"cdc.{SqlIdentifier.Quote(captureInstance + "_CT")}";
 		var sql = $"""
 			SELECT m.tran_end_time AS [{CommitTimeColumn}], c.*
-			FROM {function}(@from, @to, N'all update old') AS c
+			FROM {changeTable} AS c
 			LEFT JOIN cdc.lsn_time_mapping AS m ON m.start_lsn = c.[__$start_lsn]
-			ORDER BY c.[__$start_lsn], c.[__$seqval], c.[__$operation];
+			WHERE c.[__$start_lsn] >= @from AND c.[__$start_lsn] <= @to
+			ORDER BY c.[__$start_lsn], c.[__$command_id], c.[__$seqval], c.[__$operation];
 			""";
 
 		await using var connection = new SqlConnection(_connectionString);
@@ -56,6 +61,7 @@ internal sealed class SqlCdcQueries : ICdcQueries
 		await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 
 		var startLsn = reader.GetOrdinal("__$start_lsn");
+		var commandId = reader.GetOrdinal("__$command_id");
 		var seqVal = reader.GetOrdinal("__$seqval");
 		var operation = reader.GetOrdinal("__$operation");
 		var commitTime = reader.GetOrdinal(CommitTimeColumn);
@@ -73,6 +79,7 @@ internal sealed class SqlCdcQueries : ICdcQueries
 
 			rows.Add(new CdcChangeRow(
 				CdcLsn.FromBytes((byte[])reader.GetValue(startLsn)),
+				reader.GetInt32(commandId),
 				CdcLsn.FromBytes((byte[])reader.GetValue(seqVal)),
 				reader.GetInt32(operation),
 				reader.IsDBNull(commitTime) ? null : reader.GetDateTime(commitTime),

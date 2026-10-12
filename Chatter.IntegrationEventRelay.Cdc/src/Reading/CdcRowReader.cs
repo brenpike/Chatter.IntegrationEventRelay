@@ -62,7 +62,7 @@ internal sealed class CdcRowReader<TSource> where TSource : class, new()
 					break;
 				case CdcChangeRow.UpdateBefore:
 					var after = i + 1 < rows.Count ? rows[i + 1] : null;
-					if (after is null || after.Operation != CdcChangeRow.UpdateAfter || after.StartLsn != row.StartLsn || after.SeqVal != row.SeqVal)
+					if (after is null || after.Operation != CdcChangeRow.UpdateAfter || after.StartLsn != row.StartLsn || after.CommandId != row.CommandId || after.SeqVal != row.SeqVal)
 						throw new InvalidOperationException($"Capture instance '{capture.CaptureInstance}' returned an update before image at LSN {row.StartLsn}, sequence {row.SeqVal} without its after image.");
 					changes.Add(Create(RowOperation.Update, Materialize(row), after, oldKeyRow: row));
 					i++;
@@ -81,18 +81,18 @@ internal sealed class CdcRowReader<TSource> where TSource : class, new()
 			var rowKey = GetRowKey(row, keyColumns);
 			var oldRowKey = oldKeyRow is null ? null : GetRowKey(oldKeyRow, keyColumns);
 			return new(new(capture.SourceName, operation, oldValue, Materialize(row), capture.Table, GetPosition(row), GetCommittedAt(row)),
-				rowKey, oldRowKey == rowKey ? null : oldRowKey, row.StartLsn, row.SeqVal);
+				rowKey, oldRowKey == rowKey ? null : oldRowKey, row.StartLsn, row.CommandId, row.SeqVal);
 		}
 
 		// Positions identify a change within the source, so the relay's message ids are the same when a batch is replayed.
-		// Commit LSN, sequence value and operation are unique per change; should two rows ever share them, the
-		// occurrence number keeps their ids apart.
+		// Commit LSN, command, sequence value and operation are the change table's unique key; should two rows ever
+		// share them, the occurrence number keeps their ids apart.
 		ChangePosition GetPosition(CdcChangeRow row)
 		{
-			var value = $"{capture.CaptureInstance}:{row.StartLsn}:{row.SeqVal}:{row.Operation}";
+			var value = $"{capture.CaptureInstance}:{row.StartLsn}:{row.CommandId}:{row.SeqVal}:{row.Operation}";
 			var occurrence = positions.TryGetValue(value, out var seen) ? seen + 1 : 0;
 			positions[value] = occurrence;
-			return new ChangePosition(occurrence == 0 ? value : $"{value}#{occurrence}", new CdcChangeOrder(row.StartLsn, row.SeqVal, row.Operation));
+			return new ChangePosition(occurrence == 0 ? value : $"{value}#{occurrence}", new CdcChangeOrder(row.StartLsn, row.CommandId, row.SeqVal, row.Operation));
 		}
 
 		DateTimeOffset? GetCommittedAt(CdcChangeRow row)
@@ -171,4 +171,4 @@ internal sealed class CdcRowReader<TSource> where TSource : class, new()
 /// A change read from CDC, with the key of the row it changed (null when not needed) and where CDC recorded it.
 /// </summary>
 /// <param name="OldRowKey">For an update that changed the row's key, the key before it; otherwise null.</param>
-internal sealed record CdcRowChange<TSource>(RowChange<TSource> Change, string? RowKey, string? OldRowKey, CdcLsn Lsn, CdcLsn SeqVal) where TSource : class;
+internal sealed record CdcRowChange<TSource>(RowChange<TSource> Change, string? RowKey, string? OldRowKey, CdcLsn Lsn, int CommandId, CdcLsn SeqVal) where TSource : class;

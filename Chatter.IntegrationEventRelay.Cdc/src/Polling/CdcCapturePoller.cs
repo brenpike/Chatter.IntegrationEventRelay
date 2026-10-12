@@ -312,12 +312,13 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 	/// <remarks>
 	/// A row's parked changes form one chain, parked and replayed under the key of its first parked change. A change
 	/// that changes the row's key stays in the chain: CDC records a primary key update as a delete and an insert with
-	/// the same LSN and sequence value, and an update of another unique index's key as an update whose before image
+	/// the same LSN and sequence value (as consecutive commands), and an update of another unique index's key as an update whose before image
 	/// has the old key. Later changes to the new key join the chain too.
 	/// </remarks>
 	private async Task ProcessParkingFailuresAsync(IRowChangeProcessor<TSource> processor, IReadOnlyList<CdcRowChange<TSource>> changes, CancellationToken cancellationToken)
 	{
 		var chains = new Dictionary<string, string>(await _parked.GetParkedRowKeysAsync(Capture.SourceName, Capture.CaptureInstance, cancellationToken).ConfigureAwait(false), StringComparer.Ordinal);
+		// A primary key update's delete and insert share the LSN and sequence value (but not the command)
 		var parkedStatements = new Dictionary<(CdcLsn Lsn, CdcLsn SeqVal), string>();
 
 		foreach (var change in changes)
@@ -372,6 +373,7 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 			chain,
 			change.RowKey == chain ? null : change.RowKey,
 			change.Lsn,
+			change.CommandId,
 			change.SeqVal,
 			change.Change.Operation.ToString(),
 			change.Change.Position!.Value,
@@ -436,7 +438,7 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 		};
 
 		return new RowChange<TSource>(Capture.SourceName, operation, payload.OldValue, payload.NewValue, Capture.Table,
-			new ChangePosition(change.Position, new CdcChangeOrder(change.Lsn, change.SeqVal, cdcOperation)), change.CommittedAt);
+			new ChangePosition(change.Position, new CdcChangeOrder(change.Lsn, change.CommandId, change.SeqVal, cdcOperation)), change.CommittedAt);
 	}
 
 	private async Task<IReadOnlyList<string>> GetKeyColumnsAsync(CancellationToken cancellationToken)

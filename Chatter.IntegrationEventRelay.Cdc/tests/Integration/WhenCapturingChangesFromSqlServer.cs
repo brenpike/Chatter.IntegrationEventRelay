@@ -47,6 +47,45 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
         }
 
         [Fact]
+        public async Task MustDeliverTheCommandsOfOneTransactionInOrder()
+        {
+            var poller = await CreatePollerAsync();
+            await _sql.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id, Name) VALUES (1, N'a'), (2, N'b');");
+            await _sql.ExecuteAsync($"""
+                BEGIN TRAN;
+                UPDATE dbo.[{_table}] SET Name = N'b1' WHERE Id = 2;
+                UPDATE dbo.[{_table}] SET Name = N'a1' WHERE Id = 1;
+                UPDATE dbo.[{_table}] SET Name = N'b2' WHERE Id = 2;
+                DELETE FROM dbo.[{_table}] WHERE Id = 1;
+                INSERT INTO dbo.[{_table}] (Id, Name) VALUES (3, N'c');
+                COMMIT;
+                """);
+
+            var changes = (await PollUntilAsync(poller, 7)).Skip(2).ToList();
+
+            Assert.Equal(new[] { "b1", "a1", "b2", "a1", "c" }, changes.Select(c => c.NewValue.Name));
+            Assert.Equal(new[] { RowOperation.Update, RowOperation.Update, RowOperation.Update, RowOperation.Delete, RowOperation.Insert }, changes.Select(c => c.Operation));
+            Assert.Equal(changes.Count, changes.Select(c => c.Position.Value).Distinct().Count());
+        }
+
+        [Fact]
+        public async Task MustDisallowPartitionSwitchesWhenEnablingCdcOnAPartitionedTable()
+        {
+            await _sql.ExecuteAsync($"""
+                CREATE PARTITION FUNCTION [pf_{_table}] (int) AS RANGE LEFT FOR VALUES (100);
+                CREATE PARTITION SCHEME [ps_{_table}] AS PARTITION [pf_{_table}] ALL TO ([PRIMARY]);
+                CREATE TABLE dbo.[{_table}_p] (Id int NOT NULL PRIMARY KEY, Name nvarchar(50) NULL) ON [ps_{_table}] (Id);
+                """);
+            var services = new ServiceCollection();
+            services.AddSingleton(new Extensions.CdcMigrationTarget(_sql.ConnectionString, "Chatter", "dbo", $"{_table}_p", $"dbo_{_table}_p"));
+
+            await Extensions.ServiceProviderExtensions.UseCdcSqlMigrationsAsync(services.BuildServiceProvider());
+
+            Assert.False(await _sql.ScalarAsync<bool>($"SELECT partition_switch FROM cdc.change_tables WHERE capture_instance = N'dbo_{_table}_p';"));
+            Assert.True(await _sql.ScalarAsync<bool>("SELECT partition_switch FROM cdc.change_tables WHERE capture_instance = N'dbo_AgentWarmup';"));
+        }
+
+        [Fact]
         public async Task MustDeliverASoftDeleteThenRestoreInOrder()
         {
             var poller = await CreatePollerAsync();

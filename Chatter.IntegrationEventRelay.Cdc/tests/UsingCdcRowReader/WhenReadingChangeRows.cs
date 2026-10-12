@@ -55,6 +55,36 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcRowReader
         }
 
         [Fact]
+        public void MustNotPairImagesOfDifferentCommands()
+        {
+            var lsn = FakeCdcQueries.Lsn(0x20);
+            var rows = new[]
+            {
+                new CdcChangeRow(lsn, 1, FakeCdcQueries.Lsn(1), CdcChangeRow.UpdateBefore, null, Columns(1, "before")),
+                new CdcChangeRow(lsn, 2, FakeCdcQueries.Lsn(1), CdcChangeRow.UpdateAfter, null, Columns(1, "after"))
+            };
+
+            Assert.Throws<InvalidOperationException>(() => _sut.Read(rows, _capture, TimeSpan.Zero));
+        }
+
+        [Fact]
+        public void MustGiveRowsOfDifferentCommandsDistinctPositions()
+        {
+            var lsn = FakeCdcQueries.Lsn(0x20);
+            var rows = new[]
+            {
+                new CdcChangeRow(lsn, 1, FakeCdcQueries.Lsn(1), CdcChangeRow.Insert, null, Columns(1, "a")),
+                new CdcChangeRow(lsn, 2, FakeCdcQueries.Lsn(1), CdcChangeRow.Insert, null, Columns(2, "b"))
+            };
+
+            var changes = _sut.Read(rows, _capture, TimeSpan.Zero);
+
+            Assert.NotEqual(changes[0].Position.Value, changes[1].Position.Value);
+            Assert.DoesNotContain("#", changes[1].Position.Value);
+            Assert.True(changes[0].Position.Order.CompareTo(changes[1].Position.Order) < 0);
+        }
+
+        [Fact]
         public void MustRejectAnAfterImageWithoutItsBeforeImage()
         {
             _cdc.Commit((CdcChangeRow.UpdateAfter, Columns(1, "after")));
@@ -93,15 +123,15 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcRowReader
         }
 
         [Fact]
-        public void MustGiveEachChangeAStablePositionOfCaptureInstanceLsnSequenceAndOperation()
+        public void MustGiveEachChangeAStablePositionOfCaptureInstanceLsnCommandSequenceAndOperation()
         {
             var transaction = _cdc.Commit((CdcChangeRow.Insert, Columns(1, "a")), (CdcChangeRow.UpdateBefore, Columns(1, "a")), (CdcChangeRow.UpdateAfter, Columns(1, "b")));
 
             var first = Read();
             var second = Read();
 
-            Assert.Equal($"dbo_Event1:{transaction.Lsn}:{FakeCdcQueries.Lsn(1)}:2", first[0].Position.Value);
-            Assert.Equal($"dbo_Event1:{transaction.Lsn}:{FakeCdcQueries.Lsn(2)}:4", first[1].Position.Value);
+            Assert.Equal($"dbo_Event1:{transaction.Lsn}:1:{FakeCdcQueries.Lsn(1)}:2", first[0].Position.Value);
+            Assert.Equal($"dbo_Event1:{transaction.Lsn}:2:{FakeCdcQueries.Lsn(2)}:4", first[1].Position.Value);
             Assert.Equal(first.Select(c => c.Position), second.Select(c => c.Position));
             Assert.True(first[0].Position.Order.CompareTo(first[1].Position.Order) < 0);
         }
@@ -112,8 +142,8 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcRowReader
             var lsn = FakeCdcQueries.Lsn(0x20);
             var rows = new[]
             {
-                new CdcChangeRow(lsn, FakeCdcQueries.Lsn(1), CdcChangeRow.Insert, null, Columns(1, "a")),
-                new CdcChangeRow(lsn, FakeCdcQueries.Lsn(1), CdcChangeRow.Insert, null, Columns(2, "b"))
+                new CdcChangeRow(lsn, 1, FakeCdcQueries.Lsn(1), CdcChangeRow.Insert, null, Columns(1, "a")),
+                new CdcChangeRow(lsn, 1, FakeCdcQueries.Lsn(1), CdcChangeRow.Insert, null, Columns(2, "b"))
             };
 
             var changes = _sut.Read(rows, _capture, TimeSpan.Zero);
