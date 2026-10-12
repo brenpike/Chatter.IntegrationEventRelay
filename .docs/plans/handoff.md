@@ -9,15 +9,14 @@ and the resolved design decisions. Both files live on branch `claude/repo-overvi
 |---|---|
 | Phase 0: PR #27, `feat/net10-ci` (.NET 10, latest Chatter packages, CI repaired) | **Merged** into `main` (squash), commit `e8150e1` |
 | Phase 0.5: PR #28, `feat/servicebus-emulator` (Service Bus emulator demo, e2e CI job) | **Merged** into `main` (squash), commit `73b961f` |
-| Phase 1: PR #29, `feat/change-source-abstraction` (abstractions, ServiceBroker package, 0.4.0) | **PR #29 open**; session subscribed |
-| Phase 2: `feat/cdc-change-source` | Not started |
+| Phase 1: PR #29, `feat/change-source-abstraction` (abstractions, ServiceBroker package, 0.4.0) | **Merged** into `main` (squash), commit `9610e09` |
+| Phase 2: `feat/cdc-change-source` | In progress |
 | Phase 3: `feat/cdc-sample-docs` | Not started |
-| Open PRs | #29 |
+| Open PRs | None |
 
 ## Next steps
 
-1. **Drive PR #29 to green and merged.** Address CI (including the e2e job) and Codex findings.
-2. **Phase 2** (`feat/cdc-change-source`), cut from `main` after #29 merges. Start with `CdcLsn`, `SqlCdcQueries` and
+1. **Phase 2** (`feat/cdc-change-source`), cut from `main` (#29 is merged). Start with `CdcLsn`, `SqlCdcQueries` and
    `CdcRowReader<T>` (plan 2a), then the poll loop (2b). Build on #29's notes in plan section 1a: the poller must create
    a DI scope per batch (the publisher is scoped), call `IRowChangeProcessor<T>.ProcessBatchAsync`, and pass
    `ChangePosition` so message ids are stable for replays. Write `ChangeSourceContractTests<TAdapter>` here.
