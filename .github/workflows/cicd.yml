@@ -36,9 +36,13 @@ jobs:
     - name: Test
       run: dotnet test --configuration Release --no-build --verbosity normal
     - name: Publish
-      run: dotnet publish Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj -c Release -o publish/source
+      run: |
+        dotnet publish Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj -c Release -o publish/source
+        dotnet publish Chatter.IntegrationEventRelay.ServiceBroker/src/Chatter.IntegrationEventRelay.ServiceBroker.csproj -c Release -o publish/source
     - name: Create nupkg
-      run: dotnet pack Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj -c Release -o publish/nuget
+      run: |
+        dotnet pack Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj -c Release -o publish/nuget
+        dotnet pack Chatter.IntegrationEventRelay.ServiceBroker/src/Chatter.IntegrationEventRelay.ServiceBroker.csproj -c Release -o publish/nuget
     - name: Upload Source
       uses: actions/upload-artifact@v4
       with:

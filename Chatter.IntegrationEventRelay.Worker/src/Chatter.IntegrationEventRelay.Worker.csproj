@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Worker">
+﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -15,7 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Chatter.IntegrationEventRelay.Core\src\Chatter.IntegrationEventRelay.Core.csproj" />
+    <ProjectReference Include="..\..\Chatter.IntegrationEventRelay.ServiceBroker\src\Chatter.IntegrationEventRelay.ServiceBroker.csproj" />
   </ItemGroup>
 
 </Project>

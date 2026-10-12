@@ -8,13 +8,18 @@ COPY ["./Chatter.IntegrationEventRelay.Worker/src/Chatter.IntegrationEventRelay.
 COPY ["./Chatter.IntegrationEventRelay.Consumer/src/Chatter.IntegrationEventRelay.Consumer.csproj", "./Chatter.IntegrationEventRelay.Consumer/src/Chatter.IntegrationEventRelay.Consumer.csproj"]
 COPY ["./Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj", "./Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Core.csproj"]
 COPY ["./Chatter.IntegrationEventRelay.Core/tests/Chatter.IntegrationEventRelay.Core.Tests.csproj", "./Chatter.IntegrationEventRelay.Core/tests/Chatter.IntegrationEventRelay.Core.Tests.csproj"]
+COPY ["./Chatter.IntegrationEventRelay.ServiceBroker/src/Chatter.IntegrationEventRelay.ServiceBroker.csproj", "./Chatter.IntegrationEventRelay.ServiceBroker/src/Chatter.IntegrationEventRelay.ServiceBroker.csproj"]
+COPY ["./Chatter.IntegrationEventRelay.ServiceBroker/tests/Chatter.IntegrationEventRelay.ServiceBroker.Tests.csproj", "./Chatter.IntegrationEventRelay.ServiceBroker/tests/Chatter.IntegrationEventRelay.ServiceBroker.Tests.csproj"]
 RUN dotnet restore
 
 COPY ["./Chatter.IntegrationEventRelay.Worker/src/", "./Chatter.IntegrationEventRelay.Worker/src/"]
 COPY ["./Chatter.IntegrationEventRelay.Core/src/", "./Chatter.IntegrationEventRelay.Core/src/"]
 COPY ["./Chatter.IntegrationEventRelay.Core/tests/", "./Chatter.IntegrationEventRelay.Core/tests/"]
+COPY ["./Chatter.IntegrationEventRelay.ServiceBroker/src/", "./Chatter.IntegrationEventRelay.ServiceBroker/src/"]
+COPY ["./Chatter.IntegrationEventRelay.ServiceBroker/tests/", "./Chatter.IntegrationEventRelay.ServiceBroker/tests/"]
 
 RUN dotnet test "./Chatter.IntegrationEventRelay.Core/tests/Chatter.IntegrationEventRelay.Core.Tests.csproj" -c Release --no-restore
+RUN dotnet test "./Chatter.IntegrationEventRelay.ServiceBroker/tests/Chatter.IntegrationEventRelay.ServiceBroker.Tests.csproj" -c Release --no-restore
 
 RUN dotnet publish "./Chatter.IntegrationEventRelay.Worker/src/Chatter.IntegrationEventRelay.Worker.csproj" -c Release -o /app/publish
 

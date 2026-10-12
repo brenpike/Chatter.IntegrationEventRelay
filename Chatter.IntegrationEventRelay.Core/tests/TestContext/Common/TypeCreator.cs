@@ -22,6 +22,7 @@ public class TypeCreator : MockCreator<Type>
     public TypeCreator WithFullName(string fullName)
     {
         _typeMock.SetupGet(a => a.FullName).Returns(fullName);
+        _typeMock.SetupGet(a => a.Name).Returns(fullName?[(fullName.LastIndexOf('.') + 1)..]);
         return this;
     }
 

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>0.4.0</Version>
+    <Authors>Brennan Pike</Authors>
+    <Owners>Brennan Pike</Owners>
+    <Description>SQL Service Broker change source for Chatter.IntegrationEventRelay: captures row changes with triggers and Chatter.SqlChangeFeed</Description>
+    <PackageId>Chatter.IntegrationEventRelay.ServiceBroker</PackageId>
+    <RepositoryUrl>https://github.com/brenpike/Chatter.IntegrationEventRelay</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>.net;message broker;events;domain event;integration event;sql service broker;Chatter</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Chatter.MessageBrokers.SqlServiceBroker" Version="0.18.0" />
+    <PackageReference Include="Chatter.SqlChangeFeed" Version="0.16.0" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Chatter.IntegrationEventRelay.Core\src\Chatter.IntegrationEventRelay.Core.csproj" />
+  </ItemGroup>
+
+</Project>

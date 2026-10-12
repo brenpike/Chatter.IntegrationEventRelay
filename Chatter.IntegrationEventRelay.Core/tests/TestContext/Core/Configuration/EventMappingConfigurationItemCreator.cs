@@ -1,5 +1,5 @@
 ﻿using Chatter.IntegrationEventRelay.Core.Configuration;
-using Chatter.SqlChangeFeed;
+using Chatter.IntegrationEventRelay.Core.Abstractions;
 using System;
 
 namespace Chatter.IntegrationEventRelay.Core.Tests.TestContext.Core.Configuration;
@@ -15,7 +15,7 @@ public class EventMappingConfigurationItemCreator : MockCreator<EventMappingConf
             ConnectionString = "connStr",
             InfrastructureMessageName = "msgName",
             IntegrationEventTypeName = "This.Is.Definitely.Not.A.Real.IntegrationEvent.TypeName",
-            SourceChangeType = ChangeTypes.Insert,
+            SourceChangeType = RowOperation.Insert,
             SourceEventTypeName = "This.Is.Definitely.Not.A.Real.SourceEvent.TypeName",
             MessagingInfrastructureType = "infra",
             TableName = "table"
@@ -63,13 +63,25 @@ public class EventMappingConfigurationItemCreator : MockCreator<EventMappingConf
     }
 
 
+    public EventMappingConfigurationItemCreator WithSource(string source)
+    {
+        Mock.Source = source;
+        return this;
+    }
+
+    public EventMappingConfigurationItemCreator WithRequiredCapabilities(ChangeSourceCapabilities capabilities)
+    {
+        Mock.RequiredCapabilities = capabilities;
+        return this;
+    }
+
     public EventMappingConfigurationItemCreator WithTable(string table)
     {
         Mock.TableName = table;
         return this;
     }
 
-    public EventMappingConfigurationItemCreator WithChangeType(ChangeTypes changeType)
+    public EventMappingConfigurationItemCreator WithChangeType(RowOperation changeType)
     {
         Mock.SourceChangeType = changeType;
         return this;

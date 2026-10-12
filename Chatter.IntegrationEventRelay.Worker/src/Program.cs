@@ -1,4 +1,5 @@
-using Chatter.IntegrationEventRelay.Core.Extensions;
+﻿using Chatter.IntegrationEventRelay.Core.Extensions;
+using Chatter.IntegrationEventRelay.ServiceBroker.Extensions;
 using Chatter.IntegrationEventRelay.Worker.Aggregates.Event2.IntegrationEvents;
 
 using IHost host = Host.CreateDefaultBuilder(args)
@@ -21,7 +22,8 @@ using IHost host = Host.CreateDefaultBuilder(args)
                 );
             }
         })
-        .AddIntegrationEventRelay();
+        .AddIntegrationEventRelay()
+            .UseServiceBrokerChangeSource();
     }).Build();
 
 var env = host.Services.GetRequiredService<IHostEnvironment>();

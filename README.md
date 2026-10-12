@@ -5,8 +5,10 @@
 - [Integration Event Relay](#integration-event-relay)
   - [About this repo](#about-this-repo)
     - [Chatter.IntegrationEventRelay.Core](#chatterintegrationeventrelaycore)
+    - [Chatter.IntegrationEventRelay.ServiceBroker](#chatterintegrationeventrelayservicebroker)
     - [Chatter.IntegrationEventRelay.Worker](#chatterintegrationeventrelayworker)
     - [Chatter.IntegrationEventRelay.Consumer](#chatterintegrationeventrelayconsumer)
+  - [Upgrading to 0.4.0](#upgrading-to-040)
   - [Upgrading to 0.3.0](#upgrading-to-030)
   - [Running this repo locally](#running-this-repo-locally)
     - [Service Bus emulator](#service-bus-emulator)
@@ -38,11 +40,15 @@ The Integration Event Relay leverages SQL Service Broker via [Chatter.SqlChangeF
 
 ## About this repo
 
-This repo contains three projects, [Chatter.IntegrationEventRelay.Worker](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.Worker), [Chatter.IntegrationEventRelay.Consumer](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.Consumer) and [Chatter.IntegrationEventRelay.Core](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.Core). It is a fully functional implementation that leverages Docker to spin-up a SQL Server, 2 Worker Services and 2 Consumer Services. The SQL Server schema is created and seeded with data on startup; subsequently, 100 unique database operations are executed against the database tables which emulate changes to domain entities/aggregates. These changes are handled by the Worker Services as domain events, where mapping logic is executed. If mapping logic is successful, the domain events are converted to the integration event defined by configuration and relayed/published to the message broker infrastructure. The integration events are handled by the Consumer Services (as they are subscribed to all integration events) and details of the messages are displayed to console to show successful propogation of the database changes to the consumers. The number of integration events handled by each consumer is cached in memory and displayed upon shut down - each consumer should handle 50 integration events each.
+This repo contains four projects, [Chatter.IntegrationEventRelay.Worker](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.Worker), [Chatter.IntegrationEventRelay.Consumer](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.Consumer), [Chatter.IntegrationEventRelay.Core](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.Core) and [Chatter.IntegrationEventRelay.ServiceBroker](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.ServiceBroker). It is a fully functional implementation that leverages Docker to spin-up a SQL Server, 2 Worker Services and 2 Consumer Services. The SQL Server schema is created and seeded with data on startup; subsequently, 100 unique database operations are executed against the database tables which emulate changes to domain entities/aggregates. These changes are handled by the Worker Services as domain events, where mapping logic is executed. If mapping logic is successful, the domain events are converted to the integration event defined by configuration and relayed/published to the message broker infrastructure. The integration events are handled by the Consumer Services (as they are subscribed to all integration events) and details of the messages are displayed to console to show successful propogation of the database changes to the consumers. The number of integration events handled by each consumer is cached in memory and displayed upon shut down - each consumer should handle 50 integration events each.
 
 ### Chatter.IntegrationEventRelay.Core
 
-As the name suggests, this is the core of the implementation. It leverages [Chatter.SqlChangeFeed](https://github.com/brenpike/Chatter/tree/master/src/Chatter.SqlChangeFeed) and contains interfaces, services, configuration definitions and extension methods required to quickly and easily build one or more Worker Services. This project is available via nuget as [Chatter.IntegrationEventRelay](https://www.nuget.org/packages/Chatter.IntegrationEventRelay/).
+As the name suggests, this is the core of the implementation. It contains the mapping configuration, mapper interfaces, the processor that maps row changes to integration events and publishes them, and the extension methods required to quickly and easily build one or more Worker Services. It doesn't capture changes itself: a change source package does (see below). This project is available via nuget as [Chatter.IntegrationEventRelay](https://www.nuget.org/packages/Chatter.IntegrationEventRelay/).
+
+### Chatter.IntegrationEventRelay.ServiceBroker
+
+The SQL Service Broker change source. It leverages [Chatter.SqlChangeFeed](https://github.com/brenpike/Chatter/tree/master/src/Chatter.SqlChangeFeed), which installs a trigger on each watched table that sends changed rows to a SQL Service Broker queue, and hands the received changes to the core processor. This project is available via nuget as Chatter.IntegrationEventRelay.ServiceBroker.
 
 ### Chatter.IntegrationEventRelay.Worker
 
@@ -51,6 +57,21 @@ This Worker Service implementation is a sample showing how [Chatter.IntegrationE
 ### Chatter.IntegrationEventRelay.Consumer
 
 The Consumer Service has been kept simple. It has [IEvent](https://github.com/brenpike/Chatter/blob/master/src/Chatter.CQRS/src/Chatter.CQRS/Events/IEvent.cs) implementations matching the integration events published by the Worker Service as well as [IMessageHandler<>](https://github.com/brenpike/Chatter/blob/master/src/Chatter.CQRS/src/Chatter.CQRS/IMessageHandler.cs) implementations. The Consumer Service leverages [Chatter.MessageBrokers.AzureServiceBus](https://github.com/brenpike/Chatter/tree/master/src/Chatter.MessageBrokers.AzureServiceBus) as its message broker infrastructure and subscribes to the integration events published by the Worker Services. The [IMessageHandler<>](https://github.com/brenpike/Chatter/blob/master/src/Chatter.CQRS/src/Chatter.CQRS/IMessageHandler.cs) handles the integration events and displays information to console. The handled messages are cached in memory and all handled messages are displayed on shutdown.
+
+## Upgrading to 0.4.0
+
+0.4.0 separates capturing changes from mapping and publishing them, so that other change sources (such as SQL Server CDC) can be added alongside SQL Service Broker. Existing configuration binds unchanged; code changes are needed:
+
+- SQL Service Broker capture moved to the new `Chatter.IntegrationEventRelay.ServiceBroker` package. Add it and chain `.UseServiceBrokerChangeSource()` after `.AddIntegrationEventRelay()`. The `Action<SqlChangeFeedOptionsBuilder>` that `AddIntegrationEventRelay` accepted is now a parameter of `UseServiceBrokerChangeSource`.
+- `UseChangeFeedSqlMigrationsAsync()` moved to the `Chatter.IntegrationEventRelay.ServiceBroker.Extensions` namespace.
+- Mappers receive a `RelayContext` (source, operation, table and, where the source has them, position and commit time) instead of `IMessageBrokerContext`: `MapAsync(MappingData<TSource> data, RelayContext context, EventMappingConfigurationItem? mappingConfig)`. The synchronous default `Map` method was removed.
+- `ISourceEvent` extends Chatter's `IMessage` instead of `IEvent`. Source types only need to be classes; the SQL Service Broker source still needs `IMessage`, which `ISourceEvent` provides.
+- `EventMappingConfigurationItem.SourceChangeType` is a `RowOperation` (`Insert`, `Update`, `Delete`), so configuration values are unchanged.
+- Type names in configuration must be the full name, the assembly-qualified name, or a simple name that matches exactly one type. A partial namespace (for example `Event1.SourceEvents.Event1ChangedEvent`) no longer matches.
+- The relay checks its configuration when the host starts and stops with a list of problems if a mapping's source isn't configured or registered, or a mapping doesn't have exactly one mapper.
+- With SQL Service Broker, a source event type can be watched in only one table (SqlChangeFeed creates one queue per source event type). This is now checked at startup.
+- Removed, with their replacements: `IRelayIntegrationEvent`/`IntegrationEventRelayService` (`IIntegrationEventPublisher`), `IEventMappingConfigItemProvider`, `IRowChangeHandlerExecutor`/`RowChangeExecutor` (`IRowChangeProcessor<TSource>`), `Row*EventHandler<TSource, TIntegrationEvent>` (`Row*EventHandler<TSource>` in the ServiceBroker package), `AddSqlChangeFeedPerUniqueDataSource`, `WireRowChangeEventHandlerFromConfig` and `WireHandlerExecutor`.
+- Optional new configuration: named `Sources` (each with a `Type` and `ConnectionString`), a `Source` on each mapping, and `RequiredCapabilities` (for example `"Ordered"`) that the mapping's source must provide. Mappings without a `Source` keep using SQL Service Broker with the relay's `ConnectionString`.
 
 ## Upgrading to 0.3.0
 
@@ -130,6 +151,11 @@ You can remove the out-of-the-box worker class as the Chatter framework will cre
 The Chatter.IntegrationEventRelay nuget package, will add the functionality of [Chatter.IntegrationEventRelay.Core](#chatterintegrationeventrelaycore) to the newly created Worker service:
 `dotnet add package Chatter.IntegrationEventRelay`
 
+#### Add a change source
+
+Changes are captured from the database by a change source. Add the SQL Service Broker change source:
+`dotnet add package Chatter.IntegrationEventRelay.ServiceBroker`
+
 #### Add a Chatter Message Broker Infrastructure implementation
 
 For this example, we'll use Azure Service Bus. Follow the instructions [here](#create-namespace-topics-and-subscriptions) to configure your Azure Service Bus namespace.
@@ -149,6 +175,7 @@ Modify `Program.cs` to look like the following. Configure Chatter using the buil
 
 ```csharp
 using Chatter.IntegrationEventRelay.Core.Extensions;
+using Chatter.IntegrationEventRelay.ServiceBroker.Extensions;
 
 using IHost host = Host.CreateDefaultBuilder(args)
     .ConfigureServices((hostContext, services) =>
@@ -162,13 +189,15 @@ using IHost host = Host.CreateDefaultBuilder(args)
             hostContext.Configuration.GetValue<string>("Chatter:Infrastructure:AzureServiceBus:Auth:Authority"))
         )
         //Wire up all implementations of IMapSourceToIntegrationEvent<TSourceEvent, TIntegrationEvent> defined in configuration
-        .AddIntegrationEventRelay(); 
+        .AddIntegrationEventRelay()
+            //Capture changes to the configured tables with triggers and SQL Service Broker
+            .UseServiceBrokerChangeSource();
     }).Build();
 
 var env = host.Services.GetRequiredService<IHostEnvironment>();
 if (env.IsDevelopment())
     //Creates all database dependencies, including Install/Uninstall stored procs, triggers and SQL Service Broker queues. Should only be used in a development environment. Created DB objects should be deployed by other means (i.e., dacpac).
-    host.Services.UseChangeFeedSqlMigrations(); 
+    await host.Services.UseChangeFeedSqlMigrationsAsync();
 
 await host.RunAsync();
 ```
@@ -245,7 +274,7 @@ using Chatter.IntegrationEventRelay.Core;
 
 namespace MyNewIntegrationEventRelay
 {
-    public class OrderChangedEvent : ISourceEvent //Note the required implementation of the ISourceEvent interface
+    public class OrderChangedEvent : ISourceEvent //SQL Service Broker requires source events to implement ISourceEvent
     {
         public Guid Id { get; set; }
         public Guid CustomerId { get; set; }
@@ -288,6 +317,8 @@ namespace MyNewIntegrationEventRelay
 Modify `secrets.json` or `appsettings.json` to look as follows. The AzureServiceBus config section must be modified to match values for your Service Bus namespace. See [Service Bus Auth section](#auth) for more information.
 
 Note the "Mappings" section. The lone entry maps the[source event](#create-source-event-dto) (`TSourceEvent`) generated by an `Update` operation made to the `Orders` table to the [integration event](#create-integration-event-dto) (`TIntegrationEvent`).
+
+Mappings that don't name a `Source` are captured by SQL Service Broker from the database in `ConnectionString`.
 
 At minimum, each [EventMappingConfigurationItem](https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/Chatter.IntegrationEventRelay.Core/src/Configuration/EventMappingConfigurationItem.cs) must have a value for `SourceEventTypeName`, `IntegrationEventTypeName`, `TableName` and `SourceChangeType` (see class for detailed property definitions).
 
@@ -337,13 +368,15 @@ A mapper is required to define how `TSourceEvent` should be mapped to `TIntegrat
 - For `SourceChangeType` = "Insert", `IMapSourceInsertToIntegrationEvent<TSourceEvent, TIntegrationEvent>` must be created
 
 ```csharp
+using Chatter.IntegrationEventRelay.Core.Abstractions;
+using Chatter.IntegrationEventRelay.Core.Configuration;
 using Chatter.IntegrationEventRelay.Core.Mapping;
 
 namespace MyNewIntegrationEventRelay
 {
     public class OrderShippedMapper : IMapSourceUpdateToIntegrationEvent<OrderChangedEvent, OrderShippedEvent>
     {
-        public Task<OrderShippedEvent> MapAsync(MappingData<OrderChangedEvent> mappingData, IMessageBrokerContext context, EventMappingConfigurationItem? mappingConfig)
+        public Task<OrderShippedEvent> MapAsync(MappingData<OrderChangedEvent> mappingData, RelayContext context, EventMappingConfigurationItem? mappingConfig)
         {
             OrderShippedEvent orderShippedEvent = null;
 

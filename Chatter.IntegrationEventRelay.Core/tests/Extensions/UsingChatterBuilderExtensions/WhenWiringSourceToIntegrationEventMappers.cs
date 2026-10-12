@@ -6,7 +6,7 @@ using Chatter.IntegrationEventRelay.Core.Tests.TestContext;
 using Chatter.IntegrationEventRelay.Core.Tests.TestContext.Chatter.Cqrs;
 using Chatter.IntegrationEventRelay.Core.Tests.TestContext.Common;
 using Chatter.IntegrationEventRelay.Core.Tests.TestContext.Core.Configuration;
-using Chatter.MessageBrokers.Context;
+using Chatter.IntegrationEventRelay.Core.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Threading.Tasks;
@@ -39,8 +39,30 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
             Assert.All(builder.Services, sd => Assert.Equal(ServiceLifetime.Transient, sd?.Lifetime));
             Assert.All(builder.Services, sd => Assert.Equal(typeof(FakeMapper), sd?.ImplementationType));
             Assert.Contains(builder.Services, sd => sd?.ServiceType == typeof(IMapSourceUpdateToIntegrationEvent<FakeSource, FakeEvent>));
-            Assert.Contains(builder.Services, sd => sd?.ServiceType == typeof(IMapSourceToIntegrationEvent<FakeSource, FakeEvent>));
+            Assert.DoesNotContain(builder.Services, sd => sd?.ServiceType == typeof(IMapSourceToIntegrationEvent<FakeSource, FakeEvent>));
             Assert.DoesNotContain(builder.Services, sd => sd.ImplementationType == typeof(FakeMapper2));
+            Assert.Single(builder.Services);
+        }
+
+        [Fact]
+        public void MustRegisterOnlyTheRequestedOperationForAMapperOfSeveralOperations()
+        {
+            var assembly = Context.Common().Assembly
+                .WithTypes(typeof(UpdateAndDeleteMapper)).Mock;
+            var assemblySourceFilter = Context.Cqrs().AssemblySourceFilter
+                .WithAssemblySource(assembly).Mock;
+            var builder = Context.Cqrs().ChatterBuilder
+                .WithAssemblySourceFilter(assemblySourceFilter).Mock;
+            var item = Context.Configuration().EventMappingConfigurationItem
+                .WithSourceEventType(typeof(FakeSource))
+                .WithIntegrationEventType(typeof(FakeEvent))
+                .Mock;
+
+            builder.WireSourceToIntegrationEventMappers(typeof(IMapSourceUpdateToIntegrationEvent<,>), item);
+            builder.WireSourceToIntegrationEventMappers(typeof(IMapSourceDeleteToIntegrationEvent<,>), item);
+
+            Assert.Single(builder.Services, sd => sd.ServiceType == typeof(IMapSourceUpdateToIntegrationEvent<FakeSource, FakeEvent>));
+            Assert.Single(builder.Services, sd => sd.ServiceType == typeof(IMapSourceDeleteToIntegrationEvent<FakeSource, FakeEvent>));
             Assert.Equal(2, builder.Services.Count);
         }
 
@@ -155,9 +177,9 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
             Assert.All(builder.Services, sd => Assert.Equal(ServiceLifetime.Transient, sd?.Lifetime));
             Assert.All(builder.Services, sd => Assert.Equal(typeof(FakeMapper), sd?.ImplementationType));
             Assert.Contains(builder.Services, sd => sd?.ServiceType == typeof(IMapSourceUpdateToIntegrationEvent<FakeSource, FakeEvent>));
-            Assert.Contains(builder.Services, sd => sd?.ServiceType == typeof(IMapSourceToIntegrationEvent<FakeSource, FakeEvent>));
+            Assert.DoesNotContain(builder.Services, sd => sd?.ServiceType == typeof(IMapSourceToIntegrationEvent<FakeSource, FakeEvent>));
             Assert.DoesNotContain(builder.Services, sd => sd.ImplementationType == typeof(FakeMapper2));
-            Assert.Equal(2, builder.Services.Count);
+            Assert.Single(builder.Services);
         }
 
         [Fact]
@@ -187,8 +209,8 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
             Assert.Contains(builder.Services, sd => typeof(FakeMapper2) == sd?.ImplementationType);
             Assert.Contains(builder.Services, sd => typeof(FakeMapper3) == sd?.ImplementationType);
             Assert.Contains(builder.Services, sd => sd?.ServiceType == typeof(IMapSourceDeleteToIntegrationEvent<FakeSource, FakeEvent>));
-            Assert.Contains(builder.Services, sd => sd?.ServiceType == typeof(IMapSourceToIntegrationEvent<FakeSource, FakeEvent>));
-            Assert.Equal(4, builder.Services.Count);
+            Assert.DoesNotContain(builder.Services, sd => sd?.ServiceType == typeof(IMapSourceToIntegrationEvent<FakeSource, FakeEvent>));
+            Assert.Equal(2, builder.Services.Count);
         }
 
         [Fact]
@@ -217,23 +239,30 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Extensions.UsingChatterBuilde
 
         private class FakeSource : ISourceEvent { }
         private class FakeEvent : IEvent { }
+        private class UpdateAndDeleteMapper : IMapSourceUpdateToIntegrationEvent<FakeSource, FakeEvent?>, IMapSourceDeleteToIntegrationEvent<FakeSource, FakeEvent?>
+        {
+            public Task<FakeEvent?> MapAsync(MappingData<FakeSource> mappingData, RelayContext context, EventMappingConfigurationItem? mappingConfig)
+            {
+                throw new NotImplementedException();
+            }
+        }
         private class FakeMapper : IMapSourceUpdateToIntegrationEvent<FakeSource, FakeEvent?>
         {
-            public Task<FakeEvent?> MapAsync(MappingData<FakeSource> mappingData, IMessageBrokerContext context, EventMappingConfigurationItem? mappingConfig)
+            public Task<FakeEvent?> MapAsync(MappingData<FakeSource> mappingData, RelayContext context, EventMappingConfigurationItem? mappingConfig)
             {
                 throw new NotImplementedException();
             }
         }
         private class FakeMapper2 : IMapSourceDeleteToIntegrationEvent<FakeSource, FakeEvent?>
         {
-            public Task<FakeEvent?> MapAsync(MappingData<FakeSource> mappingData, IMessageBrokerContext context, EventMappingConfigurationItem? mappingConfig)
+            public Task<FakeEvent?> MapAsync(MappingData<FakeSource> mappingData, RelayContext context, EventMappingConfigurationItem? mappingConfig)
             {
                 throw new NotImplementedException();
             }
         }
         private class FakeMapper3 : IMapSourceDeleteToIntegrationEvent<FakeSource, FakeEvent?>
         {
-            public Task<FakeEvent?> MapAsync(MappingData<FakeSource> mappingData, IMessageBrokerContext context, EventMappingConfigurationItem? mappingConfig)
+            public Task<FakeEvent?> MapAsync(MappingData<FakeSource> mappingData, RelayContext context, EventMappingConfigurationItem? mappingConfig)
             {
                 throw new NotImplementedException();
             }

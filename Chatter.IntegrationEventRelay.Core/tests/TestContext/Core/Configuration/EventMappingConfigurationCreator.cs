@@ -17,6 +17,12 @@ public class EventMappingConfigurationCreator : MockCreator<EventMappingConfigur
         return this;
     }
 
+    public EventMappingConfigurationCreator WithSource(string name, string type, string connectionString = null)
+    {
+        Mock.Sources[name] = new ChangeSourceConfiguration { Type = type, ConnectionString = connectionString };
+        return this;
+    }
+
     public EventMappingConfigurationCreator WithNullMappings()
     {
         Mock.Mappings = null;

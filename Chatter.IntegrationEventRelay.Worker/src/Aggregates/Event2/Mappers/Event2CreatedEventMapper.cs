@@ -1,8 +1,8 @@
-﻿using Chatter.IntegrationEventRelay.Core.Configuration;
+﻿using Chatter.IntegrationEventRelay.Core.Abstractions;
+using Chatter.IntegrationEventRelay.Core.Configuration;
 using Chatter.IntegrationEventRelay.Core.Mapping;
 using Chatter.IntegrationEventRelay.Worker.Aggregates.Event2.IntegrationEvents;
 using Chatter.IntegrationEventRelay.Worker.Aggregates.Event2.SourceEvents;
-using Chatter.MessageBrokers.Context;
 
 namespace Chatter.IntegrationEventRelay.Worker.Aggregates.Event2.Mappers;
 
@@ -15,7 +15,7 @@ public class Event2CreatedEventMapper : IMapSourceInsertToIntegrationEvent<Event
 		_logger = logger ?? throw new ArgumentNullException(nameof(logger));
 	}
 
-	public Task<Event2CreatedEvent?> MapAsync(MappingData<Event2ChangedEvent> data, IMessageBrokerContext context, EventMappingConfigurationItem? mappingConfig)
+	public Task<Event2CreatedEvent?> MapAsync(MappingData<Event2ChangedEvent> data, RelayContext context, EventMappingConfigurationItem? mappingConfig)
 	{
 		var @event = new Event2CreatedEvent()
 		{
