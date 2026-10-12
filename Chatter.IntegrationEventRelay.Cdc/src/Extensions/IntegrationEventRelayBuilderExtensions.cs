@@ -46,7 +46,7 @@ public static class IntegrationEventRelayBuilderExtensions
 			.Concat(configuration.Sources.Where(s => string.Equals(s.Value.Type, CdcChangeSource.SourceType, StringComparison.OrdinalIgnoreCase)).Select(s => s.Key))
 			.Distinct(StringComparer.OrdinalIgnoreCase);
 		foreach (var sourceName in sourceNames)
-			builder.Services.AddSingleton<IChangeSource>(new CdcChangeSource(sourceName));
+			builder.Services.AddSingleton<IChangeSource>(new CdcChangeSource(sourceName, GetOptions(configuration, sourceName, configure).ErrorPolicy));
 
 		builder.Services.TryAddSingleton(TimeProvider.System);
 		builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<Microsoft.Extensions.Hosting.IHostedService, CdcPollerService>());

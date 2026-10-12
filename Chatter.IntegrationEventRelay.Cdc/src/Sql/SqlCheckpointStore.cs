@@ -28,14 +28,15 @@ internal sealed class SqlCheckpointStore : ICdcCheckpointStore
 		return SqlCdcQueries.ToLsn(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false));
 	}
 
-	// One active poller per capture instance holds the lease, so a plain update-else-insert can't race
+	// Only moves forward, so a poller that lost its lease mid-batch can't undo the progress of the instance that took
+	// over. One active poller per capture instance holds the lease, so the update-else-insert doesn't race in practice.
 	public async Task SaveAsync(string sourceName, string captureInstance, CdcLsn lastLsn, CancellationToken cancellationToken)
 	{
 		var sql = $"""
 			UPDATE {_table} SET LastLsn = @lastLsn, UpdatedAt = SYSUTCDATETIME()
-			WHERE SourceName = @sourceName AND CaptureInstance = @captureInstance;
+			WHERE SourceName = @sourceName AND CaptureInstance = @captureInstance AND LastLsn < @lastLsn;
 
-			IF @@ROWCOUNT = 0
+			IF @@ROWCOUNT = 0 AND NOT EXISTS (SELECT 1 FROM {_table} WHERE SourceName = @sourceName AND CaptureInstance = @captureInstance)
 				INSERT INTO {_table} (SourceName, CaptureInstance, LastLsn, UpdatedAt)
 				VALUES (@sourceName, @captureInstance, @lastLsn, SYSUTCDATETIME());
 			""";

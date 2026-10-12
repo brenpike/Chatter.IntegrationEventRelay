@@ -66,6 +66,41 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcCapturePoller
         }
 
         [Fact]
+        public async Task MustReportFailingToTakeTheLeaseAsAFailureNotAStandby()
+        {
+            _harness.Leases.AcquireFails = _ => true;
+
+            await RunUntilAsync(() => WaitForAsync(() => _harness.Poller.ConsecutiveFailures >= 3));
+
+            Assert.Equal(CdcPollerState.Retrying, _harness.Poller.State);
+            Assert.Contains(_harness.Logger.Entries, e => e.Level == LogLevel.Error && e.Message.Contains("Couldn't take the lease"));
+        }
+
+        [Fact]
+        public async Task MustRecoverOnceTheLeaseCanBeTakenAgain()
+        {
+            _harness.Leases.AcquireFails = attempt => attempt < 2;
+            Insert(1);
+
+            await RunUntilAsync(() => WaitForAsync(() => _processor.Ids.Count == 1 && _harness.Poller.State == CdcPollerState.Active));
+
+            Assert.Equal(0, _harness.Poller.ConsecutiveFailures);
+        }
+
+        [Fact]
+        public async Task MustNotCheckpointABatchIfTheLeaseWasLostWhileProcessingIt()
+        {
+            // Each lease passes the check before the batch and fails the one before the checkpoint
+            _harness.Leases.HeldChecks = 1;
+            Insert(1);
+
+            await RunUntilAsync(() => WaitForAsync(() => _harness.Leases.Leases.Count >= 3));
+
+            Assert.Null(_harness.Checkpoint);
+            Assert.True(_processor.Attempts[1] >= 2);
+        }
+
+        [Fact]
         public async Task MustStopPollingWhenTheLeaseIsLostAndTryToRetakeIt()
         {
             _harness.Leases.HeldChecks = 1;

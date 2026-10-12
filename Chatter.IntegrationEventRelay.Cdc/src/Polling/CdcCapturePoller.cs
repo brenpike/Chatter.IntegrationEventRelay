@@ -28,6 +28,7 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 	private readonly ILogger<CdcCapturePoller<TSource>> _logger;
 	private readonly CdcRowReader<TSource> _reader;
 	private readonly Dictionary<string, int> _attempts = new(StringComparer.Ordinal);
+	private ICdcLease? _lease;
 	private int _batchParked;
 	private bool _columnsChecked;
 	private IReadOnlyList<string>? _keyColumns;
@@ -79,9 +80,22 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 			while (!stoppingToken.IsCancellationRequested)
 			{
 				await using var lease = _leases.Create(Capture.LeaseResource);
-				if (!await TryAcquireAsync(lease, stoppingToken).ConfigureAwait(false))
+				var acquired = await TryAcquireAsync(lease, stoppingToken).ConfigureAwait(false);
+				if (acquired is not true)
 				{
-					State = CdcPollerState.Standby;
+					if (acquired is null)
+					{
+						// Couldn't reach the database: a failure, not a healthy standby
+						ConsecutiveFailures++;
+						State = CdcPollerState.Retrying;
+						CdcMetrics.RecordBatchFailure(Capture);
+					}
+					else
+					{
+						ConsecutiveFailures = 0;
+						State = CdcPollerState.Standby;
+					}
+
 					await DelayAsync(Options.LeaseRetryInterval, stoppingToken).ConfigureAwait(false);
 					continue;
 				}
@@ -94,6 +108,7 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 				catch (CdcLeaseLostException)
 				{
 					_logger.LogWarning("Lost the lease on capture instance '{CaptureInstance}' of source '{SourceName}'; another relay instance may take over", Capture.CaptureInstance, Capture.SourceName);
+					await DelayAsync(Options.LeaseRetryInterval, stoppingToken).ConfigureAwait(false);
 				}
 			}
 		}
@@ -108,7 +123,8 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 		_logger.LogInformation("Stopped polling capture instance '{CaptureInstance}' of source '{SourceName}'", Capture.CaptureInstance, Capture.SourceName);
 	}
 
-	private async Task<bool> TryAcquireAsync(ICdcLease lease, CancellationToken stoppingToken)
+	/// <returns>True if acquired, false if another relay instance holds it, null if taking it failed.</returns>
+	private async Task<bool?> TryAcquireAsync(ICdcLease lease, CancellationToken stoppingToken)
 	{
 		try
 		{
@@ -120,12 +136,13 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 		catch (Exception e) when (!stoppingToken.IsCancellationRequested)
 		{
 			_logger.LogError(e, "Couldn't take the lease on capture instance '{CaptureInstance}' of source '{SourceName}'", Capture.CaptureInstance, Capture.SourceName);
-			return false;
+			return null;
 		}
 	}
 
 	private async Task PollWhileLeasedAsync(ICdcLease lease, CancellationToken stoppingToken)
 	{
+		_lease = lease;
 		var failures = 0;
 		while (true)
 		{
@@ -241,7 +258,11 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 			_logger.LogInformation("Relayed {ChangeCount} change(s) from capture instance '{CaptureInstance}' of source '{SourceName}' up to LSN {Lsn}", changes.Count, Capture.CaptureInstance, Capture.SourceName, upperBound);
 		}
 
-		// Only after every change in the batch is published (or parked); a failure above leaves the checkpoint where it was
+		// Only after every change in the batch is published (or parked); a failure above leaves the checkpoint where it was.
+		// Checked again here as the batch may have taken a while; the store also never moves a checkpoint backwards, in
+		// case the lease is lost between this check and the save and another instance has moved on.
+		if (_lease is { } lease && !await lease.IsHeldAsync(cancellationToken).ConfigureAwait(false))
+			throw new CdcLeaseLostException(Capture.CaptureInstance);
 		await _checkpoints.SaveAsync(Capture.SourceName, Capture.CaptureInstance, upperBound, cancellationToken).ConfigureAwait(false);
 		_attempts.Clear();
 

@@ -160,6 +160,18 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcCapturePoller
         }
 
         [Fact]
+        public async Task MustNeverMoveTheCheckpointBackwards()
+        {
+            Insert(1);
+            var latest = Insert(2);
+            await PollAsync();
+
+            await _harness.Checkpoints.SaveAsync(PollerHarness<Row>.SourceName, PollerHarness<Row>.CaptureInstance, Cdc.Transactions[0].Lsn, CancellationToken.None);
+
+            Assert.Equal(latest.Lsn, _harness.Checkpoint);
+        }
+
+        [Fact]
         public async Task MustDoNothingBeforeAnythingIsCaptured()
         {
             Assert.False(await PollAsync());

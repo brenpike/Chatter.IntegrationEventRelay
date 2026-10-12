@@ -18,6 +18,10 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcChangeSource
         public void MustBeOrderedResumableAndReportCommitTimes()
             => Assert.Equal(ChangeSourceCapabilities.Ordered | ChangeSourceCapabilities.Resumable | ChangeSourceCapabilities.CommitTime, new CdcChangeSource("fakedb-cdc").Capabilities);
 
+        [Fact]
+        public void MustNotClaimCommitOrderWhenParkingRows()
+            => Assert.Equal(ChangeSourceCapabilities.Resumable | ChangeSourceCapabilities.CommitTime, new CdcChangeSource("fakedb-cdc", CdcErrorPolicy.ParkRow).Capabilities);
+
         [Theory]
         [InlineData(null)]
         [InlineData("")]

@@ -42,9 +42,11 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Fakes
 
         public Task SaveAsync(string sourceName, string captureInstance, CdcLsn lastLsn, CancellationToken cancellationToken)
         {
+            // Like the SQL store: never moves a checkpoint backwards
             lock (_lock)
             {
-                _checkpoints[(sourceName, captureInstance)] = lastLsn;
+                if (!_checkpoints.TryGetValue((sourceName, captureInstance), out var current) || current < lastLsn)
+                    _checkpoints[(sourceName, captureInstance)] = lastLsn;
                 _saves.Add(lastLsn);
             }
             return Task.CompletedTask;

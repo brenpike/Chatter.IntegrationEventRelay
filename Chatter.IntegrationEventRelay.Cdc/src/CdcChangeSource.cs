@@ -19,9 +19,16 @@ public sealed class CdcChangeSource : IChangeSource
 {
 	public const string SourceType = "Cdc";
 
-	public CdcChangeSource(string name) => Name = string.IsNullOrWhiteSpace(name) ? throw new ArgumentNullException(nameof(name)) : name;
+	/// <param name="errorPolicy">The source's error policy. <see cref="CdcErrorPolicy.ParkRow"/> publishes later changes
+	/// to other rows before a parked one, so the source is then only ordered per row and doesn't claim <see cref="ChangeSourceCapabilities.Ordered"/>.</param>
+	public CdcChangeSource(string name, CdcErrorPolicy errorPolicy = CdcErrorPolicy.Halt)
+	{
+		Name = string.IsNullOrWhiteSpace(name) ? throw new ArgumentNullException(nameof(name)) : name;
+		Capabilities = ChangeSourceCapabilities.Resumable | ChangeSourceCapabilities.CommitTime
+			| (errorPolicy == CdcErrorPolicy.ParkRow ? ChangeSourceCapabilities.None : ChangeSourceCapabilities.Ordered);
+	}
 
 	public string Name { get; }
 	public string Type => SourceType;
-	public ChangeSourceCapabilities Capabilities => ChangeSourceCapabilities.Ordered | ChangeSourceCapabilities.Resumable | ChangeSourceCapabilities.CommitTime;
+	public ChangeSourceCapabilities Capabilities { get; }
 }

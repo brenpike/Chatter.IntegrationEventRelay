@@ -134,6 +134,20 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingIntegrationEventRelayBuil
         }
 
         [Fact]
+        public void MustRegisterSourcesThatParkRowsAsUnordered()
+        {
+            Source("ordered-cdc");
+            Source("parking-cdc", new() { ["ErrorPolicy"] = "ParkRow" });
+            Map(Mapping("ordered-cdc"), Mapping("parking-cdc", table: "Event2", sourceEventType: typeof(AnotherRow)));
+
+            Use();
+
+            var sources = Provider().GetServices<IChangeSource>().ToDictionary(s => s.Name);
+            Assert.True(sources["ordered-cdc"].Capabilities.HasFlag(ChangeSourceCapabilities.Ordered));
+            Assert.False(sources["parking-cdc"].Capabilities.HasFlag(ChangeSourceCapabilities.Ordered));
+        }
+
+        [Fact]
         public void MustRejectInvalidOptions()
         {
             Source("fakedb-cdc", new() { ["PollInterval"] = "00:00:00" });

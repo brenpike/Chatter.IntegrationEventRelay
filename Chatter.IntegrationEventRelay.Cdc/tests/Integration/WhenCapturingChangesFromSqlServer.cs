@@ -161,6 +161,8 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             await store.SaveAsync("fakedb-cdc", "dbo_X", lsn.Increment(), CancellationToken.None);
 
             Assert.Equal(lsn.Increment(), await store.GetAsync("fakedb-cdc", "dbo_X", CancellationToken.None));
+            await store.SaveAsync("fakedb-cdc", "dbo_X", lsn, CancellationToken.None);
+            Assert.Equal(lsn.Increment(), await store.GetAsync("fakedb-cdc", "dbo_X", CancellationToken.None));
             Assert.Equal(1, await _sql.ScalarAsync<int>("SELECT COUNT(*) FROM relay_it.Chatter_RelayCheckpoints WHERE CaptureInstance = N'dbo_X';"));
         }
 
