@@ -9,7 +9,8 @@ fi
 
 # Marker read by sql-healthcheck.sh; the container only reports healthy once all scripts have run
 READY_FILE=/tmp/scripts-complete
-rm -f $READY_FILE
+FAILED_FILE=/tmp/scripts-failed
+rm -f $READY_FILE $FAILED_FILE
 
 run_scripts() {
 	echo "Waiting for MS SQL to be available ⏳ ..."
@@ -25,7 +26,13 @@ run_scripts() {
 	for foo in /scripts/*.sql
 	  do
 	  echo "Found script $foo"
-	  $SQLCMD -U sa -P "$SA_PASSWORD" -l 30 -e -i $foo
+	  # -b: abort the script and exit non-zero on a SQL error, so a failed script is not reported as success
+	  if ! $SQLCMD -U sa -P "$SA_PASSWORD" -l 30 -b -e -i "$foo"; then
+	    echo "Script $foo failed. Stopping SQL Server so the container exits instead of reporting healthy." >&2
+	    touch $FAILED_FILE
+	    kill -15 $pid
+	    return 1
+	  fi
 	  echo "Script $foo executed."
 	done
 	touch $READY_FILE
@@ -38,4 +45,7 @@ run_scripts &
 
 trap "kill -15 $pid" SIGTERM
 wait $pid
+if [ -f $FAILED_FILE ]; then
+	exit 1
+fi
 exit 0

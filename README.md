@@ -94,6 +94,8 @@ The emulator uses the demo's SQL Server container as its backing store and keeps
 To relay to a real namespace instead, create the topics and subscriptions above in your namespace, then create a `.env` file next to `docker-compose.yml` (it is git-ignored):
 
 ```text
+# Leave out the emulator (see docker-compose.azure.yml)
+COMPOSE_FILE=docker-compose.yml:docker-compose.azure.yml
 # Either a connection string with a shared access key...
 ASB_CONNECTION_STRING=Endpoint=sb://<your-namespace>.servicebus.windows.net/;SharedAccessKeyName=<key name>;SharedAccessKey=<key>
 # ...or the namespace endpoint plus an Entra ID (AAD) app registration

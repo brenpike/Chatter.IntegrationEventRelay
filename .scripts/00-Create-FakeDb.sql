@@ -1,3 +1,4 @@
+IF DB_ID(N'FakeDb') IS NULL
 CREATE DATABASE FakeDb
 GO
 

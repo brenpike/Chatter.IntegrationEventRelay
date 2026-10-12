@@ -1,0 +1,30 @@
+# Override for running against a real Azure Service Bus namespace instead of the emulator.
+# Leaves out the emulator and makes the Workers and Consumers stop waiting for it.
+# Use it by adding COMPOSE_FILE=docker-compose.yml:docker-compose.azure.yml to .env
+# (see README: "Using a real Azure Service Bus namespace").
+
+x-depends-on-db: &depends-on-db
+  db:
+    condition: service_healthy
+
+services:
+  # Only started when the "emulator" profile is enabled, which this override never does
+  servicebus:
+    profiles: ["emulator"]
+
+  servicebus-ready:
+    profiles: ["emulator"]
+
+  worker:
+    depends_on: !override
+      <<: *depends-on-db
+
+  worker2:
+    depends_on: !override
+      <<: *depends-on-db
+
+  consumer1:
+    depends_on: !reset {}
+
+  consumer2:
+    depends_on: !reset {}

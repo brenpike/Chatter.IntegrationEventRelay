@@ -1,5 +1,6 @@
 # Runs fully locally against the Azure Service Bus emulator by default.
-# To use a real Azure Service Bus namespace instead, set the ASB_* variables in a .env file next to this file
+# To use a real Azure Service Bus namespace instead, set the ASB_* variables and COMPOSE_FILE (which adds
+# docker-compose.azure.yml, leaving out the emulator) in a .env file next to this file
 # (see README: "Using a real Azure Service Bus namespace").
 
 x-servicebus-env: &servicebus-env
