@@ -66,6 +66,11 @@ public static class ChatterBuilderExtensions
 		foreach (var (name, source) in eventMappingConfig.Sources)
 			source.Section = section.GetSection(nameof(EventMappingConfiguration.Sources)).GetSection(name);
 
+		// The binder fills Mappings from the section's children in the same order
+		var mappingSections = section.GetSection(nameof(EventMappingConfiguration.Mappings)).GetChildren();
+		foreach (var (mapping, mappingSection) in (eventMappingConfig.Mappings ?? Enumerable.Empty<EventMappingConfigurationItem>()).Zip(mappingSections))
+			mapping.Section = mappingSection;
+
 		return builder.AddIntegrationEventRelay(eventMappingConfig);
 	}
 

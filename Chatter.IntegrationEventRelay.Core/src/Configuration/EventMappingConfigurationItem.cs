@@ -1,4 +1,5 @@
 ﻿using Chatter.IntegrationEventRelay.Core.Abstractions;
+using Microsoft.Extensions.Configuration;
 using System.ComponentModel.DataAnnotations;
 
 namespace Chatter.IntegrationEventRelay.Core.Configuration;
@@ -85,4 +86,10 @@ public class EventMappingConfigurationItem
     /// The content type of the brokered message that will be sent to the Messagining Infrastructure. Default value is 'application/json'.
     /// </summary>
     public string? BrokeredMessageContentType { get; set; } = DefaultContentType;
+
+    /// <summary>
+    /// The configuration section this mapping was bound from, so change source adapters can read their own mapping settings
+    /// (for example CDC's <c>CaptureInstance</c>). Null when configured in code.
+    /// </summary>
+    public IConfigurationSection? Section { get; set; }
 }
