@@ -1,4 +1,4 @@
-using Chatter.IntegrationEventRelay.Core.Abstractions;
+﻿using Chatter.IntegrationEventRelay.Core.Abstractions;
 using Chatter.IntegrationEventRelay.Core.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -40,12 +40,13 @@ public class RowChangeProcessor<TSource> : IRowChangeProcessor<TSource> where TS
 	}
 
 	/// <summary>
-	/// Mappings for this source, source type and operation; and for this table when the source reports one.
+	/// Mappings for this source, source type and operation; and for this table (and database, when both the source and
+	/// the mapping name one) when the source reports a table.
 	/// </summary>
 	private IEnumerable<EventMappingConfigurationItem> GetMappings(RowChange<TSource> change)
 		=> (_configuration.Mappings ?? Enumerable.Empty<EventMappingConfigurationItem>())
 			.Where(m => m.SourceEventType == typeof(TSource)
 				&& m.SourceChangeType == change.Operation
 				&& string.Equals(EventMappingConfiguration.GetSourceName(m), change.SourceName, StringComparison.OrdinalIgnoreCase)
-				&& (change.Table is null || change.Table.Matches(m.TableName)));
+				&& (change.Table is null || change.Table.Matches(m.TableName, m.DatabaseName)));
 }

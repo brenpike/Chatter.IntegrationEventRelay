@@ -5,6 +5,8 @@ using Chatter.IntegrationEventRelay.Core.Mapping;
 using Chatter.IntegrationEventRelay.Core.Publishing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Chatter.IntegrationEventRelay.Core.Processing;
 
@@ -58,10 +60,15 @@ public class MappingInvoker<TSource, TIntegrationEvent> : IMappingInvoker<TSourc
 	/// </summary>
 	/// <remarks>
 	/// Positions are only unique within a source, so the id is namespaced by source name. Every mapping of one change
-	/// produces a different event type, so the event type keeps their ids apart.
+	/// produces a different event type, so the event type keeps their ids apart: its name for readability, plus a hash
+	/// of its full name so types with the same name in different namespaces differ. Kept short for brokers that limit
+	/// message ids (Azure Service Bus: 128 characters).
 	/// </remarks>
 	public static string? GetMessageId(RowChange<TSource> change)
-		=> change.Position is null ? null : $"{change.SourceName}:{change.Position.ToMessageId()}:{typeof(TIntegrationEvent).Name}";
+		=> change.Position is null ? null : $"{change.SourceName}:{change.Position.ToMessageId()}:{typeof(TIntegrationEvent).Name}:{EventTypeHash}";
+
+	private static readonly string EventTypeHash = Convert.ToHexString(
+		SHA256.HashData(Encoding.UTF8.GetBytes(typeof(TIntegrationEvent).FullName ?? typeof(TIntegrationEvent).Name)), 0, 4).ToLowerInvariant();
 
 	private IMapSourceToIntegrationEvent<TSource, TIntegrationEvent?> GetMapper(RowOperation operation) => operation switch
 	{

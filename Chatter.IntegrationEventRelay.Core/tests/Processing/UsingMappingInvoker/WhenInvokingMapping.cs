@@ -121,7 +121,29 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Processing.UsingMappingInvoke
         {
             await _sut.InvokeAsync(Change(RowOperation.Insert, new ChangePosition("0x0001:0x0002")), _mapping, CancellationToken.None);
 
-            _publisher.Verify(p => p.PublishAsync(It.IsAny<FakeEvent>(), It.IsAny<EventMappingConfigurationItem>(), $"source:0x0001:0x0002:{nameof(FakeEvent)}", It.IsAny<CancellationToken>()), Times.Once());
+            _publisher.Verify(p => p.PublishAsync(It.IsAny<FakeEvent>(), It.IsAny<EventMappingConfigurationItem>(), It.Is<string>(id => id.StartsWith($"source:0x0001:0x0002:{nameof(FakeEvent)}:")), It.IsAny<CancellationToken>()), Times.Once());
+        }
+
+        [Fact]
+        public void MustGiveTheSameMessageIdWhenAChangeIsReplayed()
+        {
+            var change = Change(RowOperation.Insert, new ChangePosition("0x0001"));
+            Assert.Equal(MappingInvoker<FakeSource, FakeEvent>.GetMessageId(change), MappingInvoker<FakeSource, FakeEvent>.GetMessageId(change with { NewValue = new FakeSource() }));
+        }
+
+        [Fact]
+        public void MustGiveEventTypesWithTheSameNameDifferentMessageIds()
+        {
+            var change = Change(RowOperation.Insert, new ChangePosition("0x0001"));
+            Assert.NotEqual(MappingInvoker<FakeSource, FakeEvent>.GetMessageId(change), MappingInvoker<FakeSource, OtherNamespace.FakeEvent>.GetMessageId(change));
+        }
+
+        [Fact]
+        public void MustKeepMessageIdsWithinTheAzureServiceBusLimitForCdcPositions()
+        {
+            var cdcPosition = new ChangePosition("dbo_Event1:0x0000002A000001F80003:0x0000002A000001F80002:2");
+            var id = MappingInvoker<FakeSource, FakeEvent>.GetMessageId(Change(RowOperation.Insert, cdcPosition) with { SourceName = "fakedb-cdc" });
+            Assert.True(id.Length <= 128, $"{id.Length} characters: {id}");
         }
 
         [Fact]
@@ -165,6 +187,11 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Processing.UsingMappingInvoke
             => new("source", operation, operation == RowOperation.Update ? new FakeSource() : null, new FakeSource(), new SourceTable("Table"), position, DateTimeOffset.UnixEpoch);
 
         public class FakeSource { }
+        public class FakeEvent : IEvent { }
+    }
+
+    namespace OtherNamespace
+    {
         public class FakeEvent : IEvent { }
     }
 }

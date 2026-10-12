@@ -1,4 +1,4 @@
-using Chatter.CQRS.Events;
+﻿using Chatter.CQRS.Events;
 using Chatter.IntegrationEventRelay.Core.Abstractions;
 using Chatter.IntegrationEventRelay.Core.Configuration;
 using Chatter.IntegrationEventRelay.Core.Processing;
@@ -120,6 +120,36 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Processing.UsingRowChangeProc
         }
 
         [Fact]
+        public async Task MustSkipMappingsForOtherDatabasesWhenBothNameOne()
+        {
+            var sut = CreateSut(Mapping<FakeEvent>(RowOperation.Update, database: "OtherDb"));
+
+            await sut.ProcessAsync(Change(RowOperation.Update, database: "FakeDb"), CancellationToken.None);
+
+            Assert.Empty(_invocations);
+        }
+
+        [Fact]
+        public async Task MustMatchMappingsForTheReportedDatabase()
+        {
+            var sut = CreateSut(Mapping<FakeEvent>(RowOperation.Update, database: "fakedb"), Mapping<OtherFakeEvent>(RowOperation.Update, database: "OtherDb"));
+
+            await sut.ProcessAsync(Change(RowOperation.Update, database: "FakeDb"), CancellationToken.None);
+
+            Assert.Equal(new[] { nameof(FakeEvent) }, _invocations);
+        }
+
+        [Fact]
+        public async Task MustMatchMappingsWithoutADatabaseWhateverTheReportedDatabase()
+        {
+            var sut = CreateSut(Mapping<FakeEvent>(RowOperation.Update, database: ""));
+
+            await sut.ProcessAsync(Change(RowOperation.Update, database: "FakeDb"), CancellationToken.None);
+
+            Assert.Single(_invocations);
+        }
+
+        [Fact]
         public async Task MustMatchAnyTableWhenTheSourceDoesNotReportOne()
         {
             var sut = CreateSut(Mapping<FakeEvent>(RowOperation.Update, table: "AnyTable"));
@@ -189,8 +219,9 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Processing.UsingRowChangeProc
                    new[] { _fakeEventInvoker.Object, _otherEventInvoker.Object },
                    NullLogger<RowChangeProcessor<FakeSource>>.Instance);
 
-        private EventMappingConfigurationItem Mapping<TEvent>(RowOperation operation, string source = "source", string table = "Table")
+        private EventMappingConfigurationItem Mapping<TEvent>(RowOperation operation, string source = "source", string table = "Table", string database = "database")
             => Context.Configuration().EventMappingConfigurationItem
+                .WithDatabaseName(database)
                 .WithSourceEventType(typeof(FakeSource))
                 .WithIntegrationEventType(typeof(TEvent))
                 .WithChangeType(operation)
@@ -198,8 +229,8 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Processing.UsingRowChangeProc
                 .WithTable(table)
                 .Mock;
 
-        private static RowChange<FakeSource> Change(RowOperation operation, string sourceName = "source", string tableName = "Table")
-            => new(sourceName, operation, null, new FakeSource(), tableName is null ? null : new SourceTable(tableName), null, null);
+        private static RowChange<FakeSource> Change(RowOperation operation, string sourceName = "source", string tableName = "Table", string database = null)
+            => new(sourceName, operation, null, new FakeSource(), tableName is null ? null : new SourceTable(tableName, Database: database), null, null);
 
         public class FakeSource { }
         public class OtherFakeSource { }
