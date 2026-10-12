@@ -200,7 +200,7 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcCapturePoller
             _harness.Options.StartPosition = CdcStartPosition.Latest;
 
             Assert.False(await PollAsync());
-            Assert.Equal(CdcLsn.Zero, _harness.Checkpoint);
+            Assert.Equal(Cdc.MinLsn.Decrement(), _harness.Checkpoint);
             var first = Insert(1);
             await PollAsync();
 
@@ -221,6 +221,31 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcCapturePoller
             await PollAsync();
 
             Assert.Equal(1, _batches.Single().Single().NewValue.Id);
+        }
+
+        [Fact]
+        public async Task MustDetectCleanupPastTheStartAnchorOfAnEmptyCaptureInstance()
+        {
+            _harness.Options.StartPosition = CdcStartPosition.Latest;
+            await PollAsync();
+
+            // The relay is down while changes are made and then removed by cleanup
+            Insert(1);
+            var kept = Insert(2);
+            Cdc.MinLsn = kept.Lsn;
+
+            await Assert.ThrowsAsync<CdcGapException>(() => PollAsync());
+        }
+
+        [Fact]
+        public async Task MustAnchorAtZeroBeforeTheCaptureJobsFirstScan()
+        {
+            _harness.Options.StartPosition = CdcStartPosition.Latest;
+            Cdc.MinLsn = CdcLsn.Zero;
+
+            await PollAsync();
+
+            Assert.Equal(CdcLsn.Zero, _harness.Checkpoint);
         }
 
         [Fact]

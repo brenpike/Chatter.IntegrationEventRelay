@@ -68,6 +68,18 @@ public readonly struct CdcLsn : IComparable<CdcLsn>, IComparable, IEquatable<Cdc
 		return new CdcLsn(_high + 1, 0);
 	}
 
+	/// <summary>
+	/// The previous LSN: this value minus one, borrowing from the high bytes.
+	/// </summary>
+	public CdcLsn Decrement()
+	{
+		if (_low != 0)
+			return new CdcLsn(_high, (ushort)(_low - 1));
+		if (_high == 0)
+			throw new OverflowException("The CDC LSN is already zero.");
+		return new CdcLsn(_high - 1, ushort.MaxValue);
+	}
+
 	public int CompareTo(CdcLsn other)
 	{
 		var high = _high.CompareTo(other._high);

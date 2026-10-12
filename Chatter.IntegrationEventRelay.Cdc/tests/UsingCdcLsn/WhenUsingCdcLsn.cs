@@ -30,6 +30,17 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcLsn
         public void MustIncrementWithCarry(string value, string expected)
             => Assert.Equal(CdcLsn.Parse(expected), CdcLsn.Parse(value).Increment());
 
+        [Theory]
+        [InlineData("0x00000000000000000002", "0x00000000000000000001")]
+        [InlineData("0x00000000000000010000", "0x0000000000000000FFFF")]
+        [InlineData("0x01000000000000000000", "0x00FFFFFFFFFFFFFFFFFF")]
+        public void MustDecrementWithBorrow(string value, string expected)
+            => Assert.Equal(CdcLsn.Parse(expected), CdcLsn.Parse(value).Decrement());
+
+        [Fact]
+        public void MustNotDecrementBelowZero()
+            => Assert.Throws<OverflowException>(() => CdcLsn.Zero.Decrement());
+
         [Fact]
         public void MustNotIncrementPastTheLargestValue()
             => Assert.Throws<OverflowException>(() => CdcLsn.Parse("0xFFFFFFFFFFFFFFFFFFFF").Increment());

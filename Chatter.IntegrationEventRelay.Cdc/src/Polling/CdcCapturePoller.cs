@@ -216,7 +216,9 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 		}
 		else if (checkpoint is null && Options.StartPosition == CdcStartPosition.Latest)
 		{
-			await AnchorLatestAsync(maxLsn, cancellationToken).ConfigureAwait(false);
+			// With nothing captured yet, anchor just before the oldest available LSN: the first change is relayed, and CDC
+			// cleanup passing the anchor while the relay is down is still detected as a gap
+			await AnchorLatestAsync(maxLsn.IsZero ? minLsn.Decrement() : maxLsn, cancellationToken).ConfigureAwait(false);
 			return maxLsn.IsZero ? CaughtUp() : true;
 		}
 		else
@@ -276,18 +278,16 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 	}
 
 	/// <summary>
-	/// Saves where a capture instance with no checkpoint starts with <see cref="CdcStartPosition.Latest"/>: after the
-	/// latest captured change, or, when nothing is captured yet, the zero LSN, which means "from the oldest change", so
-	/// the first change captured after the relay started isn't skipped. Saved at once, so changes committed while the
-	/// relay is down later aren't skipped either.
+	/// Saves where a capture instance with no checkpoint starts with <see cref="CdcStartPosition.Latest"/>, at once, so
+	/// changes committed while the relay is down later aren't skipped: after the latest captured change; before the
+	/// oldest available LSN when nothing is captured yet; or, before the capture job's first scan (no LSNs at all), the
+	/// zero LSN, which means "from the oldest change". Only that last anchor can't detect CDC cleanup passing it, which
+	/// needs the relay to stay down from within seconds of CDC being enabled until the retention period ends.
 	/// </summary>
-	private async Task AnchorLatestAsync(CdcLsn maxLsn, CancellationToken cancellationToken)
+	private async Task AnchorLatestAsync(CdcLsn anchor, CancellationToken cancellationToken)
 	{
-		await _checkpoints.SaveAsync(Capture.SourceName, Capture.CaptureInstance, maxLsn, cancellationToken).ConfigureAwait(false);
-		if (maxLsn.IsZero)
-			_logger.LogInformation("Capture instance '{CaptureInstance}' of source '{SourceName}' has no checkpoint and no changes yet; starting with its first change", Capture.CaptureInstance, Capture.SourceName);
-		else
-			_logger.LogInformation("Capture instance '{CaptureInstance}' of source '{SourceName}' has no checkpoint; starting after the latest change, LSN {Lsn}", Capture.CaptureInstance, Capture.SourceName, maxLsn);
+		await _checkpoints.SaveAsync(Capture.SourceName, Capture.CaptureInstance, anchor, cancellationToken).ConfigureAwait(false);
+		_logger.LogInformation("Capture instance '{CaptureInstance}' of source '{SourceName}' has no checkpoint; starting after LSN {Lsn}", Capture.CaptureInstance, Capture.SourceName, anchor);
 	}
 
 	private async Task RefreshParkedChangesAsync(CancellationToken cancellationToken)
