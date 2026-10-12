@@ -36,7 +36,7 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcChangeSource
         [InlineData(null)]
         [InlineData("")]
         [InlineData(" ")]
-        public void MustThrowWithoutAName(string name)
-            => Assert.Throws<ArgumentNullException>(() => new CdcChangeSource(name));
+        public void MustThrowWithoutAName(string? name)
+            => Assert.Throws<ArgumentNullException>(() => new CdcChangeSource(name!));
     }
 }

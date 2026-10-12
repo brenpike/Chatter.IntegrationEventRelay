@@ -27,6 +27,23 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             await _container.StartAsync();
             await ExecuteAsync(_container.GetConnectionString(), $"CREATE DATABASE [{Database}];");
             ConnectionString = new SqlConnectionStringBuilder(_container.GetConnectionString()) { InitialCatalog = Database, TrustServerCertificate = true }.ConnectionString;
+
+            // Enabling CDC on the first table creates the capture and cleanup jobs, which fails while SQL Server Agent
+            // is still starting (error 14258); do it once here, retrying, so tests don't race the Agent
+            await ExecuteAsync(ConnectionString, "CREATE TABLE dbo.AgentWarmup (Id int NOT NULL PRIMARY KEY);");
+            var deadline = DateTime.UtcNow.AddMinutes(2);
+            while (true)
+            {
+                try
+                {
+                    await EnableCdcAsync("AgentWarmup", "Chatter");
+                    return;
+                }
+                catch (SqlException e) when (e.Message.Contains("SQLServerAgent is starting", StringComparison.OrdinalIgnoreCase) && DateTime.UtcNow < deadline)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(2));
+                }
+            }
         }
 
         public Task DisposeAsync() => _container.DisposeAsync().AsTask();
@@ -45,10 +62,15 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
                 );
                 """);
 
-            var services = new ServiceCollection();
-            services.AddSingleton(new CdcMigrationTarget(ConnectionString, schema, "dbo", name, $"dbo_{name}"));
-            await services.BuildServiceProvider().UseCdcSqlMigrationsAsync();
+            await EnableCdcAsync(name, schema);
             return $"dbo_{name}";
+        }
+
+        private async Task EnableCdcAsync(string table, string schema)
+        {
+            var services = new ServiceCollection();
+            services.AddSingleton(new CdcMigrationTarget(ConnectionString, schema, "dbo", table, $"dbo_{table}"));
+            await services.BuildServiceProvider().UseCdcSqlMigrationsAsync();
         }
 
         public Task ExecuteAsync(string sql) => ExecuteAsync(ConnectionString, sql);
