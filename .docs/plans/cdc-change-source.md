@@ -1,6 +1,6 @@
 # Plan: CDC change source alongside SQL Service Broker
 
-Status: decisions resolved; ready to start Phase 0.
+Status: Phase 0 merged (#27); Phase 0.5 in review (#28); Phase 1 spike done.
 
 ## Goal
 Keep the existing trigger + SQL Service Broker (SSB) capture and add SQL Server Change Data Capture (CDC)
@@ -83,6 +83,21 @@ name, `PublishOptions` (content type, infrastructure type) and a caller-supplied
 inbound `IMessageBrokerContext`/transaction. Fallback: Chatter `IMessageDispatcher`/`IExternalDispatcher`.
 Outcome recorded in the PR description.
 
+**Outcome (done, by decompiling Chatter.MessageBrokers 0.35.3 and Chatter.MessageBrokers.AzureServiceBus 3.0.2): it works, no fallback needed.**
+- `IBrokeredMessagePublisher.Publish<T>(T message, string destinationPath, TransactionContext transactionContext = null, PublishOptions options = null)`
+  takes no `IMessageBrokerContext`; `transactionContext` is optional. It is implemented by the internal
+  `BrokeredMessageDispatcher`, registered by `AddMessageBrokers`.
+- `PublishOptions.MessageId` (on `RoutingOptions`) is used verbatim when set; otherwise the registered
+  `IMessageIdGenerator` generates one. The ASB sender copies it to `ServiceBusMessage.MessageId`, so duplicate
+  detection works on our ids.
+- `ContentType` (default `application/json`) and `UseMessagingInfrastructure(...)` are set on `PublishOptions`
+  exactly as `IntegrationEventRelayService` does today.
+- The ASB `ServiceBusMessageSender.Dispatch` checks `transactionContext != null` and uses `TransactionMode.None`
+  when it is null, so a CDC poller publishes outside any receive transaction.
+- Caveat: when the outbox is enabled, `OutboxBrokeredMessageRouter` routes to the outbox using the transaction
+  context; the relay does not enable the outbox, and the CDC adapter documents that it does not support it.
+- Constraint: `T : IEvent`, so integration events stay `IEvent`; only source DTOs drop the `IEvent` requirement.
+
 ### 1b. New core types (`Chatter.IntegrationEventRelay.Core/src/Abstractions/`)
 
 ```csharp
@@ -131,7 +146,7 @@ public interface IIntegrationEventPublisher
 (source, table, operation, source type), resolves the mapper for each integration event type, maps, and
 publishes non-null results with `messageId = $"{position}:{integrationEventType}"` when a position exists.
 
-### 1c. Mapper API (breaking -> 0.3.0)
+### 1c. Mapper API (breaking -> 0.4.0; 0.3.0 shipped with Phase 0)
 ```csharp
 Task<TIntegrationEvent?> MapAsync(MappingData<TSource> data, RelayContext context, EventMappingConfigurationItem? mappingConfig);
 ```
@@ -262,12 +277,16 @@ failing (mapper exceptions, serialization errors, rejected messages) after `MaxA
 ### 2h. Where relay tables live
 - In the source database (backed up and restored with the data they describe).
 - In the same schema as the rest of the relay's database assets, set once relay-wide:
-  `IntegrationEventRelay:Schema`, default `Chatter`. Table names keep Chatter's `Chatter_` prefix.
-- The same setting is passed to the Service Broker adapter's SqlChangeFeed options so both adapters put
-  their objects in one schema. Note: the current demo creates Chatter's SSB objects in `dbo`, and
-  SqlChangeFeed's `WithSchema` option may refer to the watched table's schema rather than the asset schema;
-  Phase 1 confirms which, and if SqlChangeFeed cannot place its assets in a separate schema, the default
-  becomes whatever schema SqlChangeFeed uses so everything still lands together.
+  `IntegrationEventRelay:Schema`, default `dbo` (see finding below). Table names keep Chatter's `Chatter_` prefix.
+- **Finding (SqlChangeFeed 0.16, decompiled):** `WithSchema` sets a single `SchemaName` (default `dbo`) that is
+  both the watched table's schema (`ON {schema}.{table}`) and the schema of every asset it creates: the trigger,
+  the conversation and dead-letter queues and the install/uninstall procedures. SqlChangeFeed cannot place its
+  assets in a separate schema, and SQL Server requires a DML trigger to be in its table's schema anyway.
+- So, per the fallback this plan set, the relay-wide `Schema` default is **`dbo`** (SqlChangeFeed's default), and
+  the CDC relay tables go there too, so in the default setup everything lands together. `Schema` stays
+  overridable for the CDC tables; SSB assets keep following each table's schema.
+- Possible Chatter follow-up (not required here): a separate asset schema option in SqlChangeFeed for the queues,
+  services and procedures (the trigger must stay with the table).
 
 ### 2e. Observability
 - `System.Diagnostics.Metrics`: changes processed, events published, batch duration, lag
@@ -293,12 +312,12 @@ failing (mapper exceptions, serialization errors, rejected messages) after `MaxA
 - `docker-compose.yml`: `MSSQL_AGENT_ENABLED=true` for `db`; seed scripts enable CDC on `Event1`; demo still
   expects 100 events / 50 per consumer.
 - README: choosing a source, per-source delivery semantics, SSB -> CDC cutover (enable CDC, seed checkpoint at
-  current max LSN, switch mapping `Source`, drop trigger), 0.2 -> 0.3 mapper migration.
+  current max LSN, switch mapping `Source`, drop trigger), 0.3 -> 0.4 mapper migration.
 
 ---
 
 ## Risks
-- `IBrokeredMessagePublisher` may require an inbound transaction context -> settled by spike 1a.
+- ~~`IBrokeredMessagePublisher` may require an inbound transaction context~~ -> settled by spike 1a: it does not.
 - Breaking mapper signature -> acceptable at 0.x; migration notes in README and release notes.
 - Integration tests lengthen CI -> separate job.
 - This cloud environment can build and unit test (.NET SDK via apt) but has no Docker daemon; e2e and SQL
@@ -306,8 +325,8 @@ failing (mapper exceptions, serialization errors, rejected messages) after `MaxA
 
 ## Decisions (resolved)
 1. Phase 0 first, targeting .NET 10 (not 8).
-2. Breaking mapper API at 0.3.0, no `[Obsolete]` shims.
+2. Breaking mapper API at 0.4.0 (0.3.0 shipped with Phase 0), no `[Obsolete]` shims.
 3. Four stacked branches.
-4. Checkpoints (and parked changes) in the source database, in the relay-wide schema (default `Chatter`, overridable), shared with the other relay database assets.
+4. Checkpoints (and parked changes) in the source database, in the relay-wide schema (default `dbo`, matching SqlChangeFeed; overridable). See 2h.
 5. Error policy: `Halt` default; per-row parking (`ParkRow`) opt-in. Transient failures always retried, never parked.
 6. Keep `ISourceEvent` as an optional marker.

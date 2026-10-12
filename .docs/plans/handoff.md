@@ -8,46 +8,29 @@ and the resolved design decisions. Both files live on branch `claude/repo-overvi
 | Item | State |
 |---|---|
 | Phase 0: PR #27, `feat/net10-ci` (.NET 10, latest Chatter packages, CI repaired) | **Merged** into `main` (squash), commit `e8150e1` |
-| Phase 0.5: `feat/servicebus-emulator` (Service Bus emulator demo, e2e CI job) | Pushed, e2e green in CI, **no PR yet**, **not yet rebased onto `main`** |
-| Phase 1: `feat/change-source-abstraction` | Not started |
+| Phase 0.5: `feat/servicebus-emulator` (Service Bus emulator demo, e2e CI job) | Rebased onto `main`, **PR #28 open**; session subscribed to its activity |
+| Phase 1: `feat/change-source-abstraction` | Spike 1a **done** (outcome in plan section 1a); branch not cut yet |
 | Phase 2: `feat/cdc-change-source` | Not started |
 | Phase 3: `feat/cdc-sample-docs` | Not started |
-| Open PRs | None |
+| Open PRs | #28 |
 
 ## Next steps
 
-1. **Rebase the emulator branch onto `main`.** #27 was squash-merged, so replay only the two emulator commits:
-   ```bash
-   git fetch origin main feat/servicebus-emulator
-   git checkout -B feat/servicebus-emulator origin/feat/servicebus-emulator
-   git rebase --onto origin/main 19c06ba   # replays 9986e95 and bf192b4
-   ```
-   Expected conflicts and how to resolve them:
-   - `README.md`: keep `main`'s new "Upgrading to 0.3.0" section and its TOC entry. Take the emulator branch's
-     rewritten "Running this repo locally" section, which removes the old Azure setup and `sql.env`/`worker.env`/`consumer.env` sections.
-   - `docker-compose.yml`: take the emulator branch's version entirely. It already has `TrustServerCertificate=True`
-     in the worker connection string and needs no env files.
-
-   Validate with `dotnet build -c Release` (expect 0 warnings), `dotnet test` (expect 101 passing) and
-   `docker compose config -q`. Then `git push --force-with-lease origin feat/servicebus-emulator`. This is our own
-   branch and the user approved this flow.
-2. **Open the PR** `feat/servicebus-emulator` → `main`. There is no PR template. The body should cover: the emulator
-   (backed by the demo SQL Server, entities in `.devops/servicebus-emulator/Config.json`), conditional Entra ID auth,
-   the SQL container fixes (`sqlcmd` path and a health check that waits for seeding), `.devops/e2e.sh` with the CI `e2e` job,
-   and the README changes. Then subscribe to PR activity. Codex reviews PRs in this repo (the user comments `@codex review`).
-3. **Phase 1** (`feat/change-source-abstraction`, cut from `main` after Phase 0.5 merges). Start with the spike in
-   plan section 1a: confirm Chatter's `IBrokeredMessagePublisher` can publish without an inbound `IMessageBrokerContext`.
-   **Version note:** the plan says the breaking mapper API ships as 0.3.0, but 0.3.0 was used by Phase 0, so Phase 1 is
-   **0.4.0**. Update the plan document accordingly.
+1. **Drive PR #28 to green and merged.** Address CI and any Codex review findings (the user comments `@codex review`).
+2. **Phase 1** (`feat/change-source-abstraction`), cut from `main` once #28 merges. The spike settled the publisher
+   question: `IBrokeredMessagePublisher.Publish(event, destination, transactionContext: null, options)` with
+   `PublishOptions.MessageId` works without an inbound context. Start with 1b (core types) and 1c (mapper API, **0.4.0**).
+   Put the spike outcome in the Phase 1 PR description.
 
 ## Resolved decisions (details in the plan)
 
 - Keep SQL Service Broker and add CDC as a second, independent capture adapter. Each mapping picks its source.
   **No Change Tracking:** it has no old values and no intermediate changes, and the mappers detect transitions.
 - Target .NET 10. The breaking mapper API change has no `[Obsolete]` shims. Four stacked PRs on `feat/<slug>` branches.
-- CDC checkpoints and parked changes live in the **source database**, in the same schema as the relay's other
-  database objects (relay-wide `Schema` setting, default `Chatter`, overridable). Tables use the `Chatter_` prefix. Open item:
-  confirm whether SqlChangeFeed's `WithSchema` controls where its objects go; the demo currently puts them in `dbo`.
+- CDC checkpoints and parked changes live in the **source database**, in the relay-wide `Schema` setting (default `dbo`,
+  overridable). Tables use the `Chatter_` prefix. SqlChangeFeed's `WithSchema` is both the watched table's schema and the
+  schema of its trigger, queues and procedures (it can't separate them), so the default follows it (plan 2h). The plan's
+  earlier `Chatter` default changed for this reason; the user should confirm.
 - Error policy: `Halt` by default, with **per-row parking** (`ParkRow`) as an opt-in. Transient failures are always retried and never parked.
 - Keep `ISourceEvent` as an optional marker.
 
