@@ -111,7 +111,7 @@ Outcome recorded in the PR description.
 - `RowChange<T>` also carries `SourceName`; `SourceTable` is nullable (sources that can't tell). The processor
   matches mappings by source name, source type, operation and table (when known).
 - Mappers are resolved per integration event type by `IMappingInvoker<TSource>` (`MappingInvoker<TSource, TEvent>`),
-  avoiding runtime reflection. Message id = `<position>:<integration event type Name>`.
+  avoiding runtime reflection. Message id = `<source name>:<position>:<integration event type Name>` (positions are only unique within a source).
 - `IChangeSource` also has `Type`. Adapters register one `IChangeSource` per source name; the startup check
   (`IRelayStartupCheck` + `StartupValidationService`) matches mappings to them.
 - `ChangeSourceConfiguration.Section` exposes the raw config section for adapter-specific keys (e.g. `PollInterval`).
