@@ -45,9 +45,9 @@ internal interface ICdcQueries
 	Task<IReadOnlyList<string>> GetCapturedColumnsAsync(string captureInstance, CancellationToken cancellationToken);
 
 	/// <summary>
-	/// The schema and name of the table the capture instance captures, or null if it doesn't exist.
+	/// The table the capture instance captures, or null if it doesn't exist.
 	/// </summary>
-	Task<(string Schema, string Name)?> GetCapturedTableAsync(string captureInstance, CancellationToken cancellationToken);
+	Task<CdcCapturedTable?> GetCapturedTableAsync(string captureInstance, CancellationToken cancellationToken);
 
 	/// <summary>
 	/// The columns of the unique index that identifies the capture instance's rows (its <c>index_name</c>, usually the
@@ -55,3 +55,7 @@ internal interface ICdcQueries
 	/// </summary>
 	Task<IReadOnlyList<string>> GetKeyColumnsAsync(string captureInstance, CancellationToken cancellationToken);
 }
+
+/// <param name="Partitioned">The table's heap or clustered index is on a partition scheme.</param>
+/// <param name="PartitionSwitchAllowed">The capture instance allows <c>ALTER TABLE ... SWITCH</c>, which moves rows without CDC recording them.</param>
+internal sealed record CdcCapturedTable(string Schema, string Name, bool Partitioned = false, bool PartitionSwitchAllowed = true);

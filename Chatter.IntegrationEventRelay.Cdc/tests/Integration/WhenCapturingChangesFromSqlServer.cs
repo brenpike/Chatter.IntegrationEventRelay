@@ -82,6 +82,8 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             await Extensions.ServiceProviderExtensions.UseCdcSqlMigrationsAsync(services.BuildServiceProvider());
 
             Assert.False(await _sql.ScalarAsync<bool>($"SELECT partition_switch FROM cdc.change_tables WHERE capture_instance = N'dbo_{_table}_p';"));
+            Assert.Equal(new CdcCapturedTable("dbo", $"{_table}_p", Partitioned: true, PartitionSwitchAllowed: false),
+                await new SqlCdcQueries(_sql.ConnectionString).GetCapturedTableAsync($"dbo_{_table}_p", CancellationToken.None));
             Assert.True(await _sql.ScalarAsync<bool>("SELECT partition_switch FROM cdc.change_tables WHERE capture_instance = N'dbo_AgentWarmup';"));
         }
 
@@ -181,7 +183,7 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             var e = await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => Extensions.ServiceProviderExtensions.UseCdcSqlMigrationsAsync(services.BuildServiceProvider()));
 
             Assert.Contains("different table", e.Message);
-            Assert.Equal(("dbo", _table), await new SqlCdcQueries(_sql.ConnectionString).GetCapturedTableAsync(captureInstance, CancellationToken.None));
+            Assert.Equal(new CdcCapturedTable("dbo", _table), await new SqlCdcQueries(_sql.ConnectionString).GetCapturedTableAsync(captureInstance, CancellationToken.None));
         }
 
         [Fact]

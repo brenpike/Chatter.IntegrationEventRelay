@@ -332,7 +332,7 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcCapturePoller
         [Fact]
         public async Task MustRefuseACaptureInstanceOfAnotherTable()
         {
-            Cdc.CapturedTable = ("dbo", "Event1_Old");
+            Cdc.CapturedTable = new("dbo", "Event1_Old");
             Insert(1);
 
             var e = await Assert.ThrowsAsync<InvalidOperationException>(() => PollAsync());
@@ -344,10 +344,32 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcCapturePoller
         [Fact]
         public async Task MustAcceptTheConfiguredTableWhateverItsCase()
         {
-            Cdc.CapturedTable = ("DBO", "event1");
+            Cdc.CapturedTable = new("DBO", "event1");
             Insert(1);
 
             Assert.True(await PollAsync());
+        }
+
+        [Fact]
+        public async Task MustWarnAboutAPartitionedTableThatAllowsPartitionSwitches()
+        {
+            Cdc.CapturedTable = new("dbo", "Event1", Partitioned: true, PartitionSwitchAllowed: true);
+
+            await PollAsync();
+
+            Assert.Contains(_harness.Logger.Entries, e => e.Level == Microsoft.Extensions.Logging.LogLevel.Warning && e.Message.Contains("partition switching allowed"));
+        }
+
+        [Theory]
+        [InlineData(true, false)]
+        [InlineData(false, true)]
+        public async Task MustNotWarnAboutPartitionSwitchesThatCantHappen(bool partitioned, bool switchAllowed)
+        {
+            Cdc.CapturedTable = new("dbo", "Event1", partitioned, switchAllowed);
+
+            await PollAsync();
+
+            Assert.DoesNotContain(_harness.Logger.Entries, e => e.Message.Contains("partition switching allowed"));
         }
 
         [Fact]

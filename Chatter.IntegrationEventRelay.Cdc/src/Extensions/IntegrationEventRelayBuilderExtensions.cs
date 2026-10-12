@@ -135,8 +135,14 @@ public static class IntegrationEventRelayBuilderExtensions
 			throw new ArgumentNullException(nameof(connectionString), $"A connection string is required to capture changes to table '{mapping.TableName}'. " +
 				$"Set 'ConnectionString' on {nameof(EventMappingConfigurationItem)}, its source or {nameof(EventMappingConfiguration)}");
 
-		// CDC reads the database the connection string names; a mapping's DatabaseName only labels its changes
+		// A mapping's DatabaseName is the database CDC reads, as it's the database its changes are labelled with
 		var databaseName = string.IsNullOrWhiteSpace(mapping.DatabaseName) ? new SqlConnectionStringBuilder(connectionString).InitialCatalog : mapping.DatabaseName;
+		var connection = new SqlConnectionStringBuilder(connectionString);
+		if (!string.IsNullOrWhiteSpace(mapping.DatabaseName) && !string.Equals(connection.InitialCatalog, mapping.DatabaseName, StringComparison.OrdinalIgnoreCase))
+		{
+			connection.InitialCatalog = mapping.DatabaseName;
+			connectionString = connection.ConnectionString;
+		}
 		var tableSchema = mapping.Section?[TableSchemaKey] is { Length: > 0 } schema ? schema : DefaultTableSchema;
 		var captureInstance = mapping.Section?[CaptureInstanceKey] is { Length: > 0 } instance ? instance : $"{tableSchema}_{mapping.TableName}";
 

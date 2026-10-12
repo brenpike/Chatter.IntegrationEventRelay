@@ -101,9 +101,16 @@ internal sealed class SqlCdcQueries : ICdcQueries
 			ORDER BY cc.column_ordinal;
 			""", captureInstance, cancellationToken);
 
-	public async Task<(string Schema, string Name)?> GetCapturedTableAsync(string captureInstance, CancellationToken cancellationToken)
+	public async Task<CdcCapturedTable?> GetCapturedTableAsync(string captureInstance, CancellationToken cancellationToken)
 	{
-		const string sql = "SELECT OBJECT_SCHEMA_NAME(source_object_id), OBJECT_NAME(source_object_id) FROM cdc.change_tables WHERE capture_instance = @captureInstance;";
+		const string sql = """
+			SELECT OBJECT_SCHEMA_NAME(ct.source_object_id), OBJECT_NAME(ct.source_object_id), ct.partition_switch,
+				CASE WHEN EXISTS (
+					SELECT 1 FROM sys.indexes AS i JOIN sys.partition_schemes AS ps ON ps.data_space_id = i.data_space_id
+					WHERE i.object_id = ct.source_object_id AND i.index_id IN (0, 1)) THEN 1 ELSE 0 END
+			FROM cdc.change_tables AS ct
+			WHERE ct.capture_instance = @captureInstance;
+			""";
 
 		await using var connection = new SqlConnection(_connectionString);
 		await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
@@ -111,7 +118,7 @@ internal sealed class SqlCdcQueries : ICdcQueries
 		await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 		if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false) || reader.IsDBNull(0) || reader.IsDBNull(1))
 			return null;
-		return (reader.GetString(0), reader.GetString(1));
+		return new CdcCapturedTable(reader.GetString(0), reader.GetString(1), Partitioned: reader.GetInt32(3) == 1, PartitionSwitchAllowed: reader.GetBoolean(2));
 	}
 
 	public Task<IReadOnlyList<string>> GetKeyColumnsAsync(string captureInstance, CancellationToken cancellationToken)

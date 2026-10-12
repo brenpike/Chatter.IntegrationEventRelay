@@ -459,19 +459,25 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 
 	/// <summary>
 	/// Once per poller: checks the capture instance captures the configured table (it may belong to another table, for
-	/// example after a rename, and its changes would then be dispatched as the configured table's), and warns about
-	/// properties no captured column sets.
+	/// example after a rename, and its changes would then be dispatched as the configured table's), and warns about a
+	/// partitioned table that allows partition switches and about properties no captured column sets.
 	/// </summary>
 	private async Task CheckCaptureInstanceAsync(CancellationToken cancellationToken)
 	{
 		if (_columnsChecked)
 			return;
 
-		if (await _queries.GetCapturedTableAsync(Capture.CaptureInstance, cancellationToken).ConfigureAwait(false) is { } captured
+		var captured = await _queries.GetCapturedTableAsync(Capture.CaptureInstance, cancellationToken).ConfigureAwait(false);
+		if (captured is not null
 			&& !(string.Equals(captured.Name, Capture.Table.Name, StringComparison.OrdinalIgnoreCase)
 				&& string.Equals(captured.Schema, Capture.Table.Schema ?? captured.Schema, StringComparison.OrdinalIgnoreCase)))
 			throw new InvalidOperationException($"Capture instance '{Capture.CaptureInstance}' of source '{Capture.SourceName}' captures table '{captured.Schema}.{captured.Name}', not the configured '{Capture.Table.Schema}.{Capture.Table.Name}'. " +
 				"Fix the mapping's CaptureInstance, TableSchema or TableName.");
+
+		if (captured is { Partitioned: true, PartitionSwitchAllowed: true })
+			_logger.LogWarning("Capture instance '{CaptureInstance}' of source '{SourceName}' captures partitioned table '{Schema}.{Table}' with partition switching allowed: rows moved by ALTER TABLE ... SWITCH aren't recorded by CDC, so they won't be relayed. " +
+				"Re-create the capture instance with @allow_partition_switch = 0, or don't switch partitions of this table.",
+				Capture.CaptureInstance, Capture.SourceName, captured.Schema, captured.Name);
 
 		var columns = await _queries.GetCapturedColumnsAsync(Capture.CaptureInstance, cancellationToken).ConfigureAwait(false);
 		var unmapped = _reader.GetUnmappedProperties(columns);

@@ -274,6 +274,19 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingIntegrationEventRelayBuil
         }
 
         [Fact]
+        public void MustReadTheDatabaseTheMappingNames()
+        {
+            Source("fakedb-cdc");
+            Map(Mapping("fakedb-cdc", database: "OtherDb"));
+
+            Use();
+
+            var target = Assert.Single(Provider().GetServices<CdcMigrationTarget>());
+            Assert.Equal("OtherDb", new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(target.ConnectionString).InitialCatalog);
+            Assert.Equal("OtherDb", Pollers().Single().Capture.Table.Database);
+        }
+
+        [Fact]
         public void MustRecordEachCaptureInstanceForMigrations()
         {
             _configuration.Schema = "relay";
