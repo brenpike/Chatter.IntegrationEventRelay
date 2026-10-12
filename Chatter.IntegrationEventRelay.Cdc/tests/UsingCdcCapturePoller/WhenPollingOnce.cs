@@ -289,6 +289,27 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcCapturePoller
         }
 
         [Fact]
+        public async Task MustRefuseACaptureInstanceOfAnotherTable()
+        {
+            Cdc.CapturedTable = ("dbo", "Event1_Old");
+            Insert(1);
+
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() => PollAsync());
+
+            Assert.Contains("dbo.Event1_Old", e.Message);
+            Assert.Empty(Cdc.ChangeReads);
+        }
+
+        [Fact]
+        public async Task MustAcceptTheConfiguredTableWhateverItsCase()
+        {
+            Cdc.CapturedTable = ("DBO", "event1");
+            Insert(1);
+
+            Assert.True(await PollAsync());
+        }
+
+        [Fact]
         public async Task MustWaitForTheCaptureJobAfterCdcIsEnabled()
         {
             Cdc.MinLsn = CdcLsn.Zero;

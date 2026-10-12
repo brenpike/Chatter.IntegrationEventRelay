@@ -65,7 +65,11 @@ internal static class CdcSqlScripts
 		IF (SELECT is_cdc_enabled FROM sys.databases WHERE database_id = DB_ID()) = 0
 			EXEC sys.sp_cdc_enable_db;
 
-		IF NOT EXISTS (SELECT 1 FROM cdc.change_tables WHERE capture_instance = @captureInstance)
+		DECLARE @capturedObjectId int = (SELECT source_object_id FROM cdc.change_tables WHERE capture_instance = @captureInstance);
+		IF @capturedObjectId IS NOT NULL AND @capturedObjectId <> OBJECT_ID(QUOTENAME(@tableSchema) + N'.' + QUOTENAME(@tableName))
+			THROW 50000, N'The capture instance already exists for a different table. Use another capture instance name, or disable the existing one.', 1;
+
+		IF @capturedObjectId IS NULL
 			EXEC sys.sp_cdc_enable_table
 				@source_schema = @tableSchema,
 				@source_name = @tableName,

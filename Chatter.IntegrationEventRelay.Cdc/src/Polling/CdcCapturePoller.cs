@@ -195,7 +195,7 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 			return CaughtUp();
 		}
 
-		await WarnAboutUnmappedPropertiesAsync(cancellationToken).ConfigureAwait(false);
+		await CheckCaptureInstanceAsync(cancellationToken).ConfigureAwait(false);
 		var keyColumns = await GetKeyColumnsAsync(cancellationToken).ConfigureAwait(false);
 		if (Options.ErrorPolicy == CdcErrorPolicy.ParkRow)
 		{
@@ -450,10 +450,21 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 
 	private sealed record ParkedPayload(TSource? OldValue, TSource NewValue);
 
-	private async Task WarnAboutUnmappedPropertiesAsync(CancellationToken cancellationToken)
+	/// <summary>
+	/// Once per poller: checks the capture instance captures the configured table (it may belong to another table, for
+	/// example after a rename, and its changes would then be dispatched as the configured table's), and warns about
+	/// properties no captured column sets.
+	/// </summary>
+	private async Task CheckCaptureInstanceAsync(CancellationToken cancellationToken)
 	{
 		if (_columnsChecked)
 			return;
+
+		if (await _queries.GetCapturedTableAsync(Capture.CaptureInstance, cancellationToken).ConfigureAwait(false) is { } captured
+			&& !(string.Equals(captured.Name, Capture.Table.Name, StringComparison.OrdinalIgnoreCase)
+				&& string.Equals(captured.Schema, Capture.Table.Schema ?? captured.Schema, StringComparison.OrdinalIgnoreCase)))
+			throw new InvalidOperationException($"Capture instance '{Capture.CaptureInstance}' of source '{Capture.SourceName}' captures table '{captured.Schema}.{captured.Name}', not the configured '{Capture.Table.Schema}.{Capture.Table.Name}'. " +
+				"Fix the mapping's CaptureInstance, TableSchema or TableName.");
 
 		var columns = await _queries.GetCapturedColumnsAsync(Capture.CaptureInstance, cancellationToken).ConfigureAwait(false);
 		var unmapped = _reader.GetUnmappedProperties(columns);

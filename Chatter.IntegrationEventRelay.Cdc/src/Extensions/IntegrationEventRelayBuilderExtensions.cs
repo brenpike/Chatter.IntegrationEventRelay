@@ -81,19 +81,29 @@ public static class IntegrationEventRelayBuilderExtensions
 	}
 
 	/// <summary>
-	/// The processor picks a change's mappings by source, source event type, table name and database, so two capture
-	/// instances of one source that share all of those (for example tables dbo.Orders and archive.Orders, or two capture
-	/// instances of one table) would each publish the other's mappings.
+	/// The processor picks a change's mappings by source, source event type, table name and database, where a mapping
+	/// that names no database matches any. So two capture instances of one source with the same source event type and
+	/// table name, whose mappings name the same database or leave either unnamed (for example dbo.Orders and
+	/// archive.Orders, or one table in two databases without DatabaseName), would each publish the other's mappings.
 	/// </summary>
 	private static void RejectIndistinguishableCaptures(IEnumerable<CaptureTarget> targets)
 	{
-		var clashes = targets
-			.GroupBy(t => (Source: t.SourceName.ToUpperInvariant(), t.SourceEventType, Table: t.Table.Name.ToUpperInvariant(), Database: t.Table.Database?.ToUpperInvariant()))
-			.Select(g => g.Select(t => t.CaptureInstance).Distinct(StringComparer.OrdinalIgnoreCase).ToList())
-			.FirstOrDefault(captureInstances => captureInstances.Count > 1);
-		if (clashes is not null)
-			throw new ArgumentException($"Capture instances {string.Join(", ", clashes.Select(c => $"'{c}'"))} of the same CDC source capture tables with the same name into the same source event type, " +
-				"so their changes couldn't be told apart when picking mappings. Use a separate source event type or source for each.");
+		foreach (var group in targets.GroupBy(t => (Source: t.SourceName.ToUpperInvariant(), t.SourceEventType, Table: t.Table.Name.ToUpperInvariant())))
+		{
+			var list = group.ToList();
+			for (var i = 0; i < list.Count; i++)
+			{
+				for (var j = i + 1; j < list.Count; j++)
+				{
+					var (a, b) = (list[i], list[j]);
+					var sameCapture = string.Equals(a.CaptureInstance, b.CaptureInstance, StringComparison.OrdinalIgnoreCase);
+					var databasesOverlap = a.MappingDatabase is null || b.MappingDatabase is null || string.Equals(a.MappingDatabase, b.MappingDatabase, StringComparison.OrdinalIgnoreCase);
+					if (!sameCapture && databasesOverlap)
+						throw new ArgumentException($"Capture instances '{a.CaptureInstance}' and '{b.CaptureInstance}' of CDC source '{a.SourceName}' capture tables named '{a.Table.Name}' into the same source event type, " +
+							"so their changes couldn't be told apart when picking mappings. Use a separate source event type or source for each, or name each mapping's DatabaseName if they're in different databases.");
+				}
+			}
+		}
 	}
 
 	private static CdcSourceOptions GetOptions(EventMappingConfiguration configuration, string sourceName, Action<CdcSourceOptions>? configure)
@@ -128,9 +138,10 @@ public static class IntegrationEventRelayBuilderExtensions
 		var tableSchema = mapping.Section?[TableSchemaKey] is { Length: > 0 } schema ? schema : DefaultTableSchema;
 		var captureInstance = mapping.Section?[CaptureInstanceKey] is { Length: > 0 } instance ? instance : $"{tableSchema}_{mapping.TableName}";
 
-		return new CaptureTarget(sourceName, captureInstance, sourceEventType, connectionString, tableSchema,
+		return new CaptureTarget(sourceName, captureInstance, sourceEventType, connectionString, tableSchema, string.IsNullOrWhiteSpace(mapping.DatabaseName) ? null : mapping.DatabaseName,
 			new SourceTable(mapping.TableName, tableSchema, string.IsNullOrWhiteSpace(databaseName) ? null : databaseName));
 	}
 
-	private sealed record CaptureTarget(string SourceName, string CaptureInstance, Type SourceEventType, string ConnectionString, string TableSchema, SourceTable Table);
+	/// <param name="MappingDatabase">The mapping's own DatabaseName, as the processor matches it; null when it names none.</param>
+	private sealed record CaptureTarget(string SourceName, string CaptureInstance, Type SourceEventType, string ConnectionString, string TableSchema, string? MappingDatabase, SourceTable Table);
 }

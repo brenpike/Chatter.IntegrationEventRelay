@@ -31,6 +31,7 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Fakes
         public DateTime NextCommitTime { get; set; } = new(2026, 10, 12, 8, 0, 0);
         public List<string> CapturedColumns { get; } = new() { "Id", "Name" };
         public List<string> KeyColumns { get; } = new() { "Id" };
+        public (string Schema, string Name) CapturedTable { get; set; } = ("dbo", "Event1");
         public List<(CdcLsn From, CdcLsn To)> ChangeReads { get; } = new();
         public List<int> BatchSizes { get; } = new();
         public Exception FailWith { get; set; }
@@ -126,6 +127,9 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Fakes
 
         public Task<IReadOnlyList<string>> GetCapturedColumnsAsync(string captureInstance, CancellationToken cancellationToken)
             => Result<IReadOnlyList<string>>(CaptureInstanceExists ? CapturedColumns.ToList() : new List<string>());
+
+        public Task<(string Schema, string Name)?> GetCapturedTableAsync(string captureInstance, CancellationToken cancellationToken)
+            => Result<(string Schema, string Name)?>(CaptureInstanceExists ? CapturedTable : null);
 
         public Task<IReadOnlyList<string>> GetKeyColumnsAsync(string captureInstance, CancellationToken cancellationToken)
             => Result<IReadOnlyList<string>>(KeyColumns.ToList());

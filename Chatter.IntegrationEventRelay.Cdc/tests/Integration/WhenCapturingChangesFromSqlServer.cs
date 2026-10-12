@@ -132,6 +132,20 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
         }
 
         [Fact]
+        public async Task MustRefuseToReuseACaptureInstanceOfAnotherTable()
+        {
+            var captureInstance = await _sql.CreateCapturedTableAsync(_table);
+            await _sql.ExecuteAsync($"CREATE TABLE dbo.[{_table}_2] (Id int NOT NULL PRIMARY KEY);");
+            var services = new ServiceCollection();
+            services.AddSingleton(new Extensions.CdcMigrationTarget(_sql.ConnectionString, "Chatter", "dbo", $"{_table}_2", captureInstance));
+
+            var e = await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => Extensions.ServiceProviderExtensions.UseCdcSqlMigrationsAsync(services.BuildServiceProvider()));
+
+            Assert.Contains("different table", e.Message);
+            Assert.Equal(("dbo", _table), await new SqlCdcQueries(_sql.ConnectionString).GetCapturedTableAsync(captureInstance, CancellationToken.None));
+        }
+
+        [Fact]
         public async Task MustFailForAMissingCaptureInstance()
         {
             var queries = new SqlCdcQueries(_sql.ConnectionString);

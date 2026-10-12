@@ -94,6 +94,19 @@ internal sealed class SqlCdcQueries : ICdcQueries
 			ORDER BY cc.column_ordinal;
 			""", captureInstance, cancellationToken);
 
+	public async Task<(string Schema, string Name)?> GetCapturedTableAsync(string captureInstance, CancellationToken cancellationToken)
+	{
+		const string sql = "SELECT OBJECT_SCHEMA_NAME(source_object_id), OBJECT_NAME(source_object_id) FROM cdc.change_tables WHERE capture_instance = @captureInstance;";
+
+		await using var connection = new SqlConnection(_connectionString);
+		await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+		await using var command = CreateCommand(connection, sql, Parameter("@captureInstance", captureInstance));
+		await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+		if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false) || reader.IsDBNull(0) || reader.IsDBNull(1))
+			return null;
+		return (reader.GetString(0), reader.GetString(1));
+	}
+
 	public Task<IReadOnlyList<string>> GetKeyColumnsAsync(string captureInstance, CancellationToken cancellationToken)
 		=> ColumnNamesAsync("""
 			SELECT ic.column_name

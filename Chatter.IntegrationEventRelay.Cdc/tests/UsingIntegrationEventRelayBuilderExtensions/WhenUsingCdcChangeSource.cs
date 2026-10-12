@@ -174,7 +174,30 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingIntegrationEventRelayBuil
             Map(Mapping("fakedb-cdc"), Mapping("fakedb-cdc", RowOperation.Delete, settings: new() { ["TableSchema"] = "archive" }));
 
             var e = Assert.Throws<ArgumentException>(() => Use());
-            Assert.Contains("'dbo_Event1', 'archive_Event1'", e.Message);
+            Assert.Contains("'dbo_Event1' and 'archive_Event1'", e.Message);
+        }
+
+        [Fact]
+        public void MustRejectTablesInDifferentDatabasesWhenAMappingNamesNoDatabase()
+        {
+            Source("fakedb-cdc");
+            Map(Mapping("fakedb-cdc", database: null, settings: new() { ["CaptureInstance"] = "ci_a" }),
+                Mapping("fakedb-cdc", RowOperation.Delete, database: null, settings: new() { ["CaptureInstance"] = "ci_b" }, connectionString: "Data Source=db;Database=OtherDb;Integrated Security=True;"));
+
+            var e = Assert.Throws<ArgumentException>(() => Use());
+            Assert.Contains("DatabaseName", e.Message);
+        }
+
+        [Fact]
+        public void MustAllowTablesInDifferentDatabasesWhenEachMappingNamesItsDatabase()
+        {
+            Source("fakedb-cdc");
+            Map(Mapping("fakedb-cdc", database: "FakeDb", settings: new() { ["CaptureInstance"] = "ci_a" }),
+                Mapping("fakedb-cdc", RowOperation.Delete, database: "OtherDb", settings: new() { ["CaptureInstance"] = "ci_b" }, connectionString: "Data Source=db;Database=OtherDb;Integrated Security=True;"));
+
+            Use();
+
+            Assert.Equal(2, Pollers().Count);
         }
 
         [Fact]
@@ -254,9 +277,10 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingIntegrationEventRelayBuil
         private void Map(params EventMappingConfigurationItem[] mappings) => _configuration.Mappings = mappings;
 
         private static EventMappingConfigurationItem Mapping(string source, RowOperation operation = RowOperation.Update, string table = "Event1", string database = "FakeDb",
-            Type sourceEventType = null, Dictionary<string, string> settings = null)
+            Type sourceEventType = null, Dictionary<string, string> settings = null, string connectionString = null)
             => new()
             {
+                ConnectionString = connectionString,
                 Source = source,
                 SourceChangeType = operation,
                 TableName = table,

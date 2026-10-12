@@ -45,6 +45,11 @@ internal interface ICdcQueries
 	Task<IReadOnlyList<string>> GetCapturedColumnsAsync(string captureInstance, CancellationToken cancellationToken);
 
 	/// <summary>
+	/// The schema and name of the table the capture instance captures, or null if it doesn't exist.
+	/// </summary>
+	Task<(string Schema, string Name)?> GetCapturedTableAsync(string captureInstance, CancellationToken cancellationToken);
+
+	/// <summary>
 	/// The columns of the unique index that identifies the capture instance's rows (its <c>index_name</c>, usually the
 	/// primary key), in index order; empty when the table has none.
 	/// </summary>
