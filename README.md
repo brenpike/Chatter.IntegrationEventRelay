@@ -117,7 +117,7 @@ A mapping can require capabilities with `RequiredCapabilities` (for example `"Or
 
 ### Enable CDC
 
-Run [`.scripts/cdc/enable-cdc.sql`](.scripts/cdc/enable-cdc.sql) in the source database for each table (set `@tableSchema` and `@tableName` at the top), and [`.scripts/cdc/create-relay-tables.sql`](.scripts/cdc/create-relay-tables.sql) once to create the relay's checkpoint and parked-change tables (set `@schema` if the relay's `Schema` isn't `Chatter`). Both scripts are safe to run again. SQL Server Agent must be running; while it is still starting, enabling CDC on the first table fails with error 14258.
+Run [`.scripts/cdc/enable-cdc.sql`](.scripts/cdc/enable-cdc.sql) in the source database for each table (set `@tableSchema` and `@tableName` at the top, and `@captureInstance` to the mapping's `CaptureInstance` if it sets one), and [`.scripts/cdc/create-relay-tables.sql`](.scripts/cdc/create-relay-tables.sql) once to create the relay's checkpoint and parked-change tables (set `@schema` if the relay's `Schema` isn't `Chatter`). Both scripts are safe to run again. SQL Server Agent must be running; while it is still starting, enabling CDC on the first table fails with error 14258.
 
 In development, `await host.Services.UseCdcSqlMigrationsAsync()` does the same for every mapped table.
 
