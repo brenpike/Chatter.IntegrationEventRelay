@@ -1,6 +1,6 @@
 -- Creates the tables Chatter.IntegrationEventRelay.Cdc keeps in the source database, in the relay's schema
 -- (setting 'IntegrationEventRelay:Schema', default 'Chatter'). Safe to run again.
--- Not run by the demo's SQL container: it runs only the scripts directly in .scripts.
+-- The demo's SQL container runs it from .scripts/01-Enable-Cdc-Event1.sql.
 
 DECLARE @schema sysname = N'Chatter';
 DECLARE @sql nvarchar(max);

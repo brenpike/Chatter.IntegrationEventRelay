@@ -54,6 +54,8 @@ services:
       SA_PASSWORD: ${SA_PASSWORD:-itsAbadP@SSW0RD}
       MSSQL_SA_PASSWORD: ${SA_PASSWORD:-itsAbadP@SSW0RD}
       ACCEPT_EULA: Y
+      # Change Data Capture (Event1's change source) captures changes only while SQL Server Agent runs
+      MSSQL_AGENT_ENABLED: "true"
     # Healthy once the database has been created and seeded (see .devops/sql-healthcheck.sh)
     healthcheck:
       test: ["CMD", "/bin/bash", "sql-healthcheck.sh"]

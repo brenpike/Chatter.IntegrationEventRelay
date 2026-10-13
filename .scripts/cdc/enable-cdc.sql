@@ -3,7 +3,7 @@
 -- CDC captures changes only while SQL Server Agent is running.
 --
 -- The relay reads capture instance '<TableSchema>_<TableName>' unless the mapping sets 'CaptureInstance'.
--- Not run by the demo's SQL container: it runs only the scripts directly in .scripts.
+-- The demo's SQL container runs it from .scripts/01-Enable-Cdc-Event1.sql.
 
 DECLARE @tableSchema sysname = N'dbo';
 DECLARE @tableName sysname = N'Event1';

@@ -1,4 +1,5 @@
-﻿using Chatter.IntegrationEventRelay.Core.Extensions;
+﻿using Chatter.IntegrationEventRelay.Cdc.Extensions;
+using Chatter.IntegrationEventRelay.Core.Extensions;
 using Chatter.IntegrationEventRelay.ServiceBroker.Extensions;
 using Chatter.IntegrationEventRelay.Worker.Aggregates.Event2.IntegrationEvents;
 
@@ -22,12 +23,19 @@ using IHost host = Host.CreateDefaultBuilder(args)
                 );
             }
         })
+        // Event1 is captured with Change Data Capture and Event2 with SQL Service Broker; each mapping's 'Source' picks one
         .AddIntegrationEventRelay()
+            .UseCdcChangeSource()
             .UseServiceBrokerChangeSource();
     }).Build();
 
 var env = host.Services.GetRequiredService<IHostEnvironment>();
 if (env.IsDevelopment())
+{
+    // Enables CDC on Event1 and creates the relay's tables (needs SQL Server Agent), then installs Event2's trigger and queues.
+    // docker-compose runs the equivalent scripts in .scripts instead.
+    await host.Services.UseCdcSqlMigrationsAsync();
     await host.Services.UseChangeFeedSqlMigrationsAsync();
+}
 
 await host.RunAsync();
