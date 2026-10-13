@@ -17,7 +17,10 @@
 -- capture instance and captured column in the database, though not their data.
 -- sp_cdc_enable_db grants SELECT on cdc.lsn_time_mapping to public; this grants it to the login too, for databases
 -- that revoke it.
--- Switching a source from ParkRow to Halt doesn't revoke the parked-change grants; revoke them by hand.
+-- It only grants. It doesn't revoke what an earlier run granted and the source no longer needs (after switching from
+-- ParkRow to Halt, moving the relay's tables to another schema, or re-creating the capture instance with fewer columns or
+-- another gating role), since the same login may relay other capture instances that still need it; revoke those grants
+-- by hand.
 
 DECLARE @user sysname = N'relay_user';              -- the relay login's user in this database
 DECLARE @captureInstance sysname = N'dbo_Event1';   -- the mapping's CaptureInstance, default '<TableSchema>_<TableName>'
@@ -25,8 +28,10 @@ DECLARE @schema sysname = N'Chatter';               -- the relay's IntegrationEv
 DECLARE @errorPolicy nvarchar(16) = N'Halt';        -- the source's ErrorPolicy: 'Halt' or 'ParkRow'
 DECLARE @whatIf bit = 0;
 
-IF DATABASE_PRINCIPAL_ID(@user) IS NULL
-	THROW 50000, N'@user isn''t a user in this database. Create it first: CREATE USER [relay_user] FOR LOGIN [relay_login];', 1;
+-- A SQL, Windows or Microsoft Entra user other than dbo, guest, INFORMATION_SCHEMA and sys: grants to a role or a group
+-- would reach every member of it
+IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = @user AND type IN (N'S', N'U', N'E') AND principal_id > 4)
+	THROW 50000, N'@user isn''t a user in this database, or is a role, a group or a built-in user. Create it first: CREATE USER [relay_user] FOR LOGIN [relay_login];', 1;
 IF @errorPolicy IS NULL OR @errorPolicy NOT IN (N'Halt', N'ParkRow')
 	THROW 50000, N'@errorPolicy must be ''Halt'' or ''ParkRow''.', 1;
 
@@ -37,14 +42,15 @@ WHERE capture_instance = @captureInstance;
 IF @sourceObjectId IS NULL
 	THROW 50000, N'The capture instance doesn''t exist. Run enable-cdc.sql first, or check @captureInstance.', 1;
 
-DECLARE @checkpoints nvarchar(300) = QUOTENAME(@schema) + N'.[Chatter_RelayCheckpoints]';
-DECLARE @parkedChanges nvarchar(300) = QUOTENAME(@schema) + N'.[Chatter_RelayParkedChanges]';
+-- nvarchar(max) throughout: QUOTENAME doubles each ']', so a fixed-size buffer could cut a valid name short
+DECLARE @checkpoints nvarchar(max) = QUOTENAME(@schema) + N'.[Chatter_RelayCheckpoints]';
+DECLARE @parkedChanges nvarchar(max) = QUOTENAME(@schema) + N'.[Chatter_RelayParkedChanges]';
 IF OBJECT_ID(@checkpoints, N'U') IS NULL OR (@errorPolicy = N'ParkRow' AND OBJECT_ID(@parkedChanges, N'U') IS NULL)
 	THROW 50000, N'The relay''s tables don''t exist in @schema. Run create-relay-tables.sql first, or check @schema.', 1;
 
-DECLARE @capturedTable nvarchar(300) = QUOTENAME(OBJECT_SCHEMA_NAME(@sourceObjectId)) + N'.' + QUOTENAME(OBJECT_NAME(@sourceObjectId));
-DECLARE @changeTable nvarchar(300) = QUOTENAME(OBJECT_SCHEMA_NAME(@changeTableId)) + N'.' + QUOTENAME(OBJECT_NAME(@changeTableId));
-DECLARE @to nvarchar(200) = N' TO ' + QUOTENAME(@user) + N';';
+DECLARE @capturedTable nvarchar(max) = QUOTENAME(OBJECT_SCHEMA_NAME(@sourceObjectId)) + N'.' + QUOTENAME(OBJECT_NAME(@sourceObjectId));
+DECLARE @changeTable nvarchar(max) = QUOTENAME(OBJECT_SCHEMA_NAME(@changeTableId)) + N'.' + QUOTENAME(OBJECT_NAME(@changeTableId));
+DECLARE @to nvarchar(max) = N' TO ' + QUOTENAME(@user) + N';';
 DECLARE @statements TABLE (Id int IDENTITY PRIMARY KEY, Statement nvarchar(max) NOT NULL);
 
 -- Column-level grants are one statement per column, so the tests can show each one is needed

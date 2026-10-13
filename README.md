@@ -125,14 +125,16 @@ The capture instance's retention (`sys.sp_cdc_change_job @job_type = 'cleanup', 
 
 ### Permissions
 
-Run [`.scripts/cdc/grant-relay-permissions.sql`](.scripts/cdc/grant-relay-permissions.sql) in the source database as a member of `db_owner`, once per capture instance the relay reads. Set `@user` to the relay login's user, `@captureInstance`, `@schema` (the relay's `Schema`) and `@errorPolicy` (the source's `ErrorPolicy`) at the top; `@whatIf = 1` lists the statements without running them. The script reads the captured table and its captured columns from CDC's metadata and grants:
+Run [`.scripts/cdc/grant-relay-permissions.sql`](.scripts/cdc/grant-relay-permissions.sql) in the source database as a member of `db_owner`, once per capture instance the relay reads. Set `@user` to the relay login's user (a user; the script refuses a role or group, since grants to it would reach every member), `@captureInstance`, `@schema` (the relay's `Schema`) and `@errorPolicy` (the source's `ErrorPolicy`) at the top; `@whatIf = 1` lists the statements without running them. The script reads the captured table and its captured columns from CDC's metadata and grants:
 
 - `SELECT` on each captured column of the captured table, and on its change table. SQL Server checks the captured columns before it returns changes; without them it reports no changes rather than an error, which the relay detects and stops on.
 - `SELECT` on CDC's metadata tables `cdc.lsn_time_mapping`, `cdc.change_tables` and `cdc.captured_columns`, plus `cdc.index_columns` with `ParkRow`.
 - On the relay's tables: `SELECT` and `INSERT`, and `UPDATE` of only the columns the relay changes, on the checkpoint table; with `ParkRow`, the same plus `DELETE` on the parked-change table.
 - Membership in the capture instance's gating role (`@role_name`), if it has one.
 
-The integration tests run the relay under exactly these grants for each error policy, with and without a gating role, and check that it fails without any one of them. Switching a source from `ParkRow` to `Halt` doesn't revoke the parked-change grants; revoke them by hand.
+The integration tests run the relay under exactly these grants for each error policy, with and without a gating role, and check that it fails without any one of them.
+
+The script only grants. It doesn't revoke what an earlier run granted and a source no longer needs (after switching from `ParkRow` to `Halt`, moving the relay's tables to another `Schema`, or re-creating the capture instance with fewer columns or another gating role), since the same login may relay other capture instances that still need it; revoke those grants by hand.
 
 The script grants columns rather than the whole table: a table-level `GRANT SELECT ON dbo.Orders` also works, but it exposes columns left out of capture with `@captured_column_list`. Likewise `GRANT SELECT ON SCHEMA::cdc` is simpler than the change-table and metadata grants, but it lets the login read the change data of every other captured table in the database. The metadata tables show the names of every capture instance and captured column in the database, though not their data.
 

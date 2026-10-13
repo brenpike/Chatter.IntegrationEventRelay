@@ -201,39 +201,86 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             await _sql.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id, Name, Secret) VALUES (1, N'one', N'secret');");
             await _sql.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id, Name) VALUES (2, N'two');");
             await WaitForCaptureAsync(2);
-            // sp_cdc_enable_db grants it to public; the script grants it too, for databases that revoke it
+            // sp_cdc_enable_db grants it to public; the script grants it too, for databases that revoke it. The database is
+            // shared by the whole collection, so the grant is restored afterwards.
             await _sql.ExecuteAsync("REVOKE SELECT ON cdc.lsn_time_mapping FROM public;");
-
-            // Under every grant the script makes, the relay relays both changes
-            var full = await CreateLoginAsync("full");
-            var statements = await GrantStatementsAsync(full.User, errorPolicy);
-            await _sql.ExecuteAsync(GrantScript.Render(full.User, $"dbo_{_table}", "Chatter", errorPolicy));
-            Assert.Null(await RunRestrictedAsync(full.ConnectionString, "full", errorPolicy));
-
-            await using (var connection = new Microsoft.Data.SqlClient.SqlConnection(full.ConnectionString))
+            try
             {
-                await connection.OpenAsync();
-                await using var readSecret = new Microsoft.Data.SqlClient.SqlCommand($"SELECT Secret FROM dbo.[{_table}];", connection);
-                Assert.Equal(230, (await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => readSecret.ExecuteScalarAsync())).Number);
-            }
+                // Under every grant the script makes, the relay relays both changes
+                var full = await CreateLoginAsync("full");
+                var statements = await GrantStatementsAsync(full.User, errorPolicy);
+                await _sql.ExecuteAsync(GrantScript.Render(full.User, $"dbo_{_table}", "Chatter", errorPolicy));
+                Assert.Null(await RunRestrictedAsync(full.ConnectionString, "full", errorPolicy));
 
-            // Without any one of them, it fails
-            Assert.Equal(errorPolicy == CdcErrorPolicy.ParkRow, statements.Any(s => s.Contains(CdcSqlScripts.ParkedChangesTable)));
-            Assert.Equal(gated, statements.Any(s => s.StartsWith("ALTER ROLE", StringComparison.Ordinal)));
-            for (var i = 0; i < statements.Count; i++)
+                await using (var connection = new Microsoft.Data.SqlClient.SqlConnection(full.ConnectionString))
+                {
+                    await connection.OpenAsync();
+                    await using var readSecret = new Microsoft.Data.SqlClient.SqlCommand($"SELECT Secret FROM dbo.[{_table}];", connection);
+                    Assert.Equal(230, (await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => readSecret.ExecuteScalarAsync())).Number);
+                }
+
+                // Without any one of them, it fails
+                Assert.Equal(errorPolicy == CdcErrorPolicy.ParkRow, statements.Any(s => s.Contains(CdcSqlScripts.ParkedChangesTable)));
+                Assert.Equal(gated, statements.Any(s => s.StartsWith("ALTER ROLE", StringComparison.Ordinal)));
+                for (var i = 0; i < statements.Count; i++)
+                {
+                    var run = $"without{i}";
+                    var login = await CreateLoginAsync(run);
+                    foreach (var statement in statements.Where((_, j) => j != i))
+                        await _sql.ExecuteAsync(statement.Replace($"[{full.User}]", $"[{login.User}]", StringComparison.Ordinal));
+
+                    var failure = await RunRestrictedAsync(login.ConnectionString, run, errorPolicy);
+
+                    Assert.True(failure is not null, $"The relay didn't need: {statements[i]}");
+                    // 229 and 230: permission denied on an object or a column
+                    Assert.True(failure is CdcCaptureInstanceAccessDeniedException or Microsoft.Data.SqlClient.SqlException { Number: 229 or 230 },
+                        $"Without {statements[i]} the relay failed for another reason: {failure}");
+                }
+            }
+            finally
             {
-                var run = $"without{i}";
-                var login = await CreateLoginAsync(run);
-                foreach (var statement in statements.Where((_, j) => j != i))
-                    await _sql.ExecuteAsync(statement.Replace($"[{full.User}]", $"[{login.User}]", StringComparison.Ordinal));
-
-                var failure = await RunRestrictedAsync(login.ConnectionString, run, errorPolicy);
-
-                Assert.True(failure is not null, $"The relay didn't need: {statements[i]}");
-                // 229 and 230: permission denied on an object or a column
-                Assert.True(failure is CdcCaptureInstanceAccessDeniedException or Microsoft.Data.SqlClient.SqlException { Number: 229 or 230 },
-                    $"Without {statements[i]} the relay failed for another reason: {failure}");
+                await _sql.ExecuteAsync("GRANT SELECT ON cdc.lsn_time_mapping TO public;");
             }
+        }
+
+        [Fact]
+        public async Task MustGrantOnNamesThatQuoteToTheirMaximumLength()
+        {
+            // 128 characters, mostly ']', which QUOTENAME doubles: each quoted name is about twice as long as the name
+            static string Name(string prefix) => (prefix + new string(']', 128))[..128];
+            static string Quote(string name) => "[" + name.Replace("]", "]]") + "]";
+            static string Literal(string value) => "N'" + value.Replace("'", "''") + "'";
+            var schema = Name($"s_{_table}");
+            var table = Name($"t_{_table}");
+            var user = Name($"u_{_table}");
+            var captureInstance = $"q_{_table}";
+            await _sql.ExecuteAsync($"CREATE SCHEMA {Quote(schema)};");
+            await _sql.ExecuteAsync($"""
+                CREATE TABLE {Quote(schema)}.{Quote(table)} (Id int NOT NULL PRIMARY KEY, Name nvarchar(50) NULL);
+                EXEC sys.sp_cdc_enable_table @source_schema = {Literal(schema)}, @source_name = {Literal(table)}, @role_name = NULL, @capture_instance = {Literal(captureInstance)};
+                CREATE USER {Quote(user)} WITHOUT LOGIN;
+                """);
+
+            await _sql.ExecuteAsync(GrantScript.Render(user, captureInstance, "Chatter", CdcErrorPolicy.Halt));
+
+            var granted = $"FROM sys.database_permissions WHERE grantee_principal_id = DATABASE_PRINCIPAL_ID({Literal(user)}) AND state = 'G'";
+            Assert.Equal(2, await _sql.ScalarAsync<int>($"SELECT COUNT(*) {granted} AND major_id = OBJECT_ID({Literal(Quote(schema) + "." + Quote(table))}) AND permission_name = 'SELECT';"));
+            Assert.Equal(1, await _sql.ScalarAsync<int>($"SELECT COUNT(*) {granted} AND major_id = OBJECT_ID({Literal($"cdc.{Quote(captureInstance + "_CT")}")});"));
+        }
+
+        [Fact]
+        public async Task MustRefuseToGrantToARoleOrABuiltInUser()
+        {
+            var captureInstance = await _sql.CreateCapturedTableAsync(_table);
+            var role = $"role_{_table}";
+            await _sql.ExecuteAsync($"CREATE ROLE [{role}];");
+
+            foreach (var principal in new[] { role, "public", "guest", "dbo" })
+            {
+                var e = await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => _sql.ExecuteAsync(GrantScript.Render(principal, captureInstance, "Chatter", CdcErrorPolicy.ParkRow)));
+                Assert.Equal(50000, e.Number);
+            }
+            Assert.Equal(0, await _sql.ScalarAsync<int>($"SELECT COUNT(*) FROM sys.database_permissions WHERE grantee_principal_id = DATABASE_PRINCIPAL_ID(N'{role}');"));
         }
 
         // Halt: relays both changes, one batch each, so the checkpoint is inserted and then updated. ParkRow: parks row 2,
