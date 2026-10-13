@@ -240,18 +240,16 @@ It is unhealthy when a poller stopped on a gap, failed `FailuresBeforeCritical` 
 
 The goal is that each change is relayed by only one of the two sources. Pick a switch point: the source you switch away from relays every change committed before it, including changes it set aside, and the source you switch to relays every change committed after it. Each source still delivers at least once (see [Delivery semantics](#delivery-semantics)). Do it in a short write pause on the table; without one, changes made during the switch are relayed by both sources, with different message ids.
 
-Apart from enabling CDC (see [Enable CDC](#enable-cdc)), the steps need `db_owner` in the source database. Steps 2 and 4, and step 1 of the switch back, also query `sys.dm_tran_locks` or `sys.dm_db_log_stats`, which need `VIEW SERVER STATE` (on SQL Server 2022, `VIEW SERVER PERFORMANCE STATE` is enough); `db_owner` alone isn't enough for those.
+Apart from enabling CDC (see [Enable CDC](#enable-cdc)), the steps need `db_owner` in the source database. Step 4, and step 1 of the switch back, also query `sys.dm_db_log_stats`, which needs `VIEW SERVER STATE` (on SQL Server 2022, `VIEW SERVER PERFORMANCE STATE` is enough); `db_owner` alone isn't enough for it.
 
 1. Enable CDC on the table and create the relay's tables ([Enable CDC](#enable-cdc)), and grant the [permissions](#permissions). The current relay keeps running on SQL Service Broker.
-2. Pause writes to the table: stop its writers, then wait until every transaction that wrote to it has committed or rolled back, since one still open can commit after the switch point. This returns no rows once they all have:
+2. Pause writes to the table: stop its writers, then wait until every transaction that wrote to it has committed or rolled back, since one still open can commit after the switch point. This takes an exclusive lock on the table, so it waits for them and returns once they all have:
 
    ```sql
-   SELECT request_session_id FROM sys.dm_tran_locks
-   WHERE resource_database_id = DB_ID() AND resource_type = N'OBJECT'
-     AND resource_associated_entity_id = OBJECT_ID(N'dbo.Orders') AND request_mode IN (N'IX', N'SIX', N'X');
+   BEGIN TRAN; SELECT TOP (1) 1 FROM dbo.Orders WITH (TABLOCKX); COMMIT;
    ```
 
-3. Let the relay drain the table's queue, until `SELECT COUNT(*) FROM dbo.[Chatter_Queue_<SourceEventType>]` returns 0. Then check `dbo.[Chatter_DeadLetterQueue_<SourceEventType>]`: changes there ran out of receive attempts and nothing replays them, so relay them yourself or accept losing them before step 5 drops the queue.
+3. Let the relay drain the table's queue, until `SELECT COUNT(*) FROM dbo.[Chatter_Queue_<SourceEventType>]` returns 0. Then check `dbo.[Chatter_DeadLetterQueue_<SourceEventType>]`: changes there ran out of receive attempts and nothing replays them. Step 5 drops the queue, so before it, relay them yourself or copy them out (`SELECT * INTO dbo.Orders_DeadLetters FROM dbo.[Chatter_DeadLetterQueue_<SourceEventType>]` keeps every message, `message_body` included).
 4. Seed the checkpoint at the end of the transaction log, so CDC relays only changes committed after the pause. Every change made before the pause has a lower LSN, whether or not the capture job has read it yet, so there's no need to wait for the job. It replaces a checkpoint left by an earlier switch, so it can be run again:
 
    ```sql
