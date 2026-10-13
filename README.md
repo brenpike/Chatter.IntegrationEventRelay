@@ -240,17 +240,27 @@ It is unhealthy when a poller stopped on a gap, failed `FailuresBeforeCritical` 
 
 The goal is that each change is relayed by only one of the two sources. Pick a switch point: the source you switch away from relays every change committed before it, including changes it set aside, and the source you switch to relays every change committed after it. Each source still delivers at least once (see [Delivery semantics](#delivery-semantics)). Do it in a short write pause on the table; without one, changes made during the switch are relayed by both sources, with different message ids.
 
-Step 4, and steps 1 and 3 of the switch back, read SQL Server's log state, which needs `VIEW SERVER STATE` (on SQL Server 2022, `VIEW SERVER PERFORMANCE STATE` is enough). `db_owner` alone isn't.
+Apart from enabling CDC (see [Enable CDC](#enable-cdc)), the steps need `db_owner` in the source database. Steps 2 and 4, and step 1 of the switch back, also query `sys.dm_tran_locks` or `sys.dm_db_log_stats`, which need `VIEW SERVER STATE` (on SQL Server 2022, `VIEW SERVER PERFORMANCE STATE` is enough); `db_owner` alone isn't enough for those.
 
 1. Enable CDC on the table and create the relay's tables ([Enable CDC](#enable-cdc)), and grant the [permissions](#permissions). The current relay keeps running on SQL Service Broker.
-2. Pause writes to the table.
-3. Let the relay drain the table's queue, until `SELECT COUNT(*) FROM dbo.[Chatter_Queue_<SourceEventType>]` returns 0. Then check `dbo.[Chatter_DeadLetterQueue_<SourceEventType>]`: changes there ran out of receive attempts and nothing replays them, so relay them yourself or accept losing them before step 5 drops the queue.
-4. Seed the checkpoint at the end of the transaction log, so CDC relays only changes committed after the pause. Every change made before the pause has a lower LSN, whether or not the capture job has read it yet, so there's no need to wait for the job:
+2. Pause writes to the table: stop its writers, then wait until every transaction that wrote to it has committed or rolled back, since one still open can commit after the switch point. This returns no rows once they all have:
 
    ```sql
-   INSERT INTO Chatter.Chatter_RelayCheckpoints (SourceName, CaptureInstance, LastLsn, UpdatedAt)
-   SELECT N'orders-cdc', N'dbo_Orders', CONVERT(binary(10), REPLACE(log_end_lsn, ':', ''), 2), SYSUTCDATETIME()
-   FROM sys.dm_db_log_stats(DB_ID());
+   SELECT request_session_id FROM sys.dm_tran_locks
+   WHERE resource_database_id = DB_ID() AND resource_type = N'OBJECT'
+     AND resource_associated_entity_id = OBJECT_ID(N'dbo.Orders') AND request_mode IN (N'IX', N'SIX', N'X');
+   ```
+
+3. Let the relay drain the table's queue, until `SELECT COUNT(*) FROM dbo.[Chatter_Queue_<SourceEventType>]` returns 0. Then check `dbo.[Chatter_DeadLetterQueue_<SourceEventType>]`: changes there ran out of receive attempts and nothing replays them, so relay them yourself or accept losing them before step 5 drops the queue.
+4. Seed the checkpoint at the end of the transaction log, so CDC relays only changes committed after the pause. Every change made before the pause has a lower LSN, whether or not the capture job has read it yet, so there's no need to wait for the job. It replaces a checkpoint left by an earlier switch, so it can be run again:
+
+   ```sql
+   DECLARE @lsn binary(10) = (SELECT CONVERT(binary(10), REPLACE(log_end_lsn, ':', ''), 2) FROM sys.dm_db_log_stats(DB_ID()));
+   UPDATE Chatter.Chatter_RelayCheckpoints SET LastLsn = @lsn, UpdatedAt = SYSUTCDATETIME()
+   WHERE SourceName = N'orders-cdc' AND CaptureInstance = N'dbo_Orders';
+   IF @@ROWCOUNT = 0
+       INSERT INTO Chatter.Chatter_RelayCheckpoints (SourceName, CaptureInstance, LastLsn, UpdatedAt)
+       VALUES (N'orders-cdc', N'dbo_Orders', @lsn, SYSUTCDATETIME());
    ```
 
    Don't seed it with `sys.fn_cdc_get_max_lsn()`: that's the last change the capture job has read, so if the job is behind, CDC also relays changes that SQL Service Broker already relayed.
@@ -270,13 +280,12 @@ Step 4, and steps 1 and 3 of the switch back, read SQL Server's log state, which
 
 To switch back, the same rule applies the other way: CDC must relay everything committed before the pause, including parked changes, before the relay stops reading it.
 
-1. Pause writes to the table, and note the log end as in step 4 (`SELECT log_end_lsn FROM sys.dm_db_log_stats(DB_ID())`).
-2. Install the trigger again (`UseChangeFeedSqlMigrationsAsync()` or SqlChangeFeed's install script). Its queue starts empty, and nothing writes to it until writes resume.
-3. Wait for the capture job to read past the pause: `sys.fn_cdc_get_max_lsn()` reaches the noted LSN, or `sys.dm_cdc_log_scan_sessions` shows a scan that ended after the pause with `empty_scan_count > 0` (nothing left to read). The second test only works when no other captured table in the database is being written.
-4. Wait for the relay to catch up: its checkpoint (`LastLsn` in `Chatter.Chatter_RelayCheckpoints`) reaches `sys.fn_cdc_get_max_lsn()` and the `chatter.relay.cdc.lag` gauge is 0. With `ParkRow`, replay or resolve the capture instance's rows in `Chatter.Chatter_RelayParkedChanges` until none remain.
-5. Deploy the relay with `Source` removed from the table's mappings.
-6. Resume writes.
-7. Disable CDC on the table (`sys.sp_cdc_disable_table`).
+1. Pause writes to the table as in step 2, then note the log end (`SELECT log_end_lsn FROM sys.dm_db_log_stats(DB_ID())`).
+2. Wait for the capture job to read past the pause: `sys.fn_cdc_get_max_lsn()` reaches the noted LSN, or `sys.dm_cdc_log_scan_sessions` shows a scan that ended after the pause with `empty_scan_count > 0` (nothing left to read). The second test only works when no other captured table in the database is being written.
+3. Wait for the relay to catch up: its checkpoint (`LastLsn` in `Chatter.Chatter_RelayCheckpoints`) reaches `sys.fn_cdc_get_max_lsn()` and the `chatter.relay.cdc.lag` gauge is 0. With `ParkRow`, replay or resolve the capture instance's rows in `Chatter.Chatter_RelayParkedChanges` until none remain.
+4. Deploy the relay with `Source` removed from the table's mappings, and install SqlChangeFeed's trigger, services and queues again by running `UseChangeFeedSqlMigrationsAsync()` with that configuration (for example at the relay's startup). It installs them only for mappings on SQL Service Broker, so it does nothing for the table while its mappings still name the CDC source. The queue starts empty; check that `dbo.[Chatter_ChangeFeedTrigger_<SourceEventType>]` exists before resuming writes.
+5. Resume writes.
+6. Disable CDC on the table (`sys.sp_cdc_disable_table`).
 
 ## Upgrading to 0.4.0
 
