@@ -11,8 +11,8 @@ and the resolved design decisions. Both files live on branch `claude/repo-overvi
 | Phase 0.5: PR #28, `feat/servicebus-emulator` (Service Bus emulator demo, e2e CI job) | **Merged** into `main` (squash), commit `73b961f` |
 | Phase 1: PR #29, `feat/change-source-abstraction` (abstractions, ServiceBroker package, 0.4.0) | **Merged** into `main` (squash), commit `9610e09` |
 | Phase 2: PR #30, `feat/cdc-change-source` (package `Chatter.IntegrationEventRelay.Cdc`) | **Merged** into `main` (squash), commit `7a4bd79` |
-| Phase 3: `feat/cdc-sample-docs` | Not started |
-| Open PRs | None |
+| Phase 3: PR #31, `feat/cdc-sample-docs` (demo: Event1 on CDC, Event2 on SSB; README) | **Open**, CI green (build, cdc integration, e2e) |
+| Open PRs | #31 |
 
 ## Next steps
 
@@ -29,6 +29,13 @@ and the resolved design decisions. Both files live on branch `claude/repo-overvi
      limitation, metrics and the health check.
    - Note: SQL Agent in the container takes a while to start; CDC enable can fail with error 14258 until it does
      (the integration fixture retries). The e2e seed must wait or retry too.
+
+## Phase 3 notes
+
+- Demo seed `.scripts/01-Enable-Cdc-Event1.sql` waits for `msdb.dbo.sp_is_sqlagent_starting` = 0 (wrapped in TRY/CATCH, since
+  Agent XPs are off at first), then `:r`-includes `.scripts/cdc/*.sql`. `sys.dm_server_services` says `Running` too early.
+- Local WSL session: Docker daemon already running, Docker Hub and NuGet in `docker build` work, so `./.devops/e2e.sh` runs locally.
+- No git identity in the local shell; commit with `git -c user.name="Brennan Pike" -c user.email="5853674+brenpike@users.noreply.github.com"`.
 
 ## Resolved decisions (details in the plan)
 
