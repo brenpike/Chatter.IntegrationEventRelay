@@ -90,6 +90,99 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             await using var command = new SqlCommand(sql, connection) { CommandTimeout = 120 };
             await command.ExecuteNonQueryAsync();
         }
+
+        /// <summary>
+        /// Creates a database of its own, with SQL Service Broker and CDC enabled and the relay tables in <paramref name="relaySchema"/>,
+        /// for a test that relies on database-wide state: CDC's capture job and log scan sessions, or Service Broker. Dispose it to drop it.
+        /// </summary>
+        public async Task<TestDatabase> CreateDatabaseAsync(string relaySchema = "Chatter")
+        {
+            var name = $"Switch_{Guid.NewGuid():N}";
+            await ExecuteAsync(_container.GetConnectionString(), $"CREATE DATABASE [{name}]; ALTER DATABASE [{name}] SET ENABLE_BROKER;");
+            var database = new TestDatabase(_container.GetConnectionString(), name, relaySchema);
+            await database.ExecuteAsync("EXEC sys.sp_cdc_enable_db;");
+            await database.ExecuteAsync($"DECLARE @schema sysname = N'{relaySchema.Replace("'", "''")}';\n{Sql.CdcSqlScripts.CreateRelayTables}");
+            return database;
+        }
+
+        /// <summary>
+        /// A database created by <see cref="CreateDatabaseAsync"/>.
+        /// </summary>
+        public sealed class TestDatabase : IAsyncDisposable
+        {
+            private readonly string _serverConnectionString;
+
+            internal TestDatabase(string serverConnectionString, string name, string relaySchema)
+            {
+                _serverConnectionString = serverConnectionString;
+                Name = name;
+                RelaySchema = relaySchema;
+                ConnectionString = new SqlConnectionStringBuilder(serverConnectionString) { InitialCatalog = name, TrustServerCertificate = true }.ConnectionString;
+            }
+
+            public string Name { get; }
+            public string RelaySchema { get; }
+            public string ConnectionString { get; }
+
+            /// <summary>
+            /// Creates table <c>[<paramref name="schema"/>].[<paramref name="name"/>]</c> and enables CDC on it as capture instance
+            /// <paramref name="captureInstance"/> (default <c>&lt;schema&gt;_&lt;name&gt;</c>), which it returns.
+            /// </summary>
+            public async Task<string> CreateCapturedTableAsync(string name, string schema = "dbo", string captureInstance = null)
+            {
+                await CreateTableAsync(name, schema);
+                return await EnableCdcAsync(name, schema, captureInstance);
+            }
+
+            /// <summary>
+            /// Creates table <c>[<paramref name="schema"/>].[<paramref name="name"/>]</c>, with an <c>Id</c> primary key and
+            /// <c>Name</c>, <c>Flag</c> and <c>DeletedAt</c> columns, and the schema if missing.
+            /// </summary>
+            public async Task CreateTableAsync(string name, string schema = "dbo")
+            {
+                await ExecuteAsync($"IF SCHEMA_ID(N'{schema.Replace("'", "''")}') IS NULL EXEC (N'CREATE SCHEMA {Quote(schema).Replace("'", "''")}');");
+                await ExecuteAsync($"""
+                    CREATE TABLE {Quote(schema)}.{Quote(name)} (
+                        Id int NOT NULL PRIMARY KEY,
+                        Name nvarchar(50) NULL,
+                        Flag bit NULL,
+                        DeletedAt datetime2 NULL
+                    );
+                    """);
+            }
+
+            /// <summary>
+            /// Enables CDC on table <c>[<paramref name="schema"/>].[<paramref name="table"/>]</c> as capture instance
+            /// <paramref name="captureInstance"/> (default <c>&lt;schema&gt;_&lt;table&gt;</c>), which it returns.
+            /// </summary>
+            public async Task<string> EnableCdcAsync(string table, string schema = "dbo", string captureInstance = null)
+            {
+                captureInstance ??= $"{schema}_{table}";
+                var services = new ServiceCollection();
+                services.AddSingleton(new CdcMigrationTarget(ConnectionString, RelaySchema, schema, table, captureInstance));
+                await services.BuildServiceProvider().UseCdcSqlMigrationsAsync();
+                return captureInstance;
+            }
+
+            public Task ExecuteAsync(string sql) => SqlServerFixture.ExecuteAsync(ConnectionString, sql);
+
+            public async Task<T> ScalarAsync<T>(string sql)
+            {
+                await using var connection = new SqlConnection(ConnectionString);
+                await connection.OpenAsync();
+                await using var command = new SqlCommand(sql, connection) { CommandTimeout = 120 };
+                return (T)await command.ExecuteScalarAsync();
+            }
+
+            public async ValueTask DisposeAsync()
+            {
+                await ExecuteAsync("EXEC sys.sp_cdc_disable_db;");
+                await SqlServerFixture.ExecuteAsync(_serverConnectionString, $"ALTER DATABASE [{Name}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{Name}];");
+                SqlConnection.ClearPool(new SqlConnection(ConnectionString));
+            }
+
+            public static string Quote(string name) => "[" + name.Replace("]", "]]") + "]";
+        }
     }
 
     [CollectionDefinition(Name)]

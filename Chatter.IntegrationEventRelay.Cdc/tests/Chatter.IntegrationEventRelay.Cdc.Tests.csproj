@@ -28,8 +28,18 @@
     <None Include="..\..\.scripts\cdc\grant-relay-permissions.sql" Link="Scripts\grant-relay-permissions.sql" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- The switch-over tests run the production scripts that move a table between SQL Service Broker and CDC -->
+  <ItemGroup Condition="Exists('..\..\.scripts\cdc\switch-to-cdc.sql')">
+    <None Include="..\..\.scripts\cdc\switch-to-cdc.sql" Link="Scripts\switch-to-cdc.sql" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup Condition="Exists('..\..\.scripts\cdc\switch-to-service-broker.sql')">
+    <None Include="..\..\.scripts\cdc\switch-to-service-broker.sql" Link="Scripts\switch-to-service-broker.sql" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\src\Chatter.IntegrationEventRelay.Cdc.csproj" />
+    <!-- Installs SqlChangeFeed's trigger and queues, so tests can switch a table between SQL Service Broker and CDC -->
+    <ProjectReference Include="..\..\Chatter.IntegrationEventRelay.ServiceBroker\src\Chatter.IntegrationEventRelay.ServiceBroker.csproj" />
     <!-- Shared test context (mock creators) -->
     <ProjectReference Include="..\..\Chatter.IntegrationEventRelay.Core\tests\Chatter.IntegrationEventRelay.Core.Tests.csproj" />
   </ItemGroup>
