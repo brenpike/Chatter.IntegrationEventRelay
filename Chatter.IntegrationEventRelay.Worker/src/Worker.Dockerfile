@@ -10,6 +10,8 @@ COPY ["./Chatter.IntegrationEventRelay.Core/src/Chatter.IntegrationEventRelay.Co
 COPY ["./Chatter.IntegrationEventRelay.Core/tests/Chatter.IntegrationEventRelay.Core.Tests.csproj", "./Chatter.IntegrationEventRelay.Core/tests/Chatter.IntegrationEventRelay.Core.Tests.csproj"]
 COPY ["./Chatter.IntegrationEventRelay.ServiceBroker/src/Chatter.IntegrationEventRelay.ServiceBroker.csproj", "./Chatter.IntegrationEventRelay.ServiceBroker/src/Chatter.IntegrationEventRelay.ServiceBroker.csproj"]
 COPY ["./Chatter.IntegrationEventRelay.ServiceBroker/tests/Chatter.IntegrationEventRelay.ServiceBroker.Tests.csproj", "./Chatter.IntegrationEventRelay.ServiceBroker/tests/Chatter.IntegrationEventRelay.ServiceBroker.Tests.csproj"]
+COPY ["./Chatter.IntegrationEventRelay.Cdc/src/Chatter.IntegrationEventRelay.Cdc.csproj", "./Chatter.IntegrationEventRelay.Cdc/src/Chatter.IntegrationEventRelay.Cdc.csproj"]
+COPY ["./Chatter.IntegrationEventRelay.Cdc/tests/Chatter.IntegrationEventRelay.Cdc.Tests.csproj", "./Chatter.IntegrationEventRelay.Cdc/tests/Chatter.IntegrationEventRelay.Cdc.Tests.csproj"]
 RUN dotnet restore
 
 COPY ["./Chatter.IntegrationEventRelay.Worker/src/", "./Chatter.IntegrationEventRelay.Worker/src/"]
@@ -17,9 +19,12 @@ COPY ["./Chatter.IntegrationEventRelay.Core/src/", "./Chatter.IntegrationEventRe
 COPY ["./Chatter.IntegrationEventRelay.Core/tests/", "./Chatter.IntegrationEventRelay.Core/tests/"]
 COPY ["./Chatter.IntegrationEventRelay.ServiceBroker/src/", "./Chatter.IntegrationEventRelay.ServiceBroker/src/"]
 COPY ["./Chatter.IntegrationEventRelay.ServiceBroker/tests/", "./Chatter.IntegrationEventRelay.ServiceBroker/tests/"]
+COPY ["./Chatter.IntegrationEventRelay.Cdc/src/", "./Chatter.IntegrationEventRelay.Cdc/src/"]
+COPY ["./Chatter.IntegrationEventRelay.Cdc/tests/", "./Chatter.IntegrationEventRelay.Cdc/tests/"]
 
 RUN dotnet test "./Chatter.IntegrationEventRelay.Core/tests/Chatter.IntegrationEventRelay.Core.Tests.csproj" -c Release --no-restore
 RUN dotnet test "./Chatter.IntegrationEventRelay.ServiceBroker/tests/Chatter.IntegrationEventRelay.ServiceBroker.Tests.csproj" -c Release --no-restore
+RUN dotnet test "./Chatter.IntegrationEventRelay.Cdc/tests/Chatter.IntegrationEventRelay.Cdc.Tests.csproj" -c Release --no-restore --filter "Category!=Integration"
 
 RUN dotnet publish "./Chatter.IntegrationEventRelay.Worker/src/Chatter.IntegrationEventRelay.Worker.csproj" -c Release -o /app/publish
 

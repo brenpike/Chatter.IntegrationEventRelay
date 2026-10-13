@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>0.4.0</Version>
+    <Authors>Brennan Pike</Authors>
+    <Owners>Brennan Pike</Owners>
+    <Description>SQL Server Change Data Capture (CDC) change source for Chatter.IntegrationEventRelay: polls CDC change tables and relays changes in commit order, resuming from a checkpoint</Description>
+    <PackageId>Chatter.IntegrationEventRelay.Cdc</PackageId>
+    <RepositoryUrl>https://github.com/brenpike/Chatter.IntegrationEventRelay</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>.net;message broker;events;domain event;integration event;change data capture;cdc;Chatter</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Chatter.IntegrationEventRelay.Core\src\Chatter.IntegrationEventRelay.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Chatter.IntegrationEventRelay.Cdc.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -13,9 +13,23 @@ public class EventMappingConfiguration
 	public const string DefaultSourceType = "ServiceBroker";
 
 	/// <summary>
+	/// The default <see cref="Schema"/>.
+	/// </summary>
+	public const string DefaultSchema = "Chatter";
+
+	/// <summary>
 	/// The default connection string, used by sources and mappings that don't set their own.
 	/// </summary>
 	public string? ConnectionString { get; set; }
+
+	/// <summary>
+	/// Optional. The schema of the database objects the relay owns, such as CDC checkpoints. Default "Chatter".
+	/// </summary>
+	/// <remarks>
+	/// SQL Service Broker objects created by Chatter.SqlChangeFeed (trigger, queues, procedures) stay in the schema of
+	/// the table they watch; SqlChangeFeed can't place them elsewhere.
+	/// </remarks>
+	public string Schema { get; set; } = DefaultSchema;
 
 	/// <summary>
 	/// Optional. Named change sources that mappings refer to by <see cref="EventMappingConfigurationItem.Source"/>.

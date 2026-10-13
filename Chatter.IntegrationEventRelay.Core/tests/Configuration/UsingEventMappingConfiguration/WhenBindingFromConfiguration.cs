@@ -42,6 +42,7 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Configuration.UsingEventMappi
         private const string SourcesJson = @"{
   ""Relay"": {
     ""ConnectionString"": ""Server=db;Database=FakeDb"",
+    ""Schema"": ""relay"",
     ""Sources"": {
       ""fakedb-cdc"": { ""Type"": ""Cdc"", ""ConnectionString"": ""Server=cdc;Database=FakeDb"", ""PollInterval"": ""00:00:01"" }
     },
@@ -52,7 +53,8 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Configuration.UsingEventMappi
         ""IntegrationEventTypeName"": ""FakeEvent"",
         ""SourceChangeType"": ""Insert"",
         ""TableName"": ""Event2"",
-        ""RequiredCapabilities"": ""Ordered, Resumable""
+        ""RequiredCapabilities"": ""Ordered, Resumable"",
+        ""CaptureInstance"": ""dbo_Event2""
       }
     ]
   }
@@ -74,6 +76,22 @@ namespace Chatter.IntegrationEventRelay.Core.Tests.Configuration.UsingEventMappi
             Assert.All(mappings, m => Assert.Equal(typeof(FakeEvent), m.IntegrationEventType));
             Assert.Equal("event-1-deleted", mappings[1].InfrastructureMessageName);
             Assert.All(mappings, m => Assert.Equal(ChangeSourceCapabilities.None, m.RequiredCapabilities));
+            Assert.Equal("Chatter", relay.Configuration.Schema);
+        }
+
+        [Fact]
+        public void MustBindTheRelaySchema()
+            => Assert.Equal("relay", CreateBuilder(SourcesJson).AddIntegrationEventRelay("Relay").Configuration.Schema);
+
+        [Fact]
+        public void MustBindEachMappingWithItsSection()
+        {
+            var legacy = CreateBuilder(LegacyJson).AddIntegrationEventRelay().Configuration.Mappings.ToList();
+            var withSources = Assert.Single(CreateBuilder(SourcesJson).AddIntegrationEventRelay("Relay").Configuration.Mappings);
+
+            Assert.Equal("event-1-deleted", legacy[1].Section["InfrastructureMessageName"]);
+            Assert.Null(legacy[0].Section["InfrastructureMessageName"]);
+            Assert.Equal("dbo_Event2", withSources.Section["CaptureInstance"]);
         }
 
         [Fact]
