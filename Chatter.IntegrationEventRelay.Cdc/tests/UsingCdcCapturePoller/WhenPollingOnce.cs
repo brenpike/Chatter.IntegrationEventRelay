@@ -311,6 +311,39 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.UsingCdcCapturePoller
         }
 
         [Fact]
+        public async Task MustFailOnAGapWhenCleanupRemovesChangesWhileTheyAreRead()
+        {
+            var published = Insert(1);
+            Insert(2);
+            var kept = Insert(3);
+            _harness.Checkpoint = published.Lsn;
+            Cdc.OnGetChanges = () => Cdc.MinLsn = kept.Lsn;
+
+            var e = await Assert.ThrowsAsync<CdcGapException>(() => PollAsync());
+
+            Assert.Equal(published.Lsn, e.Checkpoint);
+            Assert.Equal(kept.Lsn, e.MinLsn);
+            Assert.Empty(_batches);
+            Assert.Equal(published.Lsn, _harness.Checkpoint);
+        }
+
+        [Fact]
+        public async Task MustStartAgainFromTheOldestChangeWhenCleanupRemovesChangesWhileTheFirstAreRead()
+        {
+            Insert(1);
+            var kept = Insert(2);
+            Cdc.OnGetChanges = () => { Cdc.MinLsn = kept.Lsn; Cdc.OnGetChanges = null; };
+
+            Assert.True(await PollAsync());
+            Assert.Empty(_batches);
+            Assert.Null(_harness.Checkpoint);
+
+            await PollAsync();
+
+            Assert.Equal(2, _batches.Single().Single().NewValue.Id);
+        }
+
+        [Fact]
         public async Task MustNotReportAGapIfTheNextChangeIsTheOldest()
         {
             var published = Insert(1);

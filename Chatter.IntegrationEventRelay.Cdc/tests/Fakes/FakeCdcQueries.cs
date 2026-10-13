@@ -36,6 +36,8 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Fakes
         public List<int> BatchSizes { get; } = new();
         public Exception FailWith { get; set; }
         public System.Action OnGetCapturedColumns { get; set; }
+        /// <summary>Runs during a read of the change table, as CDC cleanup running concurrently would.</summary>
+        public System.Action OnGetChanges { get; set; }
 
         public IReadOnlyList<FakeTransaction> Transactions
         {
@@ -130,7 +132,9 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Fakes
             if (from < MinLsn || from > to)
                 throw new InvalidOperationException("An insufficient number of arguments were supplied for the procedure or function cdc.fn_cdc_get_all_changes_ ...");
 
-            return Result<IReadOnlyList<CdcChangeRow>>(Transactions.Where(t => t.Lsn >= from && t.Lsn <= to).SelectMany(t => t.Rows).ToList());
+            OnGetChanges?.Invoke();
+            // Like a read of the change table: rows cleanup has removed are simply missing
+            return Result<IReadOnlyList<CdcChangeRow>>(Transactions.Where(t => t.Lsn >= from && t.Lsn >= MinLsn && t.Lsn <= to).SelectMany(t => t.Rows).ToList());
         }
 
         public Task<TimeSpan> GetServerUtcOffsetAsync(CancellationToken cancellationToken) => Result(ServerUtcOffset);

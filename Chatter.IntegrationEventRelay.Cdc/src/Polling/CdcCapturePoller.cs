@@ -255,6 +255,17 @@ internal sealed class CdcCapturePoller<TSource> : ICdcCapturePoller where TSourc
 		IReadOnlyList<CdcRowChange<TSource>> changes = Array.Empty<CdcRowChange<TSource>>();
 
 		var rows = await _queries.GetChangesAsync(Capture.CaptureInstance, from, upperBound, cancellationToken).ConfigureAwait(false);
+
+		// The change table is read directly, which, unlike the CDC functions, doesn't reject a range CDC cleanup has passed:
+		// cleanup may have removed some of it since the check above. Cleanup commits the new oldest LSN before it deletes
+		// any rows, so it's unchanged after the read only if every row in the range was still there. Without a checkpoint
+		// the relay was starting from the oldest change anyway, so it starts again from the new one.
+		if (await _queries.GetMinLsnAsync(Capture.CaptureInstance, cancellationToken).ConfigureAwait(false) is { IsZero: false } cleanedUpTo && from < cleanedUpTo)
+		{
+			if (checkpoint is { IsZero: false } published)
+				throw new CdcGapException(Capture.SourceName, Capture.CaptureInstance, published, cleanedUpTo);
+			return true;
+		}
 		if (rows.Count > 0)
 		{
 			var offset = await _queries.GetServerUtcOffsetAsync(cancellationToken).ConfigureAwait(false);
