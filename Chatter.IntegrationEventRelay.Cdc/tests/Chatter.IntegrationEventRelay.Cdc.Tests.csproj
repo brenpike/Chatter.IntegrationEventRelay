@@ -22,6 +22,12 @@
     </PackageReference>
   </ItemGroup>
 
+  <!-- The integration tests run the relay under the grants of the production grant script. Docker builds of the Worker
+       don't copy .scripts and don't run the integration tests. -->
+  <ItemGroup Condition="Exists('..\..\.scripts\cdc\grant-relay-permissions.sql')">
+    <None Include="..\..\.scripts\cdc\grant-relay-permissions.sql" Link="Scripts\grant-relay-permissions.sql" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\src\Chatter.IntegrationEventRelay.Cdc.csproj" />
     <!-- Shared test context (mock creators) -->

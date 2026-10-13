@@ -16,14 +16,11 @@ namespace Chatter.IntegrationEventRelay.Cdc;
 /// committed before a clock change but read after it are off by the change; run SQL Server in UTC to avoid it.
 /// </para>
 /// <para>
-/// Permissions: the relay's login needs <c>SELECT</c> on every captured column of each captured table (and membership
-/// in the capture instance's gating role, if any); <c>SELECT</c> on each capture instance's change table, since it reads
-/// the change tables directly (the only place SQL Server exposes <c>__$command_id</c>, which orders a transaction's
-/// changes), and on CDC's metadata tables <c>cdc.lsn_time_mapping</c>, <c>cdc.change_tables</c>,
-/// <c>cdc.captured_columns</c> and <c>cdc.index_columns</c>; <c>SELECT</c>, <c>INSERT</c> and <c>UPDATE</c> on the
-/// checkpoint table; and, only with the <c>ParkRow</c> error policy, <c>SELECT</c>, <c>INSERT</c>, <c>UPDATE</c> and
-/// <c>DELETE</c> on the parked-change table. Both tables are in the relay's
-/// <see cref="Core.Configuration.EventMappingConfiguration.Schema"/>. See <c>.scripts/cdc/enable-cdc.sql</c>.
+/// Permissions: <c>.scripts/cdc/grant-relay-permissions.sql</c> grants the relay's login what it needs per capture
+/// instance and error policy: <c>SELECT</c> on each captured column and on the change table, which the relay reads
+/// directly (the only place SQL Server exposes <c>__$command_id</c>, which orders a transaction's changes); CDC metadata;
+/// the relay's tables in <see cref="Core.Configuration.EventMappingConfiguration.Schema"/>; and membership in the capture
+/// instance's gating role, if any, once the operator names it. The integration tests run the relay under exactly those grants.
 /// </para>
 /// </remarks>
 public sealed class CdcChangeSource : IChangeSource

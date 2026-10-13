@@ -186,45 +186,199 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             Assert.Equal(new CdcCapturedTable("dbo", _table), await new SqlCdcQueries(_sql.ConnectionString).GetCapturedTableAsync(captureInstance, CancellationToken.None));
         }
 
-        [Fact]
-        public async Task MustFailWhenTheLoginMayNotReadTheCapturedTable()
+        [Theory]
+        [InlineData(CdcErrorPolicy.Halt, false)]
+        [InlineData(CdcErrorPolicy.ParkRow, false)]
+        [InlineData(CdcErrorPolicy.Halt, true)]
+        [InlineData(CdcErrorPolicy.ParkRow, true)]
+        public async Task MustRelayUnderExactlyTheGrantsOfTheGrantScript(CdcErrorPolicy errorPolicy, bool gated)
         {
-            await _sql.CreateCapturedTableAsync(_table);
+            var gatingRole = gated ? $"gate_{_table}" : null;
+            if (gated)
+                await CreateGatedCapturedTableAsync();
+            else
+                await _sql.CreateCapturedTableAsync(_table);
             // A column added after CDC was enabled isn't captured; the relay's login mustn't need to read it
             await _sql.ExecuteAsync($"ALTER TABLE dbo.[{_table}] ADD Secret nvarchar(50) NULL;");
-            var login = $"relay_{_table}";
+            await _sql.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id, Name, Secret) VALUES (1, N'one', N'secret');");
+            await _sql.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id, Name) VALUES (2, N'two');");
+            await WaitForCaptureAsync(2);
+            // sp_cdc_enable_db grants it to public; the script grants it too, for databases that revoke it. The database is
+            // shared by the whole collection, so the grant is restored afterwards.
+            await _sql.ExecuteAsync("REVOKE SELECT ON cdc.lsn_time_mapping FROM public;");
+            try
+            {
+                // Under every grant the script makes, the relay relays both changes
+                var full = await CreateLoginAsync("full");
+                var statements = await GrantStatementsAsync(full.User, errorPolicy, gatingRole);
+                await _sql.ExecuteAsync(GrantScript.Render(full.User, $"dbo_{_table}", "Chatter", errorPolicy, gatingRole));
+                // Each run's source is named after its login, so it shares no checkpoint or parked change with another
+                // run or another case: the relay tables are shared by the whole collection
+                Assert.Null(await RunRestrictedAsync(full.ConnectionString, full.User, errorPolicy));
+
+                await using (var connection = new Microsoft.Data.SqlClient.SqlConnection(full.ConnectionString))
+                {
+                    await connection.OpenAsync();
+                    await using var readSecret = new Microsoft.Data.SqlClient.SqlCommand($"SELECT Secret FROM dbo.[{_table}];", connection);
+                    Assert.Equal(230, (await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => readSecret.ExecuteScalarAsync())).Number);
+                }
+
+                // Without any one of them, it fails
+                Assert.Equal(errorPolicy == CdcErrorPolicy.ParkRow, statements.Any(s => s.Contains(CdcSqlScripts.ParkedChangesTable)));
+                Assert.Equal(gated, statements.Any(s => s.StartsWith("ALTER ROLE", StringComparison.Ordinal)));
+                for (var i = 0; i < statements.Count; i++)
+                {
+                    var login = await CreateLoginAsync($"without{i}");
+                    foreach (var statement in statements.Where((_, j) => j != i))
+                        await _sql.ExecuteAsync(statement.Replace($"[{full.User}]", $"[{login.User}]", StringComparison.Ordinal));
+
+                    var failure = await RunRestrictedAsync(login.ConnectionString, login.User, errorPolicy);
+
+                    Assert.True(failure is not null, $"The relay didn't need: {statements[i]}");
+                    // 229 and 230: permission denied on an object or a column
+                    Assert.True(failure is CdcCaptureInstanceAccessDeniedException or Microsoft.Data.SqlClient.SqlException { Number: 229 or 230 },
+                        $"Without {statements[i]} the relay failed for another reason: {failure}");
+                }
+            }
+            finally
+            {
+                await _sql.ExecuteAsync("GRANT SELECT ON cdc.lsn_time_mapping TO public;");
+            }
+        }
+
+        [Fact]
+        public async Task MustGrantOnNamesThatQuoteToTheirMaximumLength()
+        {
+            // 128 characters, mostly ']', which QUOTENAME doubles: each quoted name is about twice as long as the name
+            static string Name(string prefix) => (prefix + new string(']', 128))[..128];
+            static string Quote(string name) => "[" + name.Replace("]", "]]") + "]";
+            static string Literal(string value) => "N'" + value.Replace("'", "''") + "'";
+            var schema = Name($"s_{_table}");
+            var table = Name($"t_{_table}");
+            var user = Name($"u_{_table}");
+            var captureInstance = $"q_{_table}";
+            await _sql.ExecuteAsync($"CREATE SCHEMA {Quote(schema)};");
+            await _sql.ExecuteAsync($"""
+                CREATE TABLE {Quote(schema)}.{Quote(table)} (Id int NOT NULL PRIMARY KEY, Name nvarchar(50) NULL);
+                EXEC sys.sp_cdc_enable_table @source_schema = {Literal(schema)}, @source_name = {Literal(table)}, @role_name = NULL, @capture_instance = {Literal(captureInstance)};
+                CREATE USER {Quote(user)} WITHOUT LOGIN;
+                """);
+
+            await _sql.ExecuteAsync(GrantScript.Render(user, captureInstance, "Chatter", CdcErrorPolicy.Halt));
+
+            var granted = $"FROM sys.database_permissions WHERE grantee_principal_id = DATABASE_PRINCIPAL_ID({Literal(user)}) AND state = 'G'";
+            Assert.Equal(2, await _sql.ScalarAsync<int>($"SELECT COUNT(*) {granted} AND major_id = OBJECT_ID({Literal(Quote(schema) + "." + Quote(table))}) AND permission_name = 'SELECT';"));
+            Assert.Equal(1, await _sql.ScalarAsync<int>($"SELECT COUNT(*) {granted} AND major_id = OBJECT_ID({Literal($"cdc.{Quote(captureInstance + "_CT")}")});"));
+        }
+
+        [Fact]
+        public async Task MustJoinAGatingRoleOnlyWhenTheOperatorNamesIt()
+        {
+            await CreateGatedCapturedTableAsync();
+            var login = await CreateLoginAsync("gate");
+            var ungated = await _sql.CreateCapturedTableAsync($"{_table}_u");
+
+            foreach (var (captureInstance, gatingRole) in new[] { ($"dbo_{_table}", null), ($"dbo_{_table}", "db_datareader"), ($"dbo_{_table}", $"GATE_{_table}"), ($"dbo_{_table}", $"gate_{_table} "), (ungated, $"gate_{_table}") })
+            {
+                var e = await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => _sql.ExecuteAsync(GrantScript.Render(login.User, captureInstance, "Chatter", CdcErrorPolicy.Halt, gatingRole)));
+                Assert.Equal(50000, e.Number);
+            }
+
+            Assert.Equal(0, await _sql.ScalarAsync<int>($"SELECT COUNT(*) FROM sys.database_permissions WHERE class = 1 AND grantee_principal_id = DATABASE_PRINCIPAL_ID(N'{login.User}');"));
+            Assert.Equal(0, await _sql.ScalarAsync<int>($"SELECT COUNT(*) FROM sys.database_role_members WHERE member_principal_id = DATABASE_PRINCIPAL_ID(N'{login.User}');"));
+        }
+
+        [Fact]
+        public async Task MustRefuseToGrantToARoleOrABuiltInUser()
+        {
+            var captureInstance = await _sql.CreateCapturedTableAsync(_table);
+            var role = $"role_{_table}";
+            await _sql.ExecuteAsync($"CREATE ROLE [{role}];");
+
+            foreach (var principal in new[] { role, "public", "guest", "dbo" })
+            {
+                var e = await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => _sql.ExecuteAsync(GrantScript.Render(principal, captureInstance, "Chatter", CdcErrorPolicy.ParkRow)));
+                Assert.Equal(50000, e.Number);
+            }
+            Assert.Equal(0, await _sql.ScalarAsync<int>($"SELECT COUNT(*) FROM sys.database_permissions WHERE grantee_principal_id = DATABASE_PRINCIPAL_ID(N'{role}');"));
+        }
+
+        // Halt: relays both changes, one batch each, so the checkpoint is inserted and then updated. ParkRow: parks row 2,
+        // fails one replay (recording the error) and then replays it (deleting it). Returns the failure, or null.
+        private async Task<Exception> RunRestrictedAsync(string connectionString, string sourceName, CdcErrorPolicy errorPolicy)
+        {
+            var processor = new Processor { FailOnId = errorPolicy == CdcErrorPolicy.ParkRow ? 2 : null };
+            var services = new ServiceCollection();
+            services.AddSingleton<IRowChangeProcessor<Row>>(processor);
+            var capture = Capture(new CdcSourceOptions { ErrorPolicy = errorPolicy, MaxAttemptsBeforePark = 1, MaxTransactionsPerBatch = 1 }) with { SourceName = sourceName };
+            var poller = new CdcCapturePoller<Row>(capture, new SqlCdcQueries(connectionString), new SqlCheckpointStore(connectionString, "Chatter"),
+                new SqlParkedChangeStore(connectionString, "Chatter"), new SqlAppLockLeaseFactory(connectionString),
+                services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, NullLogger<CdcCapturePoller<Row>>.Instance);
+            var parked = $"FROM Chatter.Chatter_RelayParkedChanges WHERE SourceName = N'{sourceName}'";
+
+            try
+            {
+                if (errorPolicy == CdcErrorPolicy.Halt)
+                {
+                    for (var poll = 0; poll < 10 && processor.Changes.Count < 2; poll++)
+                        await poller.PollOnceAsync(CancellationToken.None);
+                    if (!processor.Changes.Select(c => c.NewValue.Id).SequenceEqual(new[] { 1, 2 }))
+                        return new Exception($"Relayed rows {string.Join(", ", processor.Changes.Select(c => c.NewValue.Id))}");
+                    return null;
+                }
+
+                for (var poll = 0; poll < 10 && await _sql.ScalarAsync<int>($"SELECT COUNT(*) {parked};") == 0; poll++)
+                    await poller.PollOnceAsync(CancellationToken.None);
+                await poller.PollOnceAsync(CancellationToken.None);
+                if (!processor.Changes.Select(c => c.NewValue.Id).SequenceEqual(new[] { 1 }) || await _sql.ScalarAsync<int>($"SELECT COUNT(*) {parked};") != 1)
+                    return new Exception("Row 2 wasn't parked");
+
+                await _sql.ExecuteAsync($"UPDATE Chatter.Chatter_RelayParkedChanges SET ReplayRequestedAt = SYSUTCDATETIME() WHERE SourceName = N'{sourceName}';");
+                await poller.PollOnceAsync(CancellationToken.None);
+                if (await _sql.ScalarAsync<int>($"SELECT COUNT(*) {parked} AND Attempts = 2 AND ReplayRequestedAt IS NULL;") != 1)
+                    return new Exception("The failed replay wasn't recorded");
+
+                processor.FailOnId = null;
+                await _sql.ExecuteAsync($"UPDATE Chatter.Chatter_RelayParkedChanges SET ReplayRequestedAt = SYSUTCDATETIME() WHERE SourceName = N'{sourceName}';");
+                await poller.PollOnceAsync(CancellationToken.None);
+                if (!processor.Changes.Select(c => c.NewValue.Id).SequenceEqual(new[] { 1, 2 }) || await _sql.ScalarAsync<int>($"SELECT COUNT(*) {parked};") != 0)
+                    return new Exception("Row 2 wasn't replayed");
+                return null;
+            }
+            catch (Exception e)
+            {
+                return e;
+            }
+        }
+
+        private async Task<(string User, string ConnectionString)> CreateLoginAsync(string run)
+        {
+            var login = $"relay_{_table}_{run}";
             await _sql.ExecuteAsync($"""
                 CREATE LOGIN [{login}] WITH PASSWORD = N'Relay!Passw0rd1', CHECK_POLICY = OFF;
                 CREATE USER [{login}] FOR LOGIN [{login}];
-                GRANT SELECT ON cdc.[dbo_{_table}_CT] TO [{login}];
-                GRANT SELECT ON cdc.lsn_time_mapping TO [{login}];
-                GRANT SELECT ON cdc.change_tables TO [{login}];
-                GRANT SELECT ON cdc.captured_columns TO [{login}];
-                GRANT SELECT ON cdc.index_columns TO [{login}];
-                GRANT SELECT, INSERT, UPDATE ON Chatter.Chatter_RelayCheckpoints TO [{login}];
-                GRANT SELECT, INSERT, UPDATE, DELETE ON Chatter.Chatter_RelayParkedChanges TO [{login}];
                 """);
-            var connectionString = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(_sql.ConnectionString) { UserID = login, Password = "Relay!Passw0rd1" }.ConnectionString;
-            await _sql.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id, Name, Secret) VALUES (1, N'one', N'secret');");
-            await WaitForCaptureAsync(1);
-            var poller = new CdcCapturePoller<Row>(Capture(), new SqlCdcQueries(connectionString), new SqlCheckpointStore(connectionString, "Chatter"), new SqlParkedChangeStore(connectionString, "Chatter"),
-                new SqlAppLockLeaseFactory(connectionString), new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, NullLogger<CdcCapturePoller<Row>>.Instance);
+            return (login, new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(_sql.ConnectionString) { UserID = login, Password = "Relay!Passw0rd1" }.ConnectionString);
+        }
 
-            await Assert.ThrowsAsync<CdcCaptureInstanceAccessDeniedException>(() => poller.PollOnceAsync(CancellationToken.None));
-
-            // With SELECT on exactly the captured columns it reads the change, and the uncaptured column stays unreadable
-            await _sql.ExecuteAsync($"GRANT SELECT (Id, Name, Flag, DeletedAt) ON dbo.[{_table}] TO [{login}];");
-            var processor = new Processor();
-            var services = new ServiceCollection();
-            services.AddSingleton<IRowChangeProcessor<Row>>(processor);
-            var granted = new CdcCapturePoller<Row>(Capture(), new SqlCdcQueries(connectionString), new SqlCheckpointStore(connectionString, "Chatter"), new SqlParkedChangeStore(connectionString, "Chatter"),
-                new SqlAppLockLeaseFactory(connectionString), services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, NullLogger<CdcCapturePoller<Row>>.Instance);
-            Assert.Equal(1, Assert.Single(await PollUntilAsync(granted, 1, processor)).NewValue.Id);
-
-            await using var connection = new Microsoft.Data.SqlClient.SqlConnection(connectionString);
+        private async Task<IReadOnlyList<string>> GrantStatementsAsync(string user, CdcErrorPolicy errorPolicy, string gatingRole)
+        {
+            await using var connection = new Microsoft.Data.SqlClient.SqlConnection(_sql.ConnectionString);
             await connection.OpenAsync();
-            await using var readSecret = new Microsoft.Data.SqlClient.SqlCommand($"SELECT Secret FROM dbo.[{_table}];", connection);
-            Assert.Equal(230, (await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => readSecret.ExecuteScalarAsync())).Number);
+            await using var command = new Microsoft.Data.SqlClient.SqlCommand(GrantScript.Render(user, $"dbo_{_table}", "Chatter", errorPolicy, gatingRole, whatIf: true), connection);
+            await using var reader = await command.ExecuteReaderAsync();
+            var statements = new List<string>();
+            while (await reader.ReadAsync())
+                statements.Add(reader.GetString(0));
+            return statements;
+        }
+
+        private async Task CreateGatedCapturedTableAsync()
+        {
+            await _sql.ExecuteAsync($"""
+                CREATE TABLE dbo.[{_table}] (Id int NOT NULL PRIMARY KEY, Name nvarchar(50) NULL, Flag bit NULL, DeletedAt datetime2 NULL);
+                EXEC sys.sp_cdc_enable_table @source_schema = N'dbo', @source_name = N'{_table}', @role_name = N'gate_{_table}', @capture_instance = N'dbo_{_table}';
+                """);
         }
 
         [Fact]
