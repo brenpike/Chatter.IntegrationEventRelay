@@ -190,6 +190,7 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
         [InlineData(CdcErrorPolicy.Halt, false)]
         [InlineData(CdcErrorPolicy.ParkRow, false)]
         [InlineData(CdcErrorPolicy.Halt, true)]
+        [InlineData(CdcErrorPolicy.ParkRow, true)]
         public async Task MustRelayUnderExactlyTheGrantsOfTheGrantScript(CdcErrorPolicy errorPolicy, bool gated)
         {
             if (gated)
@@ -210,7 +211,9 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
                 var full = await CreateLoginAsync("full");
                 var statements = await GrantStatementsAsync(full.User, errorPolicy);
                 await _sql.ExecuteAsync(GrantScript.Render(full.User, $"dbo_{_table}", "Chatter", errorPolicy));
-                Assert.Null(await RunRestrictedAsync(full.ConnectionString, "full", errorPolicy));
+                // Each run's source is named after its login, so it shares no checkpoint or parked change with another
+                // run or another case: the relay tables are shared by the whole collection
+                Assert.Null(await RunRestrictedAsync(full.ConnectionString, full.User, errorPolicy));
 
                 await using (var connection = new Microsoft.Data.SqlClient.SqlConnection(full.ConnectionString))
                 {
@@ -224,12 +227,11 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
                 Assert.Equal(gated, statements.Any(s => s.StartsWith("ALTER ROLE", StringComparison.Ordinal)));
                 for (var i = 0; i < statements.Count; i++)
                 {
-                    var run = $"without{i}";
-                    var login = await CreateLoginAsync(run);
+                    var login = await CreateLoginAsync($"without{i}");
                     foreach (var statement in statements.Where((_, j) => j != i))
                         await _sql.ExecuteAsync(statement.Replace($"[{full.User}]", $"[{login.User}]", StringComparison.Ordinal));
 
-                    var failure = await RunRestrictedAsync(login.ConnectionString, run, errorPolicy);
+                    var failure = await RunRestrictedAsync(login.ConnectionString, login.User, errorPolicy);
 
                     Assert.True(failure is not null, $"The relay didn't need: {statements[i]}");
                     // 229 and 230: permission denied on an object or a column

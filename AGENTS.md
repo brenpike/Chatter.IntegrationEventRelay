@@ -25,8 +25,9 @@ for production use are in scope for security review.
 The least-privilege grants for the CDC change source live in one script, `.scripts/cdc/grant-relay-permissions.sql`,
 which derives them from CDC's metadata per capture instance and error policy. `MustRelayUnderExactlyTheGrantsOfTheGrantScript`
 in `Chatter.IntegrationEventRelay.Cdc/tests/Integration/WhenCapturingChangesFromSqlServer.cs` runs the relay under exactly
-the script's grants (`Halt`, `ParkRow`, and a gated capture instance) and checks that it fails with a permission error
-without any one of them. Change the script and the test together; a grant the relay doesn't need fails the test.
+the script's grants (`Halt` and `ParkRow`, each with and without a gated capture instance) and checks that it fails
+with a permission error without any one of them. Change the script and the test together; a grant the relay doesn't
+need fails the test.
 
 `README.md` ("Using the CDC change source" > "Permissions") and the permissions remark on `CdcChangeSource`
 (`Chatter.IntegrationEventRelay.Cdc/src/CdcChangeSource.cs`) describe the grants in prose. Keep them in step with the
