@@ -10,7 +10,7 @@
 -- SELECT, INSERT, DELETE and UPDATE of the columns the relay changes on the parked-change table; and, if the capture
 -- instance has a gating role (@role_name), membership in it.
 -- A gating role can be any database role, and joining it gives the login everything the role may do, not just read the
--- capture instance. So the script adds the login to it only when @gatingRole names it: check what the role grants first
+-- capture instance. So the script adds the login to it only when @gatingRole gives its exact name: check what the role grants first
 -- (a role that sp_cdc_enable_table created holds only SELECT on the capture instance's change functions).
 -- Chatter.IntegrationEventRelay.Cdc's integration tests run the relay under exactly these grants, for each error policy,
 -- and check that it fails without any one of them.
@@ -49,9 +49,10 @@ IF @sourceObjectId IS NULL
 DECLARE @gatingRoleError nvarchar(2048) = CASE
 	WHEN @roleName IS NULL AND @gatingRole IS NOT NULL
 		THEN N'The capture instance has no gating role. Leave @gatingRole NULL.'
-	WHEN @roleName IS NOT NULL AND (@gatingRole IS NULL OR @gatingRole <> @roleName)
+	-- Exactly the name, byte for byte: not another case or trailing spaces, whatever the database's collation
+	WHEN @roleName IS NOT NULL AND (@gatingRole IS NULL OR CAST(@gatingRole AS varbinary(256)) <> CAST(@roleName AS varbinary(256)))
 		THEN N'The capture instance is gated by role ' + QUOTENAME(@roleName) + N', and the login must be a member of it. Joining it gives the login '
-			+ N'everything the role may do: check what it grants, then set @gatingRole to its name.'
+			+ N'everything the role may do: check what it grants, then set @gatingRole to its exact name.'
 	END;
 IF @gatingRoleError IS NOT NULL
 	THROW 50000, @gatingRoleError, 1;

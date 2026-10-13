@@ -278,7 +278,7 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             var login = await CreateLoginAsync("gate");
             var ungated = await _sql.CreateCapturedTableAsync($"{_table}_u");
 
-            foreach (var (captureInstance, gatingRole) in new[] { ($"dbo_{_table}", null), ($"dbo_{_table}", "db_datareader"), (ungated, $"gate_{_table}") })
+            foreach (var (captureInstance, gatingRole) in new[] { ($"dbo_{_table}", null), ($"dbo_{_table}", "db_datareader"), ($"dbo_{_table}", $"GATE_{_table}"), ($"dbo_{_table}", $"gate_{_table} "), (ungated, $"gate_{_table}") })
             {
                 var e = await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => _sql.ExecuteAsync(GrantScript.Render(login.User, captureInstance, "Chatter", CdcErrorPolicy.Halt, gatingRole)));
                 Assert.Equal(50000, e.Number);
