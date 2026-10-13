@@ -138,6 +138,8 @@ The script only grants. It doesn't revoke what an earlier run granted and a sour
 
 The script grants columns rather than the whole table: a table-level `GRANT SELECT ON dbo.Orders` also works, but it exposes columns left out of capture with `@captured_column_list`. Likewise `GRANT SELECT ON SCHEMA::cdc` is simpler than the change-table and metadata grants, but it lets the login read the change data of every other captured table in the database. The metadata tables show the names of every capture instance and captured column in the database, though not their data.
 
+The grants isolate captured data per capture instance, not relay state. Every source whose relay uses the same `Schema` shares the checkpoint and parked-change tables, and the grants on them are table-wide: a login can read the parked payloads (row values) of every source in that `Schema`, move their checkpoints, and replay or delete their parked changes. Give each relay login, or each group of sources that trust each other, its own `Schema`. Per-source isolation within one `Schema` is tracked in [#34](https://github.com/brenpike/Chatter.IntegrationEventRelay/issues/34).
+
 These grants limit what the login can read, not what it can publish. The relay trusts its own tables, and the login can write them: whoever holds its credentials can move a checkpoint to skip or re-send changes and, with `ParkRow`, park a forged change and request its replay. Protect the relay's connection string as you would the broker credential.
 
 ### Configure the relay

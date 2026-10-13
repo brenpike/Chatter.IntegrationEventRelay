@@ -1,4 +1,11 @@
--- Grants the relay's login what Chatter.IntegrationEventRelay.Cdc needs to relay one capture instance, and nothing more.
+-- Grants the relay's login what Chatter.IntegrationEventRelay.Cdc needs to relay one capture instance.
+--
+-- The grants keep the login from reading other tables' captured data, but not other sources' relay state. Every source
+-- whose relay uses the same @schema shares its checkpoint and parked-change tables, and the grants on those are
+-- table-wide: a login can read the parked payloads (row values) of every source in @schema, move their checkpoints, and
+-- replay or delete their parked changes. Give each relay login, or each group of sources that trust each other, its own
+-- @schema (the relay's IntegrationEventRelay:Schema). See issue #34.
+--
 -- Run it in the source database, once per capture instance the login reads, after enable-cdc.sql and
 -- create-relay-tables.sql, as a member of db_owner. Safe to run again. Set @whatIf = 1 to list the statements without
 -- running them.
