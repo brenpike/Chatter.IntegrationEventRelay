@@ -22,16 +22,12 @@ for production use are in scope for security review.
 
 ### The CDC relay login's grants
 
-The least-privilege grant list for the CDC change source appears in four places. Keep them in sync when one
-changes:
+The least-privilege grants for the CDC change source live in one script, `.scripts/cdc/grant-relay-permissions.sql`,
+which derives them from CDC's metadata per capture instance and error policy. `MustRelayUnderExactlyTheGrantsOfTheGrantScript`
+in `Chatter.IntegrationEventRelay.Cdc/tests/Integration/WhenCapturingChangesFromSqlServer.cs` runs the relay under exactly
+the script's grants (`Halt`, `ParkRow`, and a gated capture instance) and checks that it fails with a permission error
+without any one of them. Change the script and the test together; a grant the relay doesn't need fails the test.
 
-- `.scripts/cdc/enable-cdc.sql` (comment block)
-- `README.md`, "Using the CDC change source" > "Permissions"
-- the permissions remark on `CdcChangeSource` (`Chatter.IntegrationEventRelay.Cdc/src/CdcChangeSource.cs`)
-- `MustFailWhenTheLoginMayNotReadTheCapturedTable` in
-  `Chatter.IntegrationEventRelay.Cdc/tests/Integration/WhenCapturingChangesFromSqlServer.cs`, which runs the relay
-  under exactly those grants
-
-The documented list grants what a source needs under any configuration (for example, the parked-change table is
-needed only with `ErrorPolicy: ParkRow`, and the docs say so). A finding that one configuration needs less is a
-documentation note, not a defect, unless the list grants something no configuration needs.
+`README.md` ("Using the CDC change source" > "Permissions") and the permissions remark on `CdcChangeSource`
+(`Chatter.IntegrationEventRelay.Cdc/src/CdcChangeSource.cs`) describe the grants in prose. Keep them in step with the
+script, but treat the script as the source of truth.

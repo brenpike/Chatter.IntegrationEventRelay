@@ -117,7 +117,7 @@ A mapping can require capabilities with `RequiredCapabilities` (for example `"Or
 
 ### Enable CDC
 
-Run [`.scripts/cdc/enable-cdc.sql`](.scripts/cdc/enable-cdc.sql) in the source database for each table (set `@tableSchema` and `@tableName` at the top, and `@captureInstance` to the mapping's `CaptureInstance` if it sets one), and [`.scripts/cdc/create-relay-tables.sql`](.scripts/cdc/create-relay-tables.sql) once to create the relay's checkpoint and parked-change tables (set `@schema` if the relay's `Schema` isn't `Chatter`). Both scripts are safe to run again. SQL Server Agent must be running; while it is still starting, enabling CDC on the first table fails with error 14258.
+Run [`.scripts/cdc/enable-cdc.sql`](.scripts/cdc/enable-cdc.sql) in the source database for each table (set `@tableSchema` and `@tableName` at the top, and `@captureInstance` to the mapping's `CaptureInstance` if it sets one), and [`.scripts/cdc/create-relay-tables.sql`](.scripts/cdc/create-relay-tables.sql) once to create the relay's checkpoint and parked-change tables (set `@schema` if the relay's `Schema` isn't `Chatter`). Both scripts are safe to run again. SQL Server Agent must be running; while it is still starting, enabling CDC on the first table fails with error 14258. Then grant the relay's login what it needs ([Permissions](#permissions)).
 
 In development, `await host.Services.UseCdcSqlMigrationsAsync()` does the same for every mapped table.
 
@@ -125,26 +125,16 @@ The capture instance's retention (`sys.sp_cdc_change_job @job_type = 'cleanup', 
 
 ### Permissions
 
-The relay's login needs these grants, in the source database:
+Run [`.scripts/cdc/grant-relay-permissions.sql`](.scripts/cdc/grant-relay-permissions.sql) in the source database as a member of `db_owner`, once per capture instance the relay reads. Set `@user` to the relay login's user, `@captureInstance`, `@schema` (the relay's `Schema`) and `@errorPolicy` (the source's `ErrorPolicy`) at the top; `@whatIf = 1` lists the statements without running them. The script reads the captured table and its captured columns from CDC's metadata and grants:
 
-```sql
--- Each captured table's captured columns, and its change table
-GRANT SELECT (Id, CustomerId, ProductId, Quantity, OrderStatus, OrderPlacedOn) ON dbo.Orders TO [relay_user];
-GRANT SELECT ON cdc.dbo_Orders_CT TO [relay_user];
--- CDC metadata, once
-GRANT SELECT ON cdc.lsn_time_mapping TO [relay_user];
-GRANT SELECT ON cdc.change_tables TO [relay_user];
-GRANT SELECT ON cdc.captured_columns TO [relay_user];
-GRANT SELECT ON cdc.index_columns TO [relay_user];
--- The relay's tables, in its Schema (default Chatter)
-GRANT SELECT, INSERT, UPDATE ON Chatter.Chatter_RelayCheckpoints TO [relay_user];
--- Only with ErrorPolicy: ParkRow
-GRANT SELECT, INSERT, UPDATE, DELETE ON Chatter.Chatter_RelayParkedChanges TO [relay_user];
-```
+- `SELECT` on each captured column of the captured table, and on its change table. SQL Server checks the captured columns before it returns changes; without them it reports no changes rather than an error, which the relay detects and stops on.
+- `SELECT` on CDC's metadata tables `cdc.lsn_time_mapping`, `cdc.change_tables` and `cdc.captured_columns`, plus `cdc.index_columns` with `ParkRow`.
+- On the relay's tables: `SELECT` and `INSERT`, and `UPDATE` of only the columns the relay changes, on the checkpoint table; with `ParkRow`, the same plus `DELETE` on the parked-change table.
+- Membership in the capture instance's gating role (`@role_name`), if it has one.
 
-Grant `SELECT` on exactly the columns the capture instance captures (`EXEC sys.sp_cdc_help_change_data_capture` lists them); that's what SQL Server checks before it returns changes to the login. A table-level `GRANT SELECT ON dbo.Orders` also works, but it exposes columns left out of capture with `@captured_column_list`. Likewise `GRANT SELECT ON SCHEMA::cdc` is simpler than the change-table and metadata grants, but it lets the login read the change data of every other captured table in the database. The four metadata tables show the names of every capture instance and captured column in the database, though not their data.
+The integration tests run the relay under exactly these grants for each error policy, with and without a gating role, and check that it fails without any one of them. Switching a source from `ParkRow` to `Halt` doesn't revoke the parked-change grants; revoke them by hand.
 
-If the capture instance was enabled with a gating role (`@role_name`), the login must also be a member of it. Without `SELECT` on the captured table SQL Server reports no changes rather than an error; the relay detects this and stops with an error.
+The script grants columns rather than the whole table: a table-level `GRANT SELECT ON dbo.Orders` also works, but it exposes columns left out of capture with `@captured_column_list`. Likewise `GRANT SELECT ON SCHEMA::cdc` is simpler than the change-table and metadata grants, but it lets the login read the change data of every other captured table in the database. The metadata tables show the names of every capture instance and captured column in the database, though not their data.
 
 These grants limit what the login can read, not what it can publish. The relay trusts its own tables, and the login can write them: whoever holds its credentials can move a checkpoint to skip or re-send changes and, with `ParkRow`, park a forged change and request its replay. Protect the relay's connection string as you would the broker credential.
 
