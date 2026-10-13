@@ -45,7 +45,7 @@ public sealed class CdcCaptureInstanceAccessDeniedException : Exception
 {
 	public CdcCaptureInstanceAccessDeniedException(string sourceName, string captureInstance)
 		: base($"Source '{sourceName}' may not read capture instance '{captureInstance}'. The relay's login needs SELECT on every column the capture instance captures " +
-			"(for example GRANT SELECT ON <schema>.<table>) and membership in its gating role, if it has one, as well as SELECT on the cdc schema.")
+			"(for example GRANT SELECT (<captured columns>) ON <schema>.<table>) and membership in its gating role, if it has one, as well as SELECT on its change table and CDC's metadata tables (see .scripts/cdc/enable-cdc.sql).")
 	{
 		SourceName = sourceName;
 		CaptureInstance = captureInstance;

@@ -6,17 +6,31 @@
   - [About this repo](#about-this-repo)
     - [Chatter.IntegrationEventRelay.Core](#chatterintegrationeventrelaycore)
     - [Chatter.IntegrationEventRelay.ServiceBroker](#chatterintegrationeventrelayservicebroker)
+    - [Chatter.IntegrationEventRelay.Cdc](#chatterintegrationeventrelaycdc)
     - [Chatter.IntegrationEventRelay.Worker](#chatterintegrationeventrelayworker)
     - [Chatter.IntegrationEventRelay.Consumer](#chatterintegrationeventrelayconsumer)
+  - [Choosing a change source](#choosing-a-change-source)
+    - [Delivery semantics](#delivery-semantics)
+  - [Using the CDC change source](#using-the-cdc-change-source)
+    - [Enable CDC](#enable-cdc)
+    - [Permissions](#permissions)
+    - [Configure the relay](#configure-the-relay)
+    - [Error policy and parked changes](#error-policy-and-parked-changes)
+    - [Metrics and health check](#metrics-and-health-check)
+    - [Limitations](#limitations)
+  - [Switching a table from SQL Service Broker to CDC](#switching-a-table-from-sql-service-broker-to-cdc)
   - [Upgrading to 0.4.0](#upgrading-to-040)
+    - [Migrating mappers](#migrating-mappers)
   - [Upgrading to 0.3.0](#upgrading-to-030)
   - [Running this repo locally](#running-this-repo-locally)
+    - [Change sources in the demo](#change-sources-in-the-demo)
     - [Service Bus emulator](#service-bus-emulator)
     - [Using a real Azure Service Bus namespace](#using-a-real-azure-service-bus-namespace)
   - [Building a Worker Service](#building-a-worker-service)
     - [Create your dotnet Worker Service](#create-your-dotnet-worker-service)
     - [Add required dependencies](#add-required-dependencies)
       - [Add Chatter.IntegrationEventRelay](#add-chatterintegrationeventrelay)
+      - [Add a change source](#add-a-change-source)
       - [Add a Chatter Message Broker Infrastructure implementation](#add-a-chatter-message-broker-infrastructure-implementation)
       - [Add user secrets](#add-user-secrets)
     - [Implement `Program.cs`](#implement-programcs)
@@ -34,13 +48,16 @@
 
 The primary use case of the Integration Event Relay is to relay domain events from legacy systems to message broker infrastructure as integration events to enable an event-driven architecture. The legacy systems in question would otherwise be unable to participate in an event-driven architecture due to their as-is architecture, technical debt, or inability to integrate with message broker infrastructure.
 
-The Integration Event Relay leverages SQL Service Broker via [Chatter.SqlChangeFeed](https://github.com/brenpike/Chatter/tree/master/src/Chatter.SqlChangeFeed) to watch for changes made to database tables. The modified data is added to a SQL Service Broker queue to be consumed by a [Worker service](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.Worker) where it will be mapped to an integration event and relayed to message broker infrastructure. As SQL Service Broker is core to the implementation, it is required that the legacy system leverages SQL as it's backend, it is also imparative that the SQL server infrastructure support SQL Service Broker (i.e., most PaaS offerings do not).
+The Integration Event Relay watches database tables for changes with a *change source*, maps each change to an integration event in a [Worker service](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.Worker) and relays it to message broker infrastructure. The legacy system must use SQL Server as its backend. Two change sources are available, and each mapping picks one (see [Choosing a change source](#choosing-a-change-source)):
+
+- **SQL Service Broker**, via [Chatter.SqlChangeFeed](https://github.com/brenpike/Chatter/tree/master/src/Chatter.SqlChangeFeed): a trigger on each watched table adds the modified rows to a SQL Service Broker queue, which the Worker consumes. The SQL Server must support SQL Service Broker (most PaaS offerings don't).
+- **SQL Server Change Data Capture (CDC)**: the Worker polls the change tables CDC fills from the transaction log, in commit order, and resumes from a checkpoint. No trigger is installed on the table.
 
 ![Context Landspace Diagram][context-landscape-diagram]
 
 ## About this repo
 
-This repo contains four projects, [Chatter.IntegrationEventRelay.Worker](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.Worker), [Chatter.IntegrationEventRelay.Consumer](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.Consumer), [Chatter.IntegrationEventRelay.Core](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.Core) and [Chatter.IntegrationEventRelay.ServiceBroker](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.ServiceBroker). It is a fully functional implementation that leverages Docker to spin-up a SQL Server, 2 Worker Services and 2 Consumer Services. The SQL Server schema is created and seeded with data on startup; subsequently, 100 unique database operations are executed against the database tables which emulate changes to domain entities/aggregates. These changes are handled by the Worker Services as domain events, where mapping logic is executed. If mapping logic is successful, the domain events are converted to the integration event defined by configuration and relayed/published to the message broker infrastructure. The integration events are handled by the Consumer Services (as they are subscribed to all integration events) and details of the messages are displayed to console to show successful propogation of the database changes to the consumers. The number of integration events handled by each consumer is cached in memory and displayed upon shut down - each consumer should handle 50 integration events each.
+This repo contains five projects, [Chatter.IntegrationEventRelay.Worker](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.Worker), [Chatter.IntegrationEventRelay.Consumer](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.Consumer), [Chatter.IntegrationEventRelay.Core](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.Core), [Chatter.IntegrationEventRelay.ServiceBroker](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.ServiceBroker) and [Chatter.IntegrationEventRelay.Cdc](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.Cdc). It is a fully functional implementation that leverages Docker to spin-up a SQL Server, 2 Worker Services and 2 Consumer Services. The SQL Server schema is created and seeded with data on startup; subsequently, 100 unique database operations are executed against the database tables which emulate changes to domain entities/aggregates. Changes to one table are captured with CDC and changes to the other with SQL Service Broker (see [Change sources in the demo](#change-sources-in-the-demo)). These changes are handled by the Worker Services as domain events, where mapping logic is executed. If mapping logic is successful, the domain events are converted to the integration event defined by configuration and relayed/published to the message broker infrastructure. The integration events are handled by the Consumer Services (as they are subscribed to all integration events) and details of the messages are displayed to console to show successful propogation of the database changes to the consumers. The number of integration events handled by each consumer is cached in memory and displayed upon shut down - each consumer should handle 50 integration events each.
 
 ### Chatter.IntegrationEventRelay.Core
 
@@ -50,6 +67,10 @@ As the name suggests, this is the core of the implementation. It contains the ma
 
 The SQL Service Broker change source. It leverages [Chatter.SqlChangeFeed](https://github.com/brenpike/Chatter/tree/master/src/Chatter.SqlChangeFeed), which installs a trigger on each watched table that sends changed rows to a SQL Service Broker queue, and hands the received changes to the core processor. This project is available via nuget as Chatter.IntegrationEventRelay.ServiceBroker.
 
+### Chatter.IntegrationEventRelay.Cdc
+
+The SQL Server Change Data Capture (CDC) change source. It polls each capture instance's change table, hands the changes to the core processor in commit order, and saves a checkpoint in the source database once a batch is published. See [Using the CDC change source](#using-the-cdc-change-source). This project is available via nuget as Chatter.IntegrationEventRelay.Cdc.
+
 ### Chatter.IntegrationEventRelay.Worker
 
 This Worker Service implementation is a sample showing how [Chatter.IntegrationEventRelay.Core](https://github.com/brenpike/Chatter.IntegrationEventRelay/tree/main/Chatter.IntegrationEventRelay.Core) can be used to build your own Worker Service. This Worker Service leverages [Chatter.MessageBrokers.AzureServiceBus](https://github.com/brenpike/Chatter/tree/master/src/Chatter.MessageBrokers.AzureServiceBus) as its message broker infrastructure, but any other infrastructure implementation can be leveraged by changing the [app wire-up](https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/Chatter.IntegrationEventRelay.Worker/src/Program.cs). Its primary function is to listen for changes to configured database tables and relay them as integration events to the message broker infrastructure.
@@ -57,6 +78,212 @@ This Worker Service implementation is a sample showing how [Chatter.IntegrationE
 ### Chatter.IntegrationEventRelay.Consumer
 
 The Consumer Service has been kept simple. It has [IEvent](https://github.com/brenpike/Chatter/blob/master/src/Chatter.CQRS/src/Chatter.CQRS/Events/IEvent.cs) implementations matching the integration events published by the Worker Service as well as [IMessageHandler<>](https://github.com/brenpike/Chatter/blob/master/src/Chatter.CQRS/src/Chatter.CQRS/IMessageHandler.cs) implementations. The Consumer Service leverages [Chatter.MessageBrokers.AzureServiceBus](https://github.com/brenpike/Chatter/tree/master/src/Chatter.MessageBrokers.AzureServiceBus) as its message broker infrastructure and subscribes to the integration events published by the Worker Services. The [IMessageHandler<>](https://github.com/brenpike/Chatter/blob/master/src/Chatter.CQRS/src/Chatter.CQRS/IMessageHandler.cs) handles the integration events and displays information to console. The handled messages are cached in memory and all handled messages are displayed on shutdown.
+
+## Choosing a change source
+
+Each mapping names its source in `Source`; a mapping without one uses SQL Service Broker with the relay's `ConnectionString`. One relay can use both sources, but each table uses only one.
+
+Use **CDC** when:
+
+- mappers compare old and new values or depend on the order of changes (for example soft delete followed by restore), since CDC delivers each table's changes in commit order and keeps the before-image of every update;
+- you can't, or don't want to, add triggers to the legacy system's tables, or the writes must not pay for a trigger and a Service Broker send;
+- the relay must resume where it stopped after downtime, from changes still in the change table.
+
+Use **SQL Service Broker** when:
+
+- SQL Server Agent isn't available (CDC's capture job needs it), or CDC can't be enabled on the database;
+- changes must reach the relay without CDC's capture latency (the capture job scans the log every few seconds by default);
+- the table is already relayed this way and works as needed.
+
+CDC needs SQL Server Agent, `sysadmin` to enable it on the database, and `db_owner` to enable it on each table. The relay is tested against SQL Server 2019 and 2022; Azure SQL Managed Instance and Azure SQL Database also offer CDC, but the relay hasn't been tested there.
+
+### Delivery semantics
+
+| | SQL Service Broker | CDC |
+|---|---|---|
+| Capture | Trigger in the writing transaction | Capture job reads the transaction log |
+| Order | Not guaranteed | Commit order per table (capture instance); no order across tables |
+| Delivery | At least once (Chatter's receive transaction and recovery options) | At least once: a batch is checkpointed only after every change in it is published |
+| Message id | Generated by Chatter | Derived from the source name, the change's position and the integration event type, so a replay republishes the same ids |
+| Commit time (`RelayContext.CommittedAt`) | Not available | Available (see [Limitations](#limitations)) |
+| Capabilities | None | `Ordered`, `Resumable`, `CommitTime` (`ParkRow` drops `Ordered`) |
+| After downtime | Changes wait in the queue | Resumes from the checkpoint while the changes are still in the change table |
+
+With CDC, a crash after publishing but before saving the checkpoint republishes the batch with the same message ids. Enable duplicate detection on the topics (Azure Service Bus) so the broker drops the replays, or make consumers idempotent.
+
+A mapping can require capabilities with `RequiredCapabilities` (for example `"Ordered"` or `"Ordered, CommitTime"`); the relay stops at startup if the mapping's source doesn't provide them.
+
+## Using the CDC change source
+
+### Enable CDC
+
+Run [`.scripts/cdc/enable-cdc.sql`](.scripts/cdc/enable-cdc.sql) in the source database for each table (set `@tableSchema` and `@tableName` at the top, and `@captureInstance` to the mapping's `CaptureInstance` if it sets one), and [`.scripts/cdc/create-relay-tables.sql`](.scripts/cdc/create-relay-tables.sql) once to create the relay's checkpoint and parked-change tables (set `@schema` if the relay's `Schema` isn't `Chatter`). Both scripts are safe to run again. SQL Server Agent must be running; while it is still starting, enabling CDC on the first table fails with error 14258.
+
+In development, `await host.Services.UseCdcSqlMigrationsAsync()` does the same for every mapped table.
+
+The capture instance's retention (`sys.sp_cdc_change_job @job_type = 'cleanup', @retention = <minutes>`, default 3 days) is how long the relay can be down without losing changes.
+
+### Permissions
+
+The relay's login needs these grants, in the source database:
+
+```sql
+-- Each captured table's captured columns, and its change table
+GRANT SELECT (Id, CustomerId, ProductId, Quantity, OrderStatus, OrderPlacedOn) ON dbo.Orders TO [relay_user];
+GRANT SELECT ON cdc.dbo_Orders_CT TO [relay_user];
+-- CDC metadata, once
+GRANT SELECT ON cdc.lsn_time_mapping TO [relay_user];
+GRANT SELECT ON cdc.change_tables TO [relay_user];
+GRANT SELECT ON cdc.captured_columns TO [relay_user];
+GRANT SELECT ON cdc.index_columns TO [relay_user];
+-- The relay's tables, in its Schema (default Chatter)
+GRANT SELECT, INSERT, UPDATE ON Chatter.Chatter_RelayCheckpoints TO [relay_user];
+-- Only with ErrorPolicy: ParkRow
+GRANT SELECT, INSERT, UPDATE, DELETE ON Chatter.Chatter_RelayParkedChanges TO [relay_user];
+```
+
+Grant `SELECT` on exactly the columns the capture instance captures (`EXEC sys.sp_cdc_help_change_data_capture` lists them); that's what SQL Server checks before it returns changes to the login. A table-level `GRANT SELECT ON dbo.Orders` also works, but it exposes columns left out of capture with `@captured_column_list`. Likewise `GRANT SELECT ON SCHEMA::cdc` is simpler than the change-table and metadata grants, but it lets the login read the change data of every other captured table in the database. The four metadata tables show the names of every capture instance and captured column in the database, though not their data.
+
+If the capture instance was enabled with a gating role (`@role_name`), the login must also be a member of it. Without `SELECT` on the captured table SQL Server reports no changes rather than an error; the relay detects this and stops with an error.
+
+These grants limit what the login can read, not what it can publish. The relay trusts its own tables, and the login can write them: whoever holds its credentials can move a checkpoint to skip or re-send changes and, with `ParkRow`, park a forged change and request its replay. Protect the relay's connection string as you would the broker credential.
+
+### Configure the relay
+
+Add the package and chain `.UseCdcChangeSource()` after `.AddIntegrationEventRelay()` (with `.UseServiceBrokerChangeSource()` too if other mappings use SQL Service Broker):
+
+`dotnet add package Chatter.IntegrationEventRelay.Cdc`
+
+```csharp
+.AddIntegrationEventRelay()
+    .UseCdcChangeSource()
+    .UseServiceBrokerChangeSource();
+```
+
+Declare a source of type `Cdc` and name it in each mapping of the table:
+
+```json
+"IntegrationEventRelay": {
+  "ConnectionString": "...",
+  "Schema": "Chatter",
+  "Sources": {
+    "orders-cdc": { "Type": "Cdc", "PollInterval": "00:00:01" }
+  },
+  "Mappings": [
+    {
+      "Source": "orders-cdc",
+      "SourceEventTypeName": "MyNewIntegrationEventRelay.OrderChangedEvent",
+      "IntegrationEventTypeName": "MyNewIntegrationEventRelay.OrderShippedEvent",
+      "SourceChangeType": "Update",
+      "TableName": "Orders",
+      "TableSchema": "dbo",
+      "CaptureInstance": "dbo_Orders"
+    }
+  ]
+}
+```
+
+- `Schema` (relay-wide, default `Chatter`) is where the relay keeps its tables (`Chatter_RelayCheckpoints`, `Chatter_RelayParkedChanges`) in the source database. SqlChangeFeed's SQL Service Broker objects stay in each watched table's schema.
+- A source's `ConnectionString` is optional; the relay's `ConnectionString` is used without it.
+- `TableSchema` (default `dbo`) and `CaptureInstance` (default `<TableSchema>_<TableName>`) are optional, per mapping.
+- Source options: `PollInterval` (1s), `MaxTransactionsPerBatch` (500), `StartPosition` (`Earliest` or `Latest`, used only when there's no checkpoint), `LeaseRetryInterval` (15s), `RetryDelay` (1s), `MaxRetryDelay` (1m), `FailuresBeforeCritical` (5), `ErrorPolicy` (`Halt` or `ParkRow`) and `MaxAttemptsBeforePark` (5). `UseCdcChangeSource(o => ...)` can also set them, including `IsTransient`.
+- Source event types need a public parameterless constructor; captured columns set the properties of the same name (case-insensitive). They don't need to implement `ISourceEvent`.
+- Several instances of the relay can run with the same configuration: each source's capture instance is polled by one of them at a time (a SQL Server application lock), and the others stand by. The lock and the checkpoint belong to the source name and the capture instance, so two sources that read the same capture instance poll it independently and each relay every change.
+- Integration events are published outside any receive transaction, so Chatter's outbox isn't supported.
+
+### Error policy and parked changes
+
+Transient failures (for example the broker is unavailable or a SQL timeout) are retried with exponential backoff and never parked. For a change that keeps failing with other errors (for example a mapper exception):
+
+- `Halt` (default): the poller stops at the change and keeps retrying it, logging critical after `FailuresBeforeCritical` attempts. Nothing after it is published, so order always holds.
+- `ParkRow`: after `MaxAttemptsBeforePark` attempts the change is written to `<Schema>.Chatter_RelayParkedChanges`, and later changes to the same row are parked behind it. Other rows carry on and the checkpoint advances, so the source is then only ordered per row and doesn't provide `Ordered`. The table needs a primary key or unique index. Once the cause is fixed, request a replay; the relay republishes the row's parked changes in order and deletes them:
+
+```sql
+UPDATE Chatter.Chatter_RelayParkedChanges SET ReplayRequestedAt = SYSUTCDATETIME()
+WHERE SourceName = N'orders-cdc' AND CaptureInstance = N'dbo_Orders' AND RowKey = N'<row key, e.g. [42]>';
+```
+
+To replay or skip changes, update `LastLsn` in `<Schema>.Chatter_RelayCheckpoints`, or delete the row to start again from `StartPosition`.
+
+### Metrics and health check
+
+Metrics are published on meter `Chatter.IntegrationEventRelay.Cdc` (`System.Diagnostics.Metrics`), tagged with `source` and `capture_instance`:
+
+| Instrument | Type | Unit | Description |
+|---|---|---|---|
+| `chatter.relay.cdc.changes` | Counter | `{change}` | Changes relayed (published or, with `ParkRow`, parked) |
+| `chatter.relay.cdc.parked` | Counter | `{change}` | Changes parked |
+| `chatter.relay.cdc.batch.failures` | Counter | `{batch}` | Failed attempts at a batch |
+| `chatter.relay.cdc.batch.duration` | Histogram | `s` | Time to read, process and checkpoint a batch |
+| `chatter.relay.cdc.lag` | Gauge | `s` | Time since the last relayed change was committed; 0 when caught up |
+| `chatter.relay.cdc.parked.current` | Gauge | `{change}` | Changes currently parked |
+
+Collect them with OpenTelemetry (`.AddMeter("Chatter.IntegrationEventRelay.Cdc")`) or `dotnet-counters`.
+
+The health check reports this instance's pollers:
+
+```csharp
+services.AddHealthChecks().AddCdcChangeSource(maxLag: TimeSpan.FromMinutes(5));
+```
+
+It is unhealthy when a poller stopped on a gap, failed `FailuresBeforeCritical` times in a row, or lags more than `maxLag`; degraded while retrying a batch or while changes are parked. Standby instances are healthy.
+
+### Limitations
+
+- **Commit times and daylight saving time:** CDC records commit times in the server's local time, and the relay converts them with the server's UTC offset when it reads the batch. If the server's time zone observes daylight saving time, changes committed before a clock change but read after it are off by the change. Run SQL Server in UTC to avoid this.
+- **Gaps:** if CDC cleanup removes changes the relay hasn't published (the relay was down longer than the retention period), the poller stops and the health check is unhealthy. Increase the retention, then update or delete the checkpoint to resume; the removed changes are lost.
+- **Schema changes:** a capture instance keeps the columns it had when it was created. After adding columns, create a new capture instance, point the mapping's `CaptureInstance` at it, and seed its checkpoint; the relay doesn't switch capture instances by itself.
+- **Partition switching:** rows moved with `ALTER TABLE ... SWITCH` aren't recorded by CDC, so they aren't relayed (the relay warns at startup).
+- **Large-value columns:** in an update's before-image, CDC records `varchar(max)`, `nvarchar(max)` and `varbinary(max)` columns as NULL unless they changed, and `text`, `ntext` and `image` columns always as NULL. So those properties of `OldValue` may be null (or default).
+
+## Switching a table from SQL Service Broker to CDC
+
+The goal is that each change is relayed by only one of the two sources. Pick a switch point: the source you switch away from relays every change committed before it, including changes it set aside, and the source you switch to relays every change committed after it. Each source still delivers at least once (see [Delivery semantics](#delivery-semantics)). Do it in a short write pause on the table; without one, changes made during the switch are relayed by both sources, with different message ids.
+
+Apart from enabling CDC (see [Enable CDC](#enable-cdc)), the steps need `db_owner` in the source database. Step 4, and step 1 of the switch back, also query `sys.dm_db_log_stats`, which needs `VIEW SERVER STATE` (on SQL Server 2022, `VIEW SERVER PERFORMANCE STATE` is enough); `db_owner` alone isn't enough for it.
+
+1. Enable CDC on the table and create the relay's tables ([Enable CDC](#enable-cdc)), and grant the [permissions](#permissions). The current relay keeps running on SQL Service Broker.
+2. Pause writes to the table: stop its writers, then wait until every transaction that wrote to it has committed or rolled back, since one still open can commit after the switch point. This takes an exclusive lock on the table, so it waits for them and returns once they all have:
+
+   ```sql
+   BEGIN TRAN; SELECT TOP (1) 1 FROM dbo.Orders WITH (TABLOCKX); COMMIT;
+   ```
+
+3. Let the relay drain the table's queue, until `SELECT COUNT(*) FROM dbo.[Chatter_Queue_<SourceEventType>]` returns 0. Then check `dbo.[Chatter_DeadLetterQueue_<SourceEventType>]`: changes there ran out of receive attempts and nothing replays them. Step 5 drops the queue, so before it, relay them yourself or copy them out (`SELECT * INTO dbo.Orders_DeadLetters FROM dbo.[Chatter_DeadLetterQueue_<SourceEventType>]` keeps every message, `message_body` included).
+4. Seed the checkpoint at the end of the transaction log, so CDC relays only changes committed after the pause. Every change made before the pause has a lower LSN, whether or not the capture job has read it yet, so there's no need to wait for the job. It replaces a checkpoint left by an earlier switch, so it can be run again:
+
+   ```sql
+   DECLARE @lsn binary(10) = (SELECT CONVERT(binary(10), REPLACE(log_end_lsn, ':', ''), 2) FROM sys.dm_db_log_stats(DB_ID()));
+   UPDATE Chatter.Chatter_RelayCheckpoints SET LastLsn = @lsn, UpdatedAt = SYSUTCDATETIME()
+   WHERE SourceName = N'orders-cdc' AND CaptureInstance = N'dbo_Orders';
+   IF @@ROWCOUNT = 0
+       INSERT INTO Chatter.Chatter_RelayCheckpoints (SourceName, CaptureInstance, LastLsn, UpdatedAt)
+       VALUES (N'orders-cdc', N'dbo_Orders', @lsn, SYSUTCDATETIME());
+   ```
+
+   Don't seed it with `sys.fn_cdc_get_max_lsn()`: that's the last change the capture job has read, so if the job is behind, CDC also relays changes that SQL Service Broker already relayed.
+
+5. Drop SqlChangeFeed's trigger, then its services and queues:
+
+   ```sql
+   DROP TRIGGER dbo.[Chatter_ChangeFeedTrigger_<SourceEventType>];
+   DROP SERVICE [Chatter_Service_<SourceEventType>];
+   DROP SERVICE [Chatter_DeadLetterService_<SourceEventType>];
+   DROP QUEUE dbo.[Chatter_Queue_<SourceEventType>];
+   DROP QUEUE dbo.[Chatter_DeadLetterQueue_<SourceEventType>];
+   ```
+
+6. Deploy the relay with the CDC source configured ([Configure the relay](#configure-the-relay)) and the table's mappings switched to it with `Source`. Mappers don't change.
+7. Resume writes.
+
+To switch back, the same rule applies the other way: CDC must relay everything committed before the pause, including parked changes, before the relay stops reading it.
+
+1. Pause writes to the table as in step 2, then note the log end (`SELECT log_end_lsn FROM sys.dm_db_log_stats(DB_ID())`).
+2. Wait for the capture job to read past the pause: `sys.fn_cdc_get_max_lsn()` reaches the noted LSN, or `sys.dm_cdc_log_scan_sessions` shows a scan that ended after the pause with `empty_scan_count > 0` (nothing left to read). The second test only works when no other captured table in the database is being written.
+3. Wait for the relay to catch up: its checkpoint (`LastLsn` in `Chatter.Chatter_RelayCheckpoints`) reaches `sys.fn_cdc_get_max_lsn()` and the `chatter.relay.cdc.lag` gauge is 0. With `ParkRow`, replay or resolve the capture instance's rows in `Chatter.Chatter_RelayParkedChanges` until none remain.
+4. Deploy the relay with `Source` removed from the table's mappings, and install SqlChangeFeed's trigger, services and queues again by running `UseChangeFeedSqlMigrationsAsync()` with that configuration (for example at the relay's startup). It installs them only for mappings on SQL Service Broker, so it does nothing for the table while its mappings still name the CDC source. The queue starts empty; check that `dbo.[Chatter_ChangeFeedTrigger_<SourceEventType>]` exists before resuming writes.
+5. Resume writes.
+6. Disable CDC on the table (`sys.sp_cdc_disable_table`).
 
 ## Upgrading to 0.4.0
 
@@ -72,6 +299,40 @@ The Consumer Service has been kept simple. It has [IEvent](https://github.com/br
 - With SQL Service Broker, a source event type can be watched in only one table (SqlChangeFeed creates one queue per source event type). This is now checked at startup.
 - Removed, with their replacements: `IRelayIntegrationEvent`/`IntegrationEventRelayService` (`IIntegrationEventPublisher`), `IEventMappingConfigItemProvider`, `IRowChangeHandlerExecutor`/`RowChangeExecutor` (`IRowChangeProcessor<TSource>`), `Row*EventHandler<TSource, TIntegrationEvent>` (`Row*EventHandler<TSource>` in the ServiceBroker package), `AddSqlChangeFeedPerUniqueDataSource`, `WireRowChangeEventHandlerFromConfig` and `WireHandlerExecutor`.
 - Optional new configuration: named `Sources` (each with a `Type` and `ConnectionString`), a `Source` on each mapping, and `RequiredCapabilities` (for example `"Ordered"`) that the mapping's source must provide. Mappings without a `Source` keep using SQL Service Broker with the relay's `ConnectionString`.
+- 0.4.0 also adds the CDC change source, `Chatter.IntegrationEventRelay.Cdc` (see [Using the CDC change source](#using-the-cdc-change-source)).
+
+### Migrating mappers
+
+Before (0.3.x):
+
+```csharp
+using Chatter.MessageBrokers.Context;
+
+public class OrderShippedMapper : IMapSourceUpdateToIntegrationEvent<OrderChangedEvent, OrderShippedEvent>
+{
+    public Task<OrderShippedEvent?> MapAsync(MappingData<OrderChangedEvent> data, IMessageBrokerContext context, EventMappingConfigurationItem? mappingConfig)
+    {
+        ...
+    }
+}
+```
+
+After (0.4.0):
+
+```csharp
+using Chatter.IntegrationEventRelay.Core.Abstractions;
+
+public class OrderShippedMapper : IMapSourceUpdateToIntegrationEvent<OrderChangedEvent, OrderShippedEvent>
+{
+    public Task<OrderShippedEvent?> MapAsync(MappingData<OrderChangedEvent> data, RelayContext context, EventMappingConfigurationItem? mappingConfig)
+    {
+        // context.SourceName, context.Operation, context.Table; context.Position and context.CommittedAt are null with SQL Service Broker
+        ...
+    }
+}
+```
+
+Mappers that implemented only the synchronous `Map` must implement `MapAsync` instead (return `Task.FromResult(...)`). Anything read from the `IMessageBrokerContext` (for example the inbound message's headers) has no equivalent, since a change no longer arrives as a brokered message with every source.
 
 ## Upgrading to 0.3.0
 
@@ -97,6 +358,15 @@ To run the same check CI does (start the stack and wait until all 100 integratio
 ./.devops/e2e.sh
 docker compose down -v
 ```
+
+### Change sources in the demo
+
+The demo uses both change sources (see the Worker's [`appsettings.json`](Chatter.IntegrationEventRelay.Worker/src/appsettings.json) and [`Program.cs`](Chatter.IntegrationEventRelay.Worker/src/Program.cs)):
+
+- `Event1` is captured with CDC (source `fakedb-cdc`). Its mappers turn soft deletes, restores and hard deletes into `Event1DeletedEvent` and `Event1RestoredEvent`, which needs old values and commit order. The SQL container runs with SQL Server Agent (`MSSQL_AGENT_ENABLED=true`), and [`.scripts/01-Enable-Cdc-Event1.sql`](.scripts/01-Enable-Cdc-Event1.sql) waits for the Agent, then enables CDC on `Event1` and creates the relay's tables with the scripts in `.scripts/cdc`. Both Workers run; one polls `Event1` and the other stands by.
+- `Event2` is captured with SQL Service Broker (no `Source`, so the default). [`.scripts/02-Chatter-Install-Event2.sql`](.scripts/02-Chatter-Install-Event2.sql) installs its trigger and queues, and both Workers receive from the queue.
+
+The 100 operations produce 50 `Event1DeletedEvent` (25 soft deletes and 25 hard deletes), 25 `Event1RestoredEvent` and 25 `Event2CreatedEvent`; `.devops/e2e.sh` checks those exact counts.
 
 *Note: running the demo starts SQL Server and the Service Bus emulator containers with `ACCEPT_EULA=Y`, which accepts the SQL Server Developer Edition and [Service Bus emulator](https://github.com/Azure/azure-service-bus-emulator-installer/blob/main/EMULATOR_EULA.txt) license terms.*
 
@@ -153,8 +423,10 @@ The Chatter.IntegrationEventRelay nuget package, will add the functionality of [
 
 #### Add a change source
 
-Changes are captured from the database by a change source. Add the SQL Service Broker change source:
+Changes are captured from the database by a change source (see [Choosing a change source](#choosing-a-change-source)). This walkthrough uses the SQL Service Broker change source:
 `dotnet add package Chatter.IntegrationEventRelay.ServiceBroker`
+
+To use CDC instead, add `Chatter.IntegrationEventRelay.Cdc` and follow [Using the CDC change source](#using-the-cdc-change-source).
 
 #### Add a Chatter Message Broker Infrastructure implementation
 

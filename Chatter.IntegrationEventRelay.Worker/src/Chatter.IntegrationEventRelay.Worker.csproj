@@ -15,6 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\Chatter.IntegrationEventRelay.Cdc\src\Chatter.IntegrationEventRelay.Cdc.csproj" />
     <ProjectReference Include="..\..\Chatter.IntegrationEventRelay.ServiceBroker\src\Chatter.IntegrationEventRelay.ServiceBroker.csproj" />
   </ItemGroup>
 
