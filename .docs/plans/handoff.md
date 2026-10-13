@@ -117,8 +117,8 @@ All planned phases are merged. Remaining work is the follow-up issues:
 ## Working conventions with this user
 
 - Feature branches: `feat/<slug>` (CI triggers on `feat/**` pushes and PRs to `main`). Never add `claude/**` to CI
-  triggers, and don't push work to `claude/*` branches; the plan docs on this branch are the exception. Commit with the session's attribution trailer. Don't open PRs unless asked (the user
-  approved PRs for each phase). No model names in commits or PRs.
+  triggers, and don't push work to `claude/*` branches; the plan docs on this branch are the exception. Commit with the session's attribution trailer.
+  No model names in commits or PRs.
 - Give a recommendation rather than a list of options. When a design question has two parts (for example "change X? keep both?"),
   answer both explicitly.
 - The user is the Chatter author.
