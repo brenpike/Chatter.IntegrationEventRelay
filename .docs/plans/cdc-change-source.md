@@ -343,8 +343,8 @@ failing (mapper exceptions, serialization errors, rejected messages) after `MaxA
 - ~~`IBrokeredMessagePublisher` may require an inbound transaction context~~ -> settled by spike 1a: it does not.
 - Breaking mapper signature -> acceptable at 0.x; migration notes in README and release notes.
 - Integration tests lengthen CI -> separate job.
-- This cloud environment can build and unit test (.NET SDK via apt) but has no Docker daemon; e2e and SQL
-  integration tests run only in CI.
+- This cloud environment can build and unit test (.NET SDK via apt); start `dockerd` to run the SQL integration
+  tests locally. The full e2e still runs only in CI (Docker Hub rate limits, proxy CA in `docker build`).
 
 ## Decisions (resolved)
 1. Phase 0 first, targeting .NET 10 (not 8).
