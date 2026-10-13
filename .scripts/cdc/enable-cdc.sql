@@ -43,6 +43,6 @@ GO
 --   GRANT SELECT ON cdc.captured_columns TO [relay_user];
 --   GRANT SELECT ON cdc.index_columns TO [relay_user];
 --   GRANT SELECT, INSERT, UPDATE ON Chatter.Chatter_RelayCheckpoints TO [relay_user];
---   GRANT SELECT, INSERT, UPDATE, DELETE ON Chatter.Chatter_RelayParkedChanges TO [relay_user];
+--   GRANT SELECT, INSERT, UPDATE, DELETE ON Chatter.Chatter_RelayParkedChanges TO [relay_user];  -- only with ErrorPolicy ParkRow
 -- A table-level GRANT SELECT also exposes columns left out of capture (@captured_column_list), and GRANT SELECT ON
 -- SCHEMA::cdc exposes the change data of every other captured table.

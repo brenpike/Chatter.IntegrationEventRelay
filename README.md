@@ -138,6 +138,7 @@ GRANT SELECT ON cdc.captured_columns TO [relay_user];
 GRANT SELECT ON cdc.index_columns TO [relay_user];
 -- The relay's tables, in its Schema (default Chatter)
 GRANT SELECT, INSERT, UPDATE ON Chatter.Chatter_RelayCheckpoints TO [relay_user];
+-- Only with ErrorPolicy: ParkRow
 GRANT SELECT, INSERT, UPDATE, DELETE ON Chatter.Chatter_RelayParkedChanges TO [relay_user];
 ```
 
