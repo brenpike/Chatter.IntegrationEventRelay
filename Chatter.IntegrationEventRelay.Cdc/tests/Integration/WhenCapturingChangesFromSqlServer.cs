@@ -194,8 +194,13 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             await _sql.ExecuteAsync($"""
                 CREATE LOGIN [{login}] WITH PASSWORD = N'Relay!Passw0rd1', CHECK_POLICY = OFF;
                 CREATE USER [{login}] FOR LOGIN [{login}];
-                GRANT SELECT ON SCHEMA::cdc TO [{login}];
-                GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::Chatter TO [{login}];
+                GRANT SELECT ON cdc.[dbo_{_table}_CT] TO [{login}];
+                GRANT SELECT ON cdc.lsn_time_mapping TO [{login}];
+                GRANT SELECT ON cdc.change_tables TO [{login}];
+                GRANT SELECT ON cdc.captured_columns TO [{login}];
+                GRANT SELECT ON cdc.index_columns TO [{login}];
+                GRANT SELECT, INSERT, UPDATE ON Chatter.Chatter_RelayCheckpoints TO [{login}];
+                GRANT SELECT, INSERT, UPDATE, DELETE ON Chatter.Chatter_RelayParkedChanges TO [{login}];
                 """);
             var connectionString = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(_sql.ConnectionString) { UserID = login, Password = "Relay!Passw0rd1" }.ConnectionString;
             await _sql.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id, Name) VALUES (1, N'one');");

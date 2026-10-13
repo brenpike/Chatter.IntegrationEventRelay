@@ -17,10 +17,12 @@ namespace Chatter.IntegrationEventRelay.Cdc;
 /// </para>
 /// <para>
 /// Permissions: the relay's login needs <c>SELECT</c> on every captured column of each captured table (and membership
-/// in the capture instance's gating role, if any), <c>SELECT</c> on the <c>cdc</c> schema, since it reads the change tables
-/// directly (the only place SQL Server exposes <c>__$command_id</c>, which orders a transaction's changes) and CDC's
-/// metadata tables; and <c>SELECT</c>, <c>INSERT</c>, <c>UPDATE</c> and <c>DELETE</c> on the relay's
-/// <see cref="Core.Configuration.EventMappingConfiguration.Schema"/>. See <c>.scripts/cdc/enable-cdc.sql</c>.
+/// in the capture instance's gating role, if any); <c>SELECT</c> on each capture instance's change table, since it reads
+/// the change tables directly (the only place SQL Server exposes <c>__$command_id</c>, which orders a transaction's
+/// changes), and on CDC's metadata tables <c>cdc.lsn_time_mapping</c>, <c>cdc.change_tables</c>,
+/// <c>cdc.captured_columns</c> and <c>cdc.index_columns</c>; <c>SELECT</c>, <c>INSERT</c> and <c>UPDATE</c> on the
+/// checkpoint table and <c>SELECT</c>, <c>INSERT</c>, <c>UPDATE</c> and <c>DELETE</c> on the parked-change table, in the
+/// relay's <see cref="Core.Configuration.EventMappingConfiguration.Schema"/>. See <c>.scripts/cdc/enable-cdc.sql</c>.
 /// </para>
 /// </remarks>
 public sealed class CdcChangeSource : IChangeSource

@@ -125,13 +125,23 @@ The capture instance's retention (`sys.sp_cdc_change_job @job_type = 'cleanup', 
 
 ### Permissions
 
-The relay's login needs:
+The relay's login needs these grants, in the source database:
 
 ```sql
-GRANT SELECT ON dbo.Orders TO [relay_user];                           -- each captured table (every captured column)
-GRANT SELECT ON SCHEMA::cdc TO [relay_user];                          -- change tables and CDC metadata
-GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::Chatter TO [relay_user]; -- the relay's tables
+-- Each captured table (every captured column) and its change table
+GRANT SELECT ON dbo.Orders TO [relay_user];
+GRANT SELECT ON cdc.dbo_Orders_CT TO [relay_user];
+-- CDC metadata, once
+GRANT SELECT ON cdc.lsn_time_mapping TO [relay_user];
+GRANT SELECT ON cdc.change_tables TO [relay_user];
+GRANT SELECT ON cdc.captured_columns TO [relay_user];
+GRANT SELECT ON cdc.index_columns TO [relay_user];
+-- The relay's tables, in its Schema (default Chatter)
+GRANT SELECT, INSERT, UPDATE ON Chatter.Chatter_RelayCheckpoints TO [relay_user];
+GRANT SELECT, INSERT, UPDATE, DELETE ON Chatter.Chatter_RelayParkedChanges TO [relay_user];
 ```
+
+`GRANT SELECT ON SCHEMA::cdc` is simpler, but it also lets the login read the change data of every other captured table in the database, including tables it has no `SELECT` on. Use it only when the relay may read all of them.
 
 If the capture instance was enabled with a gating role (`@role_name`), the login must also be a member of it. Without `SELECT` on the captured table SQL Server reports no changes rather than an error; the relay detects this and stops with an error.
 
