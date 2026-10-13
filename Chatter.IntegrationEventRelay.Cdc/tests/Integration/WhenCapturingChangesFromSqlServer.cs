@@ -190,6 +190,8 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
         public async Task MustFailWhenTheLoginMayNotReadTheCapturedTable()
         {
             await _sql.CreateCapturedTableAsync(_table);
+            // A column added after CDC was enabled isn't captured; the relay's login mustn't need to read it
+            await _sql.ExecuteAsync($"ALTER TABLE dbo.[{_table}] ADD Secret nvarchar(50) NULL;");
             var login = $"relay_{_table}";
             await _sql.ExecuteAsync($"""
                 CREATE LOGIN [{login}] WITH PASSWORD = N'Relay!Passw0rd1', CHECK_POLICY = OFF;
@@ -203,21 +205,26 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
                 GRANT SELECT, INSERT, UPDATE, DELETE ON Chatter.Chatter_RelayParkedChanges TO [{login}];
                 """);
             var connectionString = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(_sql.ConnectionString) { UserID = login, Password = "Relay!Passw0rd1" }.ConnectionString;
-            await _sql.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id, Name) VALUES (1, N'one');");
+            await _sql.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id, Name, Secret) VALUES (1, N'one', N'secret');");
             await WaitForCaptureAsync(1);
             var poller = new CdcCapturePoller<Row>(Capture(), new SqlCdcQueries(connectionString), new SqlCheckpointStore(connectionString, "Chatter"), new SqlParkedChangeStore(connectionString, "Chatter"),
                 new SqlAppLockLeaseFactory(connectionString), new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, NullLogger<CdcCapturePoller<Row>>.Instance);
 
             await Assert.ThrowsAsync<CdcCaptureInstanceAccessDeniedException>(() => poller.PollOnceAsync(CancellationToken.None));
 
-            // With the grant on the table it reads the change
-            await _sql.ExecuteAsync($"GRANT SELECT ON dbo.[{_table}] TO [{login}];");
+            // With SELECT on exactly the captured columns it reads the change, and the uncaptured column stays unreadable
+            await _sql.ExecuteAsync($"GRANT SELECT (Id, Name, Flag, DeletedAt) ON dbo.[{_table}] TO [{login}];");
             var processor = new Processor();
             var services = new ServiceCollection();
             services.AddSingleton<IRowChangeProcessor<Row>>(processor);
             var granted = new CdcCapturePoller<Row>(Capture(), new SqlCdcQueries(connectionString), new SqlCheckpointStore(connectionString, "Chatter"), new SqlParkedChangeStore(connectionString, "Chatter"),
                 new SqlAppLockLeaseFactory(connectionString), services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, NullLogger<CdcCapturePoller<Row>>.Instance);
             Assert.Equal(1, Assert.Single(await PollUntilAsync(granted, 1, processor)).NewValue.Id);
+
+            await using var connection = new Microsoft.Data.SqlClient.SqlConnection(connectionString);
+            await connection.OpenAsync();
+            await using var readSecret = new Microsoft.Data.SqlClient.SqlCommand($"SELECT Secret FROM dbo.[{_table}];", connection);
+            Assert.Equal(230, (await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => readSecret.ExecuteScalarAsync())).Number);
         }
 
         [Fact]

@@ -128,8 +128,8 @@ The capture instance's retention (`sys.sp_cdc_change_job @job_type = 'cleanup', 
 The relay's login needs these grants, in the source database:
 
 ```sql
--- Each captured table (every captured column) and its change table
-GRANT SELECT ON dbo.Orders TO [relay_user];
+-- Each captured table's captured columns, and its change table
+GRANT SELECT (Id, CustomerId, ProductId, Quantity, OrderStatus, OrderPlacedOn) ON dbo.Orders TO [relay_user];
 GRANT SELECT ON cdc.dbo_Orders_CT TO [relay_user];
 -- CDC metadata, once
 GRANT SELECT ON cdc.lsn_time_mapping TO [relay_user];
@@ -141,7 +141,7 @@ GRANT SELECT, INSERT, UPDATE ON Chatter.Chatter_RelayCheckpoints TO [relay_user]
 GRANT SELECT, INSERT, UPDATE, DELETE ON Chatter.Chatter_RelayParkedChanges TO [relay_user];
 ```
 
-`GRANT SELECT ON SCHEMA::cdc` is simpler, but it also lets the login read the change data of every other captured table in the database, including tables it has no `SELECT` on. Use it only when the relay may read all of them.
+Grant `SELECT` on exactly the columns the capture instance captures (`EXEC sys.sp_cdc_help_change_data_capture` lists them); that's what SQL Server checks before it returns changes to the login. A table-level `GRANT SELECT ON dbo.Orders` also works, but it exposes columns left out of capture with `@captured_column_list`. Likewise `GRANT SELECT ON SCHEMA::cdc` is simpler than the change-table and metadata grants, but it lets the login read the change data of every other captured table in the database. The four metadata tables show the names of every capture instance and captured column in the database, though not their data.
 
 If the capture instance was enabled with a gating role (`@role_name`), the login must also be a member of it. Without `SELECT` on the captured table SQL Server reports no changes rather than an error; the relay detects this and stops with an error.
 

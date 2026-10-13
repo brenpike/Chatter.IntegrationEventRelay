@@ -31,12 +31,12 @@ IF @capturedObjectId IS NULL
 		@allow_partition_switch = @allowPartitionSwitch;
 GO
 
--- The relay's login needs to read every captured column of each captured table (without it SQL Server reports no
+-- The relay's login needs SELECT on every captured column of each captured table (without it SQL Server reports no
 -- changes rather than an error; the relay detects this and stops with an error), each table's change table, CDC's
 -- metadata tables, and the relay's own tables (created by create-relay-tables.sql, in schema 'Chatter' unless
 -- IntegrationEventRelay:Schema says otherwise). If the capture instance has a gating role (@role_name), the login must
 -- also be a member of it.
---   GRANT SELECT ON dbo.Event1 TO [relay_user];             -- each captured table
+--   GRANT SELECT (Id, StringData, BoolData, IntData, DeletedBy, DeletedAt) ON dbo.Event1 TO [relay_user]; -- captured columns
 --   GRANT SELECT ON cdc.dbo_Event1_CT TO [relay_user];      -- and its change table
 --   GRANT SELECT ON cdc.lsn_time_mapping TO [relay_user];
 --   GRANT SELECT ON cdc.change_tables TO [relay_user];
@@ -44,4 +44,5 @@ GO
 --   GRANT SELECT ON cdc.index_columns TO [relay_user];
 --   GRANT SELECT, INSERT, UPDATE ON Chatter.Chatter_RelayCheckpoints TO [relay_user];
 --   GRANT SELECT, INSERT, UPDATE, DELETE ON Chatter.Chatter_RelayParkedChanges TO [relay_user];
--- GRANT SELECT ON SCHEMA::cdc is simpler, but it also exposes the change data of every other captured table.
+-- A table-level GRANT SELECT also exposes columns left out of capture (@captured_column_list), and GRANT SELECT ON
+-- SCHEMA::cdc exposes the change data of every other captured table.
