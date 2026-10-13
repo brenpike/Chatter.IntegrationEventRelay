@@ -11,30 +11,29 @@ and the resolved design decisions. Both files live on branch `claude/repo-overvi
 | Phase 0.5: PR #28, `feat/servicebus-emulator` (Service Bus emulator demo, e2e CI job) | **Merged** into `main` (squash), commit `73b961f` |
 | Phase 1: PR #29, `feat/change-source-abstraction` (abstractions, ServiceBroker package, 0.4.0) | **Merged** into `main` (squash), commit `9610e09` |
 | Phase 2: PR #30, `feat/cdc-change-source` (package `Chatter.IntegrationEventRelay.Cdc`) | **Merged** into `main` (squash), commit `7a4bd79` |
-| Phase 3: PR #31, `feat/cdc-sample-docs` (demo: Event1 on CDC, Event2 on SSB; README) | **Open**, CI green (build, cdc integration, e2e) |
-| Open PRs | #31 |
+| Phase 3: PR #31, `feat/cdc-sample-docs` (demo: Event1 on CDC, Event2 on SSB; README; AGENTS.md) | **Merged** into `main` (squash), commit `db0f299` |
+| Open PRs | none |
+| Open follow-ups | #32 (generate the CDC grant list from one tested script per configuration), #33 (ship the SSB-to-CDC switch-over as scripts with integration tests in both directions) |
 
 ## Next steps
 
-1. **Phase 3** (`feat/cdc-sample-docs`), cut from `main` (#30 is merged). Plan section "Phase 3":
-   - Worker sample: put `Event1` on CDC (`Source` with `Type: "Cdc"`, mapping `CaptureInstance`/`TableSchema`,
-     `.UseCdcChangeSource()`), keep `Event2` on SSB.
-   - `docker-compose.yml`: `MSSQL_AGENT_ENABLED=true` on `db`; seed scripts enable CDC on `Event1` (reuse
-     `.scripts/cdc/enable-cdc.sql` and `create-relay-tables.sql`, or `UseCdcSqlMigrationsAsync()` in development).
-     The e2e job's exact counts (50 `Event1DeletedEvent`, 25 `Event1RestoredEvent`, 25 `Event2CreatedEvent`) must still hold.
-   - README: choosing a source, per-source delivery semantics (CDC: per-table commit order, at-least-once, stable
-     message ids on replay; `ParkRow` drops ordering), SSB -> CDC cutover (enable CDC, seed the checkpoint at the
-     current max LSN, switch the mapping's `Source`, drop the trigger), 0.3 -> 0.4 mapper migration, CDC permissions
-     (SELECT on captured tables, `SCHEMA::cdc`, SELECT/INSERT/UPDATE/DELETE on the relay schema), the DST commit-time
-     limitation, metrics and the health check.
-   - Note: SQL Agent in the container takes a while to start; CDC enable can fail with error 14258 until it does
-     (the integration fixture retries). The e2e seed must wait or retry too.
+All planned phases are merged. Remaining work is the follow-up issues:
+
+1. **#32:** the CDC relay login's grant list is written by hand in four places (see `AGENTS.md`). Replace it with one
+   parameterized grant script and integration tests per configuration (`Halt` without the parked-change grant, `ParkRow` with it).
+2. **#33:** the README's switch-over procedure (both directions) is prose that nothing tests. Ship it as scripts, or a
+   relay-side handover, with integration tests covering an open writer at the pause, a non-empty dead-letter queue,
+   parked rows, and idle and busy capture.
 
 ## Phase 3 notes
 
 - Demo seed `.scripts/01-Enable-Cdc-Event1.sql` waits for `msdb.dbo.sp_is_sqlagent_starting` = 0 (wrapped in TRY/CATCH, since
   Agent XPs are off at first), then `:r`-includes `.scripts/cdc/*.sql`. `sys.dm_server_services` says `Running` too early.
 - Local WSL session: Docker daemon already running, Docker Hub and NuGet in `docker build` work, so `./.devops/e2e.sh` runs locally.
+- Process: run the local review loop (hivemind:local-reviewer) to a clean exit before every push, and after each push wait for
+  both CI and the Codex GitHub review (chatgpt-codex-connector, a few minutes later) and handle its inline comments.
+  Codex reads the repo's `AGENTS.md`, which marks the docker-compose demo as out of scope for security findings.
+- Review rounds on hand-written grant lists and prose procedures kept finding one more edge case; that's why #32 and #33 exist.
 - No git identity in the local shell; commit with `git -c user.name="Brennan Pike" -c user.email="5853674+brenpike@users.noreply.github.com"`.
 
 ## Resolved decisions (details in the plan)
