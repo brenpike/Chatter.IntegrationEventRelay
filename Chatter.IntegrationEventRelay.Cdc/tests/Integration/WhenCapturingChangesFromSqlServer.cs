@@ -193,6 +193,7 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
         [InlineData(CdcErrorPolicy.ParkRow, true)]
         public async Task MustRelayUnderExactlyTheGrantsOfTheGrantScript(CdcErrorPolicy errorPolicy, bool gated)
         {
+            var gatingRole = gated ? $"gate_{_table}" : null;
             if (gated)
                 await CreateGatedCapturedTableAsync();
             else
@@ -209,8 +210,8 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             {
                 // Under every grant the script makes, the relay relays both changes
                 var full = await CreateLoginAsync("full");
-                var statements = await GrantStatementsAsync(full.User, errorPolicy);
-                await _sql.ExecuteAsync(GrantScript.Render(full.User, $"dbo_{_table}", "Chatter", errorPolicy));
+                var statements = await GrantStatementsAsync(full.User, errorPolicy, gatingRole);
+                await _sql.ExecuteAsync(GrantScript.Render(full.User, $"dbo_{_table}", "Chatter", errorPolicy, gatingRole));
                 // Each run's source is named after its login, so it shares no checkpoint or parked change with another
                 // run or another case: the relay tables are shared by the whole collection
                 Assert.Null(await RunRestrictedAsync(full.ConnectionString, full.User, errorPolicy));
@@ -268,6 +269,23 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             var granted = $"FROM sys.database_permissions WHERE grantee_principal_id = DATABASE_PRINCIPAL_ID({Literal(user)}) AND state = 'G'";
             Assert.Equal(2, await _sql.ScalarAsync<int>($"SELECT COUNT(*) {granted} AND major_id = OBJECT_ID({Literal(Quote(schema) + "." + Quote(table))}) AND permission_name = 'SELECT';"));
             Assert.Equal(1, await _sql.ScalarAsync<int>($"SELECT COUNT(*) {granted} AND major_id = OBJECT_ID({Literal($"cdc.{Quote(captureInstance + "_CT")}")});"));
+        }
+
+        [Fact]
+        public async Task MustJoinAGatingRoleOnlyWhenTheOperatorNamesIt()
+        {
+            await CreateGatedCapturedTableAsync();
+            var login = await CreateLoginAsync("gate");
+            var ungated = await _sql.CreateCapturedTableAsync($"{_table}_u");
+
+            foreach (var (captureInstance, gatingRole) in new[] { ($"dbo_{_table}", null), ($"dbo_{_table}", "db_datareader"), (ungated, $"gate_{_table}") })
+            {
+                var e = await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => _sql.ExecuteAsync(GrantScript.Render(login.User, captureInstance, "Chatter", CdcErrorPolicy.Halt, gatingRole)));
+                Assert.Equal(50000, e.Number);
+            }
+
+            Assert.Equal(0, await _sql.ScalarAsync<int>($"SELECT COUNT(*) FROM sys.database_permissions WHERE class = 1 AND grantee_principal_id = DATABASE_PRINCIPAL_ID(N'{login.User}');"));
+            Assert.Equal(0, await _sql.ScalarAsync<int>($"SELECT COUNT(*) FROM sys.database_role_members WHERE member_principal_id = DATABASE_PRINCIPAL_ID(N'{login.User}');"));
         }
 
         [Fact]
@@ -343,11 +361,11 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             return (login, new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(_sql.ConnectionString) { UserID = login, Password = "Relay!Passw0rd1" }.ConnectionString);
         }
 
-        private async Task<IReadOnlyList<string>> GrantStatementsAsync(string user, CdcErrorPolicy errorPolicy)
+        private async Task<IReadOnlyList<string>> GrantStatementsAsync(string user, CdcErrorPolicy errorPolicy, string gatingRole)
         {
             await using var connection = new Microsoft.Data.SqlClient.SqlConnection(_sql.ConnectionString);
             await connection.OpenAsync();
-            await using var command = new Microsoft.Data.SqlClient.SqlCommand(GrantScript.Render(user, $"dbo_{_table}", "Chatter", errorPolicy, whatIf: true), connection);
+            await using var command = new Microsoft.Data.SqlClient.SqlCommand(GrantScript.Render(user, $"dbo_{_table}", "Chatter", errorPolicy, gatingRole, whatIf: true), connection);
             await using var reader = await command.ExecuteReaderAsync();
             var statements = new List<string>();
             while (await reader.ReadAsync())

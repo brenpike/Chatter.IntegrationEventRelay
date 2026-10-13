@@ -11,13 +11,14 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
     {
         private static readonly string Path = System.IO.Path.Combine(AppContext.BaseDirectory, "Scripts", "grant-relay-permissions.sql");
 
-        public static string Render(string user, string captureInstance, string schema, CdcErrorPolicy errorPolicy, bool whatIf = false)
+        public static string Render(string user, string captureInstance, string schema, CdcErrorPolicy errorPolicy, string gatingRole = null, bool whatIf = false)
         {
             var script = File.ReadAllText(Path);
             script = Set(script, "user", Literal(user));
             script = Set(script, "captureInstance", Literal(captureInstance));
             script = Set(script, "schema", Literal(schema));
             script = Set(script, "errorPolicy", Literal(errorPolicy.ToString()));
+            script = Set(script, "gatingRole", gatingRole is null ? "NULL" : Literal(gatingRole));
             return Set(script, "whatIf", whatIf ? "1" : "0");
         }
 

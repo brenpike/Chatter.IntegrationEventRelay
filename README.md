@@ -130,7 +130,7 @@ Run [`.scripts/cdc/grant-relay-permissions.sql`](.scripts/cdc/grant-relay-permis
 - `SELECT` on each captured column of the captured table, and on its change table. SQL Server checks the captured columns before it returns changes; without them it reports no changes rather than an error, which the relay detects and stops on.
 - `SELECT` on CDC's metadata tables `cdc.lsn_time_mapping`, `cdc.change_tables` and `cdc.captured_columns`, plus `cdc.index_columns` with `ParkRow`.
 - On the relay's tables: `SELECT` and `INSERT`, and `UPDATE` of only the columns the relay changes, on the checkpoint table; with `ParkRow`, the same plus `DELETE` on the parked-change table.
-- Membership in the capture instance's gating role (`@role_name`), if it has one.
+- Membership in the capture instance's gating role (`@role_name`), if it has one. A gating role can be any database role, and the login gets everything it may do, so the script adds the login only when `@gatingRole` names the role; otherwise it stops and names it. Check what the role grants first. A role that `sp_cdc_enable_table` created holds only `SELECT` on the capture instance's change functions.
 
 The integration tests run the relay under exactly these grants for each error policy, with and without a gating role, and check that it fails without any one of them.
 

@@ -20,7 +20,7 @@ namespace Chatter.IntegrationEventRelay.Cdc;
 /// instance and error policy: <c>SELECT</c> on each captured column and on the change table, which the relay reads
 /// directly (the only place SQL Server exposes <c>__$command_id</c>, which orders a transaction's changes); CDC metadata;
 /// the relay's tables in <see cref="Core.Configuration.EventMappingConfiguration.Schema"/>; and membership in the capture
-/// instance's gating role, if any. The integration tests run the relay under exactly those grants.
+/// instance's gating role, if any, once the operator names it. The integration tests run the relay under exactly those grants.
 /// </para>
 /// </remarks>
 public sealed class CdcChangeSource : IChangeSource
