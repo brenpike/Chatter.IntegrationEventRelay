@@ -146,6 +146,8 @@ Grant `SELECT` on exactly the columns the capture instance captures (`EXEC sys.s
 
 If the capture instance was enabled with a gating role (`@role_name`), the login must also be a member of it. Without `SELECT` on the captured table SQL Server reports no changes rather than an error; the relay detects this and stops with an error.
 
+These grants limit what the login can read, not what it can publish. The relay trusts its own tables, and the login can write them: whoever holds its credentials can move a checkpoint to skip or re-send changes and, with `ParkRow`, park a forged change and request its replay. Protect the relay's connection string as you would the broker credential.
+
 ### Configure the relay
 
 Add the package and chain `.UseCdcChangeSource()` after `.AddIntegrationEventRelay()` (with `.UseServiceBrokerChangeSource()` too if other mappings use SQL Service Broker):
