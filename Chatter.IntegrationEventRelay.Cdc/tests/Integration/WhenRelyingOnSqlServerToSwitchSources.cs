@@ -279,6 +279,51 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
         }
 
         [Fact]
+        public async Task MustNotFireTheTriggerOnAStatementThatChangesNoRowWhileAnInsteadOfTriggerIsEnabled()
+        {
+            await using var db = await _sql.CreateDatabaseAsync();
+            await db.CreateTableAsync(_table);
+            var feed = await ServiceBrokerChangeFeed.InstallAsync<ProbeEvent>(db.ConnectionString, _table);
+            var insteadOf = $"dbo.[{_table}_InsteadOfDelete]";
+            await db.ExecuteAsync($"CREATE TRIGGER {insteadOf} ON {feed.QualifiedTable} INSTEAD OF DELETE AS SET NOCOUNT ON;");
+
+            await db.ExecuteAsync($"DELETE FROM {feed.QualifiedTable} WHERE 1 = 0;");
+            var sentWhileEnabled = await feed.CountQueueAsync();
+            await db.ExecuteAsync($"DISABLE TRIGGER {insteadOf} ON {feed.QualifiedTable};");
+            await db.ExecuteAsync($"DELETE FROM {feed.QualifiedTable} WHERE 1 = 0;");
+
+            Assert.Equal(0, sentWhileEnabled);
+            Assert.Equal(1, await feed.CountQueueAsync());
+        }
+
+        [Fact]
+        public async Task MustEnableATriggerDisabledAfterASavepointAgainOnRollingBackToIt()
+        {
+            await using var db = await _sql.CreateDatabaseAsync();
+            await db.CreateTableAsync(_table);
+            var insteadOf = $"dbo.[{_table}_InsteadOfDelete]";
+            await db.ExecuteAsync($"CREATE TRIGGER {insteadOf} ON dbo.[{_table}] INSTEAD OF DELETE AS SET NOCOUNT ON;");
+            var isDisabled = $"SELECT is_disabled FROM sys.triggers WHERE object_id = OBJECT_ID(N'{insteadOf}');";
+
+            await using var connection = new SqlConnection(db.ConnectionString);
+            await connection.OpenAsync();
+            await ExecuteAsync(connection, null, "SET XACT_ABORT ON;");
+            await using (var transaction = (SqlTransaction)await connection.BeginTransactionAsync())
+            {
+                await ExecuteAsync(connection, transaction, $"SAVE TRANSACTION probe; DISABLE TRIGGER {insteadOf} ON dbo.[{_table}];");
+                var disabledAfterSavepoint = await ScalarAsync<bool>(connection, transaction, isDisabled);
+                await ExecuteAsync(connection, transaction, "ROLLBACK TRANSACTION probe;");
+
+                Assert.True(disabledAfterSavepoint, "The trigger is disabled after the savepoint");
+                Assert.False(await ScalarAsync<bool>(connection, transaction, isDisabled), "Rolling back to the savepoint enables the trigger again");
+                Assert.Equal(1, await ScalarAsync<int>(connection, transaction, "SELECT @@TRANCOUNT;"));
+                await transaction.CommitAsync();
+            }
+
+            Assert.False(await db.ScalarAsync<bool>(isDisabled), "The trigger is enabled once the transaction commits");
+        }
+
+        [Fact]
         public async Task MustRefuseAVariableLockTimeout()
         {
             var e = await Assert.ThrowsAsync<SqlException>(() => _sql.ExecuteAsync("DECLARE @ms int = 1000; SET LOCK_TIMEOUT @ms;"));
