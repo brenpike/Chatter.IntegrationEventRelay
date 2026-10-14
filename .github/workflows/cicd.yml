@@ -62,9 +62,10 @@ jobs:
         if-no-files-found: error
 
   cdc-integration:
-    name: cdc integration (SQL Server 2022 + CDC)
+    name: cdc integration (SQL Server 2022 + CDC + Service Broker)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The tests, switch-over tests between Service Broker and CDC included, take about 21 minutes locally
+    timeout-minutes: 45
     if: github.event_name != 'pull_request' || github.event.action != 'closed'
 
     steps:
