@@ -12,11 +12,13 @@
 -- It takes a shared lock on the table, so writes to it wait until the script ends (it waits, too, for transactions
 -- already writing to it to finish); reads don't, except for a moment at the end, while it enables the triggers. Holding
 -- the lock, it waits until CDC's capture job has read the log past the moment it took it, and then until every CDC
--- source with a checkpoint for @captureInstance in @relaySchema has relayed the capture instance's last change. It then
--- seals those checkpoints at LSN 0xFFFFFFFFFFFFFFFFFFFE, past any LSN SQL Server will write, and enables SqlChangeFeed's
--- triggers on the table, after running each one's install procedure, if it still exists, to re-create a trigger whose
--- table's columns have changed. Last, it fires the triggers with a statement that changes no row and rolls that back, so
--- a trigger that no longer compiles fails the switch rather than every write after it.
+-- source with a checkpoint for @captureInstance in @relaySchema has relayed the capture instance's last change, refusing
+-- before it waits and each time it checks if a source is on a gap. It then seals those checkpoints at LSN
+-- 0xFFFFFFFFFFFFFFFFFFFE, past any LSN SQL Server will write, and enables SqlChangeFeed's triggers on the table, after
+-- running each one's install procedure, if it still exists, to re-create a trigger whose table's columns have changed.
+-- Last, it fires the triggers with a statement that changes no row and rolls that back, so a trigger that no longer
+-- compiles fails the switch rather than every write after it. For that statement it disables the table's other INSTEAD
+-- OF triggers, which would stop the triggers firing, and rolling the statement back enables them again.
 --
 -- Every wait, for locks included, ends within @timeoutSeconds: past it the script rolls back, changing nothing, and CDC
 -- goes on relaying the table. Writes to the table wait about that long at most, plus the time the install procedures
@@ -31,9 +33,12 @@
 -- It refuses, changing nothing, when the table has no SqlChangeFeed trigger or one that's enabled (it isn't on CDC, or
 -- was switched to CDC by dropping its change feed, which this script can't undo), the capture instance doesn't capture
 -- the table, SQL Service Broker is disabled in the database or a trigger's service or queue is missing or disabled, no
--- CDC source has a checkpoint for the capture instance in @relaySchema, or any change of the capture instance is parked
--- (replay or delete them first, also when one is parked while it waits). It rolls back when the capture job or a CDC
--- source doesn't catch up within @timeoutSeconds: delete the checkpoints of sources that no longer run.
+-- CDC source has a checkpoint for the capture instance in @relaySchema, any change of the capture instance is parked
+-- (replay or delete them first, also when one is parked while it waits), or a CDC source is on a gap, before it waits or
+-- while it does: CDC cleanup has removed changes past its checkpoint, which nothing would relay after the switch (delete
+-- the checkpoints of sources that no longer run; for a running source see "Gaps" under "Limitations" in the README). It
+-- rolls back when the capture job or a CDC source doesn't catch up within @timeoutSeconds: delete the checkpoints of
+-- sources that no longer run.
 
 DECLARE @tableSchema sysname = N'dbo';
 DECLARE @tableName sysname = N'Event2';
@@ -112,6 +117,28 @@ IF OBJECT_ID(@parkedChanges, N'U') IS NOT NULL
 IF @parked > 0
 	THROW 50000, @parkedError, 1;
 
+-- A CDC source is on a gap when CDC cleanup has removed changes after its checkpoint: the LSN after it is below the
+-- capture instance's oldest. The oldest LSN is read first: it only grows, so a checkpoint read after it that's behind it
+-- is behind for good, while a checkpoint read before it could be one a running source has moved past by the time
+-- cleanup moves the oldest LSN past it. A zero checkpoint (start from the oldest change) never counts, nor does a sealed
+-- one, past any LSN. No oldest LSN yet (NULL, before the capture job's first scan) counts none, and nor does a zero one
+-- (the capture instance is gone), made NULL.
+DECLARE @oldest binary(10), @gapped int = 0, @gappedLsn binary(10);
+DECLARE @countGapped nvarchar(max) = N'SET @oldest = sys.fn_cdc_get_min_lsn(@captureInstance);
+	SELECT @gapped = COUNT(*), @gappedLsn = MIN(LastLsn) FROM ' + @checkpoints + N'
+	WHERE CaptureInstance = @captureInstance AND LastLsn <> 0x00000000000000000000
+		AND LastLsn < sys.fn_cdc_decrement_lsn(NULLIF(@oldest, 0x00000000000000000000));';
+DECLARE @gapError nvarchar(2048) = N'%d CDC source(s) of the capture instance are on a gap: the lowest LastLsn in %s is %s, and the capture instance''s oldest LSN is %s. '
+	+ N'CDC cleanup has removed changes after their checkpoint, and nothing would relay them after the switch. Delete the checkpoints of sources that no longer run; '
+	+ N'for a running source, see "Gaps" under "Limitations" in the README. Nothing was changed.';
+EXEC sys.sp_executesql @countGapped, N'@captureInstance sysname, @oldest binary(10) OUTPUT, @gapped int OUTPUT, @gappedLsn binary(10) OUTPUT',
+	@captureInstance, @oldest OUTPUT, @gapped OUTPUT, @gappedLsn OUTPUT;
+IF @gapped > 0
+BEGIN
+	SET @error = FORMATMESSAGE(@gapError, @gapped, @checkpoints, CONVERT(nvarchar(22), @gappedLsn, 1), CONVERT(nvarchar(22), @oldest, 1));
+	THROW 50000, @error, 1;
+END
+
 DECLARE @deadline datetime2 = DATEADD(second, @timeoutSeconds, SYSDATETIME());
 DECLARE @timeout nvarchar(10) = CAST(@timeoutSeconds AS nvarchar(10));
 -- What it means if the statement waiting for a lock now runs out of time
@@ -154,17 +181,29 @@ BEGIN TRY
 		WAITFOR DELAY '00:00:00.200';
 	END
 
-	-- Until every CDC source of the capture instance has relayed its last change
+	-- Until every CDC source of the capture instance has relayed its last change, refusing a source on a gap, which can't
+	-- catch up. Without a change left (NULL), none is behind, but cleanup may have removed changes a source hadn't relayed.
 	DECLARE @last binary(10), @behind int;
 	SET @lockTimeoutError = N'A transaction writing to the capture instance''s change table (CDC''s capture or cleanup job) didn''t finish within ' + @timeout
 		+ N' seconds, so the script couldn''t read its last change. Nothing was changed.';
 	SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
 		SELECT @last = MAX(__$start_lsn) FROM ' + @changeTable + N';';
 	EXEC sys.sp_executesql @sql, N'@last binary(10) OUTPUT', @last OUTPUT;
-	SET @lockTimeoutError = N'A transaction writing to the relay''s checkpoints didn''t finish within ' + @timeout
-		+ N' seconds, so the script couldn''t tell whether the CDC sources had caught up. Nothing was changed.';
-	WHILE @last IS NOT NULL
+	WHILE 1 = 1
 	BEGIN
+		SET @lockTimeoutError = N'A transaction writing to the relay''s checkpoints, or CDC''s cleanup job moving the capture instance''s oldest LSN, didn''t finish within ' + @timeout
+			+ N' seconds, so the script couldn''t tell whether a CDC source is on a gap. Nothing was changed.';
+		SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+			' + @countGapped;
+		EXEC sys.sp_executesql @sql, N'@captureInstance sysname, @oldest binary(10) OUTPUT, @gapped int OUTPUT, @gappedLsn binary(10) OUTPUT',
+			@captureInstance, @oldest OUTPUT, @gapped OUTPUT, @gappedLsn OUTPUT;
+		IF @gapped > 0
+		BEGIN
+			SET @error = FORMATMESSAGE(@gapError, @gapped, @checkpoints, CONVERT(nvarchar(22), @gappedLsn, 1), CONVERT(nvarchar(22), @oldest, 1));
+			THROW 50000, @error, 1;
+		END
+		SET @lockTimeoutError = N'A transaction writing to the relay''s checkpoints didn''t finish within ' + @timeout
+			+ N' seconds, so the script couldn''t tell whether the CDC sources had caught up. Nothing was changed.';
 		SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
 			SELECT @behind = COUNT(*) FROM ' + @checkpoints + N' WHERE CaptureInstance = @captureInstance AND LastLsn < @last;';
 		EXEC sys.sp_executesql @sql, N'@captureInstance sysname, @last binary(10), @behind int OUTPUT', @captureInstance, @last, @behind OUTPUT;
@@ -219,7 +258,10 @@ BEGIN TRY
 	END
 
 	-- Fires each trigger with a statement that changes no row, by the first of DELETE, UPDATE and INSERT it fires on. The
-	-- triggers send a message even for no row, so this is rolled back to a savepoint.
+	-- triggers send a message even for no row, so this is rolled back to a savepoint. An enabled INSTEAD OF trigger on the
+	-- table runs in place of the statement, and the triggers don't fire, so the table's others are disabled after the
+	-- savepoint and rolling back to it enables them again. @probing is set after that, so failing to disable one isn't
+	-- reported as a SqlChangeFeed trigger that fails.
 	DECLARE @column nvarchar(max) = (
 		SELECT TOP (1) QUOTENAME(name) FROM sys.columns
 		WHERE object_id = @tableId AND is_computed = 0 AND is_identity = 0 AND generated_always_type = 0 AND system_type_id <> TYPE_ID(N'timestamp')
@@ -241,7 +283,17 @@ BEGIN TRY
 		THROW 50000, N'A SqlChangeFeed trigger fires only on INSERT or UPDATE, and the table has no column the script can update to fire it. Nothing was changed.', 1;
 
 	SET @lockTimeoutError = N'A query reading the table didn''t finish within ' + @timeout + N' seconds, so the script couldn''t fire SqlChangeFeed''s triggers to check them. Nothing was changed.';
+	DECLARE @disableInsteadOf nvarchar(max) = (
+		SELECT STRING_AGG(CAST(N'DISABLE TRIGGER ' AS nvarchar(max)) + QUOTENAME(@tableSchema) + N'.' + QUOTENAME(name) + N' ON ' + @table + N';', N' ')
+		FROM sys.triggers
+		WHERE parent_id = @tableId AND is_instead_of_trigger = 1 AND is_disabled = 0 AND name NOT LIKE N'Chatter[_]ChangeFeedTrigger[_]%');
 	SAVE TRANSACTION Probe;
+	IF @disableInsteadOf IS NOT NULL
+	BEGIN
+		SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+			' + @disableInsteadOf;
+		EXEC sys.sp_executesql @sql;
+	END
 	SET @probing = 1;
 	SET @id = 0;
 	WHILE 1 = 1
