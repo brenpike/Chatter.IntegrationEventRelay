@@ -18,6 +18,10 @@
 -- table's columns have changed. Last, it fires the triggers with a statement that changes no row and rolls that back, so
 -- a trigger that no longer compiles fails the switch rather than every write after it.
 --
+-- The transaction lasts at most about @timeoutSeconds, waits for locks included, so writes to the table wait at most
+-- that long. Past it the script rolls back, changing nothing, and CDC goes on relaying the table. Cancelling the script
+-- rolls it back too.
+--
 -- The CDC relay keeps polling the capture instance, stays healthy with a lag of 0, and relays none of its later changes.
 -- Remove the CDC source from the table's mappings when you redeploy; switch-to-cdc.sql replaces the seal if you switch
 -- the table to CDC again. CDC keeps capturing the table: disable it with sys.sp_cdc_disable_table once no relay reads
@@ -34,12 +38,13 @@ DECLARE @tableSchema sysname = N'dbo';
 DECLARE @tableName sysname = N'Event2';
 DECLARE @captureInstance sysname = N'dbo_Event2';   -- the CDC source mapping's CaptureInstance
 DECLARE @relaySchema sysname = N'Chatter';          -- the relay's IntegrationEventRelay:Schema
-DECLARE @timeoutSeconds int = 300;                  -- how long to wait for the capture job and the CDC relay
+DECLARE @timeoutSeconds int = 300;                  -- how long the script may hold up writes to the table, waits for locks included
 
 IF @@TRANCOUNT > 0
 	THROW 50000, N'Run the script outside a transaction: it commits the switch itself, or rolls all of it back.', 1;
-IF @timeoutSeconds IS NULL OR @timeoutSeconds < 1
-	THROW 50000, N'@timeoutSeconds must be at least 1.', 1;
+-- SET LOCK_TIMEOUT counts milliseconds in an int
+IF @timeoutSeconds IS NULL OR @timeoutSeconds NOT BETWEEN 1 AND 86400
+	THROW 50000, N'@timeoutSeconds must be between 1 and 86400.', 1;
 
 -- nvarchar(max) throughout: QUOTENAME doubles each ']', so a fixed-size buffer could cut a valid name short
 DECLARE @table nvarchar(max) = QUOTENAME(@tableSchema) + N'.' + QUOTENAME(@tableName);
@@ -106,6 +111,11 @@ IF OBJECT_ID(@parkedChanges, N'U') IS NOT NULL
 IF @parked > 0
 	THROW 50000, @parkedError, 1;
 
+DECLARE @deadline datetime2 = DATEADD(second, @timeoutSeconds, SYSDATETIME());
+DECLARE @timeout nvarchar(10) = CAST(@timeoutSeconds AS nvarchar(10));
+-- What it means if the statement waiting for a lock now runs out of time
+DECLARE @lockTimeoutError nvarchar(2048);
+
 SET XACT_ABORT ON;
 SET DEADLOCK_PRIORITY LOW;
 DECLARE @sealed binary(10) = 0xFFFFFFFFFFFFFFFFFFFE;  -- one below the largest LSN, which the relay can't step past
@@ -113,13 +123,20 @@ DECLARE @probing bit = 0;
 BEGIN TRY
 	BEGIN TRANSACTION;
 
+	-- SET LOCK_TIMEOUT only takes a constant, and a SET inside sp_executesql ends with it, so each statement that waits
+	-- for a lock runs in sp_executesql with the time left as its lock timeout. A lock it doesn't get in time (error 1222)
+	-- rolls the transaction back, rather than holding up the table's writers past @timeoutSeconds. XACT_ABORT stays on in
+	-- there, so cancelling the script rolls it back wherever it is.
+
 	-- Writers wait from here; transactions already writing to the table finish first
-	SET @sql = N'DECLARE @locked int; SELECT TOP (1) @locked = 1 FROM ' + @table + N' WITH (TABLOCK, HOLDLOCK);';
+	SET @lockTimeoutError = N'A transaction writing to the table didn''t finish within ' + @timeout + N' seconds, so the script couldn''t lock the table. Nothing was changed.';
+	SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+		DECLARE @locked int; SELECT TOP (1) @locked = 1 FROM ' + @table + N' WITH (TABLOCK, HOLDLOCK);';
 	EXEC sys.sp_executesql @sql;
+
 	DECLARE @t datetime2 = SYSDATETIME();
 	DECLARE @scanAtT int = (SELECT ISNULL(MAX(session_id + CASE WHEN empty_scan_count > 0 THEN empty_scan_count - 1 ELSE 0 END), 0)
 		FROM sys.dm_cdc_log_scan_sessions WHERE session_id > 0);
-	DECLARE @deadline datetime2 = DATEADD(second, @timeoutSeconds, @t);
 
 	-- Until the capture job has read the log past @t: it has captured a transaction committed after @t (it captures in
 	-- commit order), or a log scan that started after @t found nothing to capture
@@ -128,40 +145,60 @@ BEGIN TRY
 			WHERE session_id > 0 AND empty_scan_count > 0 AND session_id + empty_scan_count - 1 >= @scanAtT + 2))
 	BEGIN
 		IF SYSDATETIME() >= @deadline
-			THROW 50000, N'CDC''s capture job didn''t read the log past the switch in time. Is SQL Server Agent running, and the capture job started? Nothing was changed.', 1;
+		BEGIN
+			SET @error = N'CDC''s capture job didn''t read the transaction log past the switch within ' + @timeout
+				+ N' seconds. Is SQL Server Agent running, and the capture job (sys.sp_cdc_start_job)? Nothing was changed.';
+			THROW 50000, @error, 1;
+		END
 		WAITFOR DELAY '00:00:00.200';
 	END
 
 	-- Until every CDC source of the capture instance has relayed its last change
 	DECLARE @last binary(10), @behind int;
-	SET @sql = N'SELECT @last = MAX(__$start_lsn) FROM ' + @changeTable + N';';
+	SET @lockTimeoutError = N'A transaction writing to the capture instance''s change table (CDC''s capture or cleanup job) didn''t finish within ' + @timeout
+		+ N' seconds, so the script couldn''t read its last change. Nothing was changed.';
+	SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+		SELECT @last = MAX(__$start_lsn) FROM ' + @changeTable + N';';
 	EXEC sys.sp_executesql @sql, N'@last binary(10) OUTPUT', @last OUTPUT;
-	SET @sql = N'SELECT @behind = COUNT(*) FROM ' + @checkpoints + N' WHERE CaptureInstance = @captureInstance AND LastLsn < @last;';
+	SET @lockTimeoutError = N'A transaction writing to the relay''s checkpoints didn''t finish within ' + @timeout
+		+ N' seconds, so the script couldn''t tell whether the CDC sources had caught up. Nothing was changed.';
 	WHILE @last IS NOT NULL
 	BEGIN
+		SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+			SELECT @behind = COUNT(*) FROM ' + @checkpoints + N' WHERE CaptureInstance = @captureInstance AND LastLsn < @last;';
 		EXEC sys.sp_executesql @sql, N'@captureInstance sysname, @last binary(10), @behind int OUTPUT', @captureInstance, @last, @behind OUTPUT;
 		IF @behind = 0
 			BREAK;
 		IF SYSDATETIME() >= @deadline
 		BEGIN
 			SET @error = CONVERT(nvarchar(11), @behind) + N' CDC source(s) didn''t relay the capture instance up to LSN ' + CONVERT(nvarchar(22), @last, 1)
-				+ N' in time (see LastLsn in ' + @checkpoints + N'). Are they running, or halted on a change they can''t publish? Nothing was changed.';
+				+ N' within ' + @timeout + N' seconds (see LastLsn in ' + @checkpoints + N'). Are they running, or halted on a change they can''t publish? Nothing was changed.';
 			THROW 50000, @error, 1;
 		END
 		WAITFOR DELAY '00:00:00.200';
 	END
 
 	-- A change parked while the script waited
+	SET @lockTimeoutError = N'A transaction writing to the relay''s parked changes didn''t finish within ' + @timeout
+		+ N' seconds, so the script couldn''t tell whether a change of the capture instance is parked. Nothing was changed.';
 	IF OBJECT_ID(@parkedChanges, N'U') IS NOT NULL
-		EXEC sys.sp_executesql @countParked, N'@captureInstance sysname, @parked int OUTPUT', @captureInstance, @parked OUTPUT;
+	BEGIN
+		SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+			' + @countParked;
+		EXEC sys.sp_executesql @sql, N'@captureInstance sysname, @parked int OUTPUT', @captureInstance, @parked OUTPUT;
+	END
 	IF @parked > 0
 		THROW 50000, @parkedError, 1;
 
 	DECLARE @sealedCount int;
-	SET @sql = N'UPDATE ' + @checkpoints + N' SET LastLsn = @sealed, UpdatedAt = SYSUTCDATETIME() WHERE CaptureInstance = @captureInstance; SET @sealedCount = @@ROWCOUNT;';
+	SET @lockTimeoutError = N'A transaction using the relay''s checkpoints didn''t finish within ' + @timeout
+		+ N' seconds, so the script couldn''t seal them. Nothing was changed.';
+	SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+		UPDATE ' + @checkpoints + N' SET LastLsn = @sealed, UpdatedAt = SYSUTCDATETIME() WHERE CaptureInstance = @captureInstance; SET @sealedCount = @@ROWCOUNT;';
 	EXEC sys.sp_executesql @sql, N'@captureInstance sysname, @sealed binary(10), @sealedCount int OUTPUT', @captureInstance, @sealed, @sealedCount OUTPUT;
 
 	-- The install procedure re-creates, enabled, a trigger whose table's columns have changed, and leaves any other as it is
+	SET @lockTimeoutError = N'A query reading the table didn''t finish within ' + @timeout + N' seconds, so the script couldn''t enable SqlChangeFeed''s triggers. Nothing was changed.';
 	DECLARE @id int = 0, @suffix sysname, @install nvarchar(max);
 	WHILE 1 = 1
 	BEGIN
@@ -171,10 +208,12 @@ BEGIN TRY
 		SET @install = QUOTENAME(@tableSchema) + N'.' + QUOTENAME(N'Chatter_InstallChangeFeed_' + @suffix);
 		IF OBJECT_ID(@install, N'P') IS NOT NULL
 		BEGIN
-			SET @sql = N'EXEC ' + @install + N';';
+			SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+				EXEC ' + @install + N';';
 			EXEC sys.sp_executesql @sql;
 		END
-		SET @sql = N'ENABLE TRIGGER ' + QUOTENAME(@tableSchema) + N'.' + QUOTENAME(N'Chatter_ChangeFeedTrigger_' + @suffix) + N' ON ' + @table + N';';
+		SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+			ENABLE TRIGGER ' + QUOTENAME(@tableSchema) + N'.' + QUOTENAME(N'Chatter_ChangeFeedTrigger_' + @suffix) + N' ON ' + @table + N';';
 		EXEC sys.sp_executesql @sql;
 	END
 
@@ -200,12 +239,15 @@ BEGIN TRY
 	IF EXISTS (SELECT * FROM @probes WHERE Statement IS NULL)
 		THROW 50000, N'A SqlChangeFeed trigger fires only on INSERT or UPDATE, and the table has no column the script can update to fire it. Nothing was changed.', 1;
 
+	SET @lockTimeoutError = N'A query reading the table didn''t finish within ' + @timeout + N' seconds, so the script couldn''t fire SqlChangeFeed''s triggers to check them. Nothing was changed.';
 	SAVE TRANSACTION Probe;
 	SET @probing = 1;
 	SET @id = 0;
 	WHILE 1 = 1
 	BEGIN
-		SELECT TOP (1) @id = Id, @sql = Statement FROM @probes WHERE Id > @id ORDER BY Id;
+		SELECT TOP (1) @id = Id, @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+			' + Statement
+		FROM @probes WHERE Id > @id ORDER BY Id;
 		IF @@ROWCOUNT = 0
 			BREAK;
 		EXEC sys.sp_executesql @sql;
@@ -222,6 +264,8 @@ END TRY
 BEGIN CATCH
 	IF @@TRANCOUNT > 0
 		ROLLBACK TRANSACTION;
+	IF ERROR_NUMBER() = 1222
+		THROW 50000, @lockTimeoutError, 1;
 	IF @probing = 1
 	BEGIN
 		SET @error = N'A SqlChangeFeed trigger on the table fails (' + ERROR_MESSAGE() + N'), most likely because a column it reads changed while the table was on CDC, '

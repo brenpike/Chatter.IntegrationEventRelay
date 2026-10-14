@@ -2,16 +2,9 @@ using Chatter.CQRS;
 using Chatter.IntegrationEventRelay.Cdc.Diagnostics;
 using Chatter.IntegrationEventRelay.Cdc.Polling;
 using Chatter.IntegrationEventRelay.Cdc.Sql;
-using Chatter.IntegrationEventRelay.Core.Abstractions;
-using Chatter.IntegrationEventRelay.Core.Processing;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.Extensions.Logging.Abstractions;
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -278,6 +271,75 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
         }
 
         [Fact]
+        public async Task MustRollBackWhenATransactionOpenAtTheSwitchDoesNotFinishInTime()
+        {
+            await using var db = await _sql.CreateDatabaseAsync();
+            var (captureInstance, feed) = await PutOnCdcAsync(db, SourceName);
+            await using var receiver = ServiceBrokerReceiver.Start(feed);
+            await using var relay = CdcRelay.Start(db, captureInstance, _table, SourceName);
+            await using var open = new SqlConnection(db.ConnectionString);
+            await open.OpenAsync();
+            await using var transaction = (SqlTransaction)await open.BeginTransactionAsync();
+            await using (var insert = new SqlCommand($"INSERT INTO dbo.[{_table}] (Id) VALUES (1);", open, transaction))
+                await insert.ExecuteNonQueryAsync();
+
+            var e = await AssertRefusedAsync(db, captureInstance, timeoutSeconds: 5);
+            await transaction.CommitAsync();
+
+            Assert.Contains("couldn't lock the table", e.Message);
+            await AssertOnCdcAsync(db, captureInstance, feed);
+            await WaitUntilAsync(() => relay.RowIds.Count >= 1);
+            Assert.Equal(new[] { 1 }, relay.RowIds);
+            Assert.Empty(receiver.RowIds);
+            Assert.Equal(0, await feed.CountQueueAsync());
+        }
+
+        [Fact]
+        public async Task MustRollBackWhenCancelled()
+        {
+            await using var db = await _sql.CreateDatabaseAsync();
+            var (captureInstance, feed) = await PutOnCdcAsync(db, SourceName);
+            await using var receiver = ServiceBrokerReceiver.Start(feed);
+            await using var relay = CdcRelay.Start(db, captureInstance, _table, SourceName);
+            await relay.StopAsync();
+            await db.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id) VALUES (1);");
+            using var cancel = new CancellationTokenSource();
+            await using var connection = new SqlConnection(db.ConnectionString);
+            await connection.OpenAsync();
+            await using var command = new SqlCommand(SwitchScripts.RenderToServiceBroker("dbo", _table, captureInstance, db.RelaySchema), connection);
+
+            var switching = command.ExecuteNonQueryAsync(cancel.Token);
+            await WaitUntilAsync(async () => await CountTableLocksAsync(db, "S", "GRANT") > 0);
+            cancel.Cancel();
+            await Assert.ThrowsAnyAsync<Exception>(() => switching);
+
+            await using (var trancount = new SqlCommand("SELECT @@TRANCOUNT;", connection))
+                Assert.Equal(0, (int)await trancount.ExecuteScalarAsync());
+            await AssertOnCdcAsync(db, captureInstance, feed);
+            var writing = db.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id) VALUES (2);");
+            Assert.Same(writing, await Task.WhenAny(writing, Task.Delay(Blocked)));
+            await writing;
+            relay.Resume();
+            await WaitUntilAsync(() => relay.RowIds.Count >= 2);
+            Assert.Equal(new[] { 1, 2 }, relay.RowIds);
+            Assert.Empty(receiver.RowIds);
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(86401)]
+        public async Task MustRefuseATimeoutOutOfRange(int timeoutSeconds)
+        {
+            await using var db = await _sql.CreateDatabaseAsync();
+            var (captureInstance, feed) = await PutOnCdcAsync(db, SourceName);
+
+            var e = await AssertRefusedAsync(db, captureInstance, timeoutSeconds);
+
+            Assert.Contains("@timeoutSeconds must be between 1 and 86400", e.Message);
+            await AssertOnCdcAsync(db, captureInstance, feed);
+        }
+
+        [Fact]
         public async Task MustRefreshATriggerThatReadsAColumnDroppedWhileOnCdc()
         {
             await using var db = await _sql.CreateDatabaseAsync();
@@ -516,74 +578,8 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             }
         }
 
-        public class SwitchedEvent : IMessage
-        {
-            public int Id { get; set; }
-            public string Name { get; set; }
-            public bool? Flag { get; set; }
-            public DateTime? DeletedAt { get; set; }
-        }
+        public class SwitchedEvent : IMessage { }
 
         public class OtherEvent : IMessage { }
-
-        /// <summary>
-        /// A CDC source relaying the table's capture instance as the relay does, its poller running until stopped. Records
-        /// the ids of the rows whose changes it relayed, failing to publish a change to row <see cref="FailOnId"/>.
-        /// </summary>
-        private sealed class CdcRelay : IRowChangeProcessor<SwitchedEvent>, IAsyncDisposable
-        {
-            private readonly ConcurrentQueue<int> _rowIds = new();
-            private CancellationTokenSource _stop;
-            private Task _run;
-
-            public CdcCapturePoller<SwitchedEvent> Poller { get; private set; }
-
-            public int? FailOnId { get; set; }
-
-            public IReadOnlyList<int> RowIds => _rowIds.ToList();
-
-            public static CdcRelay Start(SqlServerFixture.TestDatabase db, string captureInstance, string table, string sourceName, CdcErrorPolicy errorPolicy = CdcErrorPolicy.Halt, int? failOnId = null)
-            {
-                // A batch per transaction, so a change that fails to publish doesn't make the relay publish earlier ones again
-                var options = new CdcSourceOptions { ErrorPolicy = errorPolicy, MaxAttemptsBeforePark = 1, MaxTransactionsPerBatch = 1 };
-                options.PollInterval = options.LeaseRetryInterval = options.RetryDelay = TimeSpan.FromMilliseconds(200);
-                options.MaxRetryDelay = TimeSpan.FromSeconds(1);
-                var capture = new CdcCapture(sourceName, captureInstance, new SourceTable(table, "dbo", db.Name), typeof(SwitchedEvent), options);
-                var relay = new CdcRelay { FailOnId = failOnId };
-                var services = new ServiceCollection();
-                services.AddSingleton<IRowChangeProcessor<SwitchedEvent>>(relay);
-                relay.Poller = new CdcCapturePoller<SwitchedEvent>(capture, new SqlCdcQueries(db.ConnectionString), new SqlCheckpointStore(db.ConnectionString, db.RelaySchema),
-                    new SqlParkedChangeStore(db.ConnectionString, db.RelaySchema), new SqlAppLockLeaseFactory(db.ConnectionString),
-                    services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, NullLogger<CdcCapturePoller<SwitchedEvent>>.Instance);
-                relay.Resume();
-                return relay;
-            }
-
-            public void Resume()
-            {
-                _stop = new CancellationTokenSource();
-                _run = Poller.RunAsync(_stop.Token);
-            }
-
-            public async Task StopAsync()
-            {
-                _stop.Cancel();
-                await _run;
-            }
-
-            public Task ProcessAsync(RowChange<SwitchedEvent> change, CancellationToken cancellationToken)
-            {
-                if (change.NewValue.Id == FailOnId)
-                    throw new InvalidOperationException("publish failed");
-                _rowIds.Enqueue(change.NewValue.Id);
-                return Task.CompletedTask;
-            }
-
-            public async ValueTask DisposeAsync()
-            {
-                if (!_run.IsCompleted)
-                    await StopAsync();
-            }
-        }
     }
 }
