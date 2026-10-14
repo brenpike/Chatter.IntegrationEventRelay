@@ -24,6 +24,9 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
         // CDC's capture job reads the log every few seconds
         private static readonly TimeSpan CaptureTimeout = TimeSpan.FromSeconds(90);
         private static readonly TimeSpan Blocked = TimeSpan.FromSeconds(3);
+        // CDC cleanup moves its low watermark down to the first LSN committed at the same time, so a test that cleans up to a
+        // transaction commits it this long after the changes it keeps out of the cleanup
+        private static readonly TimeSpan CommitTimesApart = TimeSpan.FromSeconds(1);
         private static readonly CdcLsn Sealed = CdcLsn.Parse("0xFFFFFFFFFFFFFFFFFFFE");
         private const string SourceName = "fakedb-cdc";
 
@@ -249,6 +252,60 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             Assert.Empty(receiver.RowIds);
         }
 
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task MustRefuseWhenCdcCleanupPassedACheckpoint(bool emptied)
+        {
+            await using var db = await _sql.CreateDatabaseAsync();
+            var (captureInstance, feed) = await PutOnCdcAsync(db, SourceName);
+            var otherCaptureInstance = emptied ? await db.CreateCapturedTableAsync($"{_table}_other") : null;
+            await db.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id) VALUES (1);");
+            await Task.Delay(CommitTimesApart);
+            if (emptied)
+            {
+                await db.ExecuteAsync($"INSERT INTO dbo.[{_table}_other] (Id) VALUES (1);");
+                await WaitForCaptureAsync(db, captureInstance, 1);
+                await WaitForCaptureAsync(db, otherCaptureInstance, 1);
+                await CleanUpAsync(db, captureInstance, "sys.fn_cdc_get_max_lsn()");
+            }
+            else
+            {
+                await db.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id) VALUES (2);");
+                await WaitForCaptureAsync(db, captureInstance, 2);
+                await CleanUpAsync(db, captureInstance, $"(SELECT MAX(__$start_lsn) FROM cdc.[{captureInstance}_CT])");
+            }
+            Assert.Equal(emptied ? 0 : 1, await CountChangeTableRowsAsync(db, captureInstance));
+
+            var e = await AssertRefusedAsync(db, captureInstance, timeoutSeconds: 30);
+
+            Assert.Contains("on a gap", e.Message);
+            Assert.EndsWith("Nothing was changed.", e.Message);
+            await AssertOnCdcAsync(db, captureInstance, feed);
+        }
+
+        [Fact]
+        public async Task MustRollBackWhenCdcCleanupPassesACheckpointWhileItWaits()
+        {
+            await using var db = await _sql.CreateDatabaseAsync();
+            var (captureInstance, feed) = await PutOnCdcAsync(db, SourceName);
+            await db.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id) VALUES (1);");
+            await Task.Delay(CommitTimesApart);
+            await db.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id) VALUES (2);");
+            await WaitForCaptureAsync(db, captureInstance, 2);
+
+            var switching = SwitchAsync(db, captureInstance, timeoutSeconds: 60);
+            await WaitUntilAsync(async () => await CountTableLocksAsync(db, "S", "GRANT") > 0);
+            Assert.False(switching.IsCompleted, "The switch didn't wait for the CDC relay");
+            await CleanUpAsync(db, captureInstance, $"(SELECT MAX(__$start_lsn) FROM cdc.[{captureInstance}_CT])");
+            Assert.Equal(1, await CountChangeTableRowsAsync(db, captureInstance));
+            var e = await Assert.ThrowsAsync<SqlException>(() => switching);
+
+            Assert.Equal(50000, e.Number);
+            Assert.Contains("on a gap", e.Message);
+            await AssertOnCdcAsync(db, captureInstance, feed);
+        }
+
         [Fact]
         public async Task MustRollBackWhenTheCdcRelayDoesntCatchUpInTime()
         {
@@ -381,6 +438,39 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             await AssertOnCdcAsync(db, captureInstance, feed);
             await db.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id) VALUES (1);");
             Assert.Equal(0, await feed.CountQueueAsync());
+        }
+
+        [Theory]
+        [InlineData("DELETE")]
+        [InlineData("INSERT, UPDATE, DELETE")]
+        public async Task MustFireATriggerBehindAnInsteadOfTriggerToCheckIt(string events)
+        {
+            await using var db = await _sql.CreateDatabaseAsync();
+            var (captureInstance, feed) = await PutOnCdcAsync(db, SourceName);
+            var insteadOf = $"dbo.[{_table}_InsteadOf]";
+            await db.ExecuteAsync($"CREATE TRIGGER {insteadOf} ON {feed.QualifiedTable} INSTEAD OF {events} AS SET NOCOUNT ON;");
+            await feed.DropProceduresAsync();
+            await db.ExecuteAsync($"ALTER TABLE dbo.[{_table}] DROP COLUMN Name;");
+
+            var e = await AssertRefusedAsync(db, captureInstance);
+
+            Assert.Contains("Invalid column name 'Name'", e.Message);
+            await AssertOnCdcAsync(db, captureInstance, feed);
+            Assert.False(await IsTriggerDisabledAsync(db, insteadOf), "The INSTEAD OF trigger was left disabled");
+        }
+
+        [Fact]
+        public async Task MustLeaveTheTablesInsteadOfTriggersEnabled()
+        {
+            await using var db = await _sql.CreateDatabaseAsync();
+            var (captureInstance, feed) = await PutOnCdcAsync(db, SourceName);
+            var insteadOf = $"dbo.[{_table}_InsteadOf]";
+            await db.ExecuteAsync($"CREATE TRIGGER {insteadOf} ON {feed.QualifiedTable} INSTEAD OF DELETE AS SET NOCOUNT ON;");
+
+            await SwitchAsync(db, captureInstance);
+
+            Assert.False(await IsTriggerDisabledAsync(db, insteadOf), "The INSTEAD OF trigger was left disabled");
+            Assert.False(await feed.IsTriggerDisabledAsync(), "The trigger wasn't enabled");
         }
 
         [Fact]
@@ -544,6 +634,22 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
 
         private static Task<int> CountParkedAsync(SqlServerFixture.TestDatabase db, string captureInstance)
             => db.ScalarAsync<int>($"SELECT COUNT(*) FROM {Quote(db.RelaySchema)}.Chatter_RelayParkedChanges WHERE CaptureInstance = N'{captureInstance}';");
+
+        private static Task<bool> IsTriggerDisabledAsync(SqlServerFixture.TestDatabase db, string trigger)
+            => db.ScalarAsync<bool>($"SELECT is_disabled FROM sys.triggers WHERE object_id = OBJECT_ID(N'{trigger.Replace("'", "''")}');");
+
+        /// <summary>
+        /// Runs CDC cleanup on the capture instance up to <paramref name="lowWaterMark"/>, a SQL expression for an LSN in
+        /// <c>cdc.lsn_time_mapping</c>: it removes the changes committed before it.
+        /// </summary>
+        private static Task CleanUpAsync(SqlServerFixture.TestDatabase db, string captureInstance, string lowWaterMark)
+            => db.ExecuteAsync($"""
+                DECLARE @lowWaterMark binary(10) = {lowWaterMark};
+                EXEC sys.sp_cdc_cleanup_change_table @capture_instance = {SqlScriptFile.Literal(captureInstance)}, @low_water_mark = @lowWaterMark, @threshold = 5000;
+                """);
+
+        private static Task<int> CountChangeTableRowsAsync(SqlServerFixture.TestDatabase db, string captureInstance)
+            => db.ScalarAsync<int>($"SELECT COUNT(*) FROM cdc.[{captureInstance}_CT];");
 
         private static Task<string> TriggerDefinitionAsync(SqlServerFixture.TestDatabase db, ServiceBrokerChangeFeed feed)
             => db.ScalarAsync<string>($"SELECT definition FROM sys.sql_modules WHERE object_id = OBJECT_ID(N'{feed.QualifiedTrigger}');");
