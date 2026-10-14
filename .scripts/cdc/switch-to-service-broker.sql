@@ -18,9 +18,10 @@
 -- table's columns have changed. Last, it fires the triggers with a statement that changes no row and rolls that back, so
 -- a trigger that no longer compiles fails the switch rather than every write after it.
 --
--- The transaction lasts at most about @timeoutSeconds, waits for locks included, so writes to the table wait at most
--- that long. Past it the script rolls back, changing nothing, and CDC goes on relaying the table. Cancelling the script
--- rolls it back too.
+-- Every wait, for locks included, ends within @timeoutSeconds: past it the script rolls back, changing nothing, and CDC
+-- goes on relaying the table. Writes to the table wait about that long at most, plus the time the install procedures
+-- and the table's triggers take to run once each at the end, which @timeoutSeconds doesn't cut short. Cancelling the
+-- script rolls it back too.
 --
 -- The CDC relay keeps polling the capture instance, stays healthy with a lag of 0, and relays none of its later changes.
 -- Remove the CDC source from the table's mappings when you redeploy; switch-to-cdc.sql replaces the seal if you switch
@@ -38,7 +39,7 @@ DECLARE @tableSchema sysname = N'dbo';
 DECLARE @tableName sysname = N'Event2';
 DECLARE @captureInstance sysname = N'dbo_Event2';   -- the CDC source mapping's CaptureInstance
 DECLARE @relaySchema sysname = N'Chatter';          -- the relay's IntegrationEventRelay:Schema
-DECLARE @timeoutSeconds int = 300;                  -- how long the script may hold up writes to the table, waits for locks included
+DECLARE @timeoutSeconds int = 300;                  -- how long the script may wait, for locks included, while it holds up writes to the table
 
 IF @@TRANCOUNT > 0
 	THROW 50000, N'Run the script outside a transaction: it commits the switch itself, or rolls all of it back.', 1;

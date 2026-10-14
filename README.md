@@ -247,7 +247,7 @@ Set the parameters at the top of the script and run it in the source database, o
 
 Each script takes a shared lock on the table, so writes to the table wait until it ends, including writes that arrive while it waits for the lock. A transaction that wrote to the table and is still open when the script starts must commit or roll back first. Reads aren't blocked, except for a moment at the end: disabling or enabling SqlChangeFeed's trigger waits for queries running on the table and holds up new ones until the script commits.
 
-The pause normally lasts a few seconds (the capture job scans the log every 5 seconds by default), and at most about `@timeoutSeconds` (default 300), waits for locks included. Past it the script rolls back, changing nothing, and the table stays on the source it was on; the error says what it was waiting for. Cancelling the script, or any error, rolls it back too.
+The pause normally lasts a few seconds (the capture job scans the log every 5 seconds by default), and at most about `@timeoutSeconds` (default 300), waits for locks included. Switching back adds the time SqlChangeFeed's install procedures and the table's triggers take to run once each at the end, which `@timeoutSeconds` doesn't cut short. Past `@timeoutSeconds` the script rolls back, changing nothing, and the table stays on the source it was on; the error says what it was waiting for. Cancelling the script, or any error, rolls it back too.
 
 ### Switching to CDC
 
