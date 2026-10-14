@@ -3,11 +3,17 @@
 -- committed before the switch, and SQL Service Broker every change committed after it.
 --
 -- Run it in the source database as a member of db_owner (it needs no server permission), on a table that
--- switch-to-cdc.sql switched to CDC, while the CDC relay is running. Run it before deploying the relay with the table's
--- mappings back on SQL Service Broker: that relay's SqlChangeFeed migrations re-create a trigger whose table's columns
--- have changed, enabled, and CDC would relay the table's changes too until the script ran. Changes committed after the
--- switch wait in the table's queue until that relay reads it. Run it outside a transaction: it commits the switch
--- itself, or rolls all of it back and changes nothing.
+-- switch-to-cdc.sql switched to CDC, while the CDC relay is running. Every CDC source of @captureInstance must have
+-- saved its checkpoint in @relaySchema before the script runs, and no other may start until the CDC source is removed
+-- from the table's mappings: the script waits for and seals only the checkpoints that exist. A source with no
+-- checkpoint saves one at its first poll with StartPosition Latest, but with Earliest only once it has relayed its
+-- first batch; one that saves it while the script runs can be sealed before it has relayed every change committed
+-- before the switch, and one that saves it after the seal relays changes committed after the switch too, which SQL
+-- Service Broker relays. Run it before deploying the relay with the table's mappings back on SQL Service Broker: that
+-- relay's SqlChangeFeed migrations re-create a trigger whose table's columns have changed, enabled, and CDC would relay
+-- the table's changes too until the script ran. Changes committed after the switch wait in the table's queue until that
+-- relay reads it. Run it outside a transaction: it commits the switch itself, or rolls all of it back and changes
+-- nothing.
 --
 -- It takes a shared lock on the table, so writes to it wait until the script ends (it waits, too, for transactions
 -- already writing to it to finish); reads don't, except for a moment at the end, while it enables the triggers. Holding
