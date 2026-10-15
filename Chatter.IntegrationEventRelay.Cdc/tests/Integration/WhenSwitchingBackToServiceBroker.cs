@@ -459,6 +459,38 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             Assert.False(await IsTriggerDisabledAsync(db, insteadOf), "The INSTEAD OF trigger was left disabled");
         }
 
+        [Theory]
+        [InlineData("INSERT")]
+        [InlineData("INSERT, UPDATE")]
+        public async Task MustFireATriggerOnATableWithOnlyAnIdentityColumnToCheckIt(string events)
+        {
+            await using var db = await _sql.CreateDatabaseAsync();
+            await db.ExecuteAsync($"CREATE TABLE dbo.[{_table}] (Id int IDENTITY PRIMARY KEY);");
+            var captureInstance = await db.EnableCdcAsync(_table);
+            var feed = await ServiceBrokerChangeFeed.InstallAsync<SwitchedEvent>(db.ConnectionString, _table);
+            var definition = await TriggerDefinitionAsync(db, feed);
+            Assert.Contains("AFTER INSERT, UPDATE, DELETE", definition);
+            await db.ExecuteAsync($"DROP TRIGGER {feed.QualifiedTrigger};");
+            await db.ExecuteAsync(definition.Replace("AFTER INSERT, UPDATE, DELETE", $"AFTER {events}", StringComparison.Ordinal));
+            await db.ExecuteAsync($"DISABLE TRIGGER {feed.QualifiedTrigger} ON {feed.QualifiedTable};");
+            await feed.DropProceduresAsync();
+            await SeedCheckpointAsync(db, captureInstance, SourceName);
+
+            // In the session that ran the script, IDENTITY_INSERT is off again: an insert that leaves out the identity column works
+            await using (var connection = new SqlConnection(db.ConnectionString))
+            {
+                await connection.OpenAsync();
+                await using (var command = new SqlCommand(SwitchScripts.RenderToServiceBroker("dbo", _table, captureInstance, db.RelaySchema), connection) { CommandTimeout = 360 })
+                    await command.ExecuteNonQueryAsync();
+                await using (var command = new SqlCommand($"INSERT INTO dbo.[{_table}] DEFAULT VALUES;", connection))
+                    await command.ExecuteNonQueryAsync();
+            }
+
+            Assert.False(await feed.IsTriggerDisabledAsync(), "The trigger wasn't enabled");
+            Assert.Equal(1, await db.ScalarAsync<int>($"SELECT COUNT(*) FROM dbo.[{_table}];"));
+            Assert.Equal(1, await feed.CountQueueAsync());
+        }
+
         [Fact]
         public async Task MustLeaveTheTablesInsteadOfTriggersEnabled()
         {
