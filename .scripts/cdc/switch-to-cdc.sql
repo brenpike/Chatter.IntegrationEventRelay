@@ -134,11 +134,12 @@ BEGIN TRY
 	-- SET LOCK_TIMEOUT only takes a constant, and a SET inside sp_executesql ends with it, so each statement that waits
 	-- for a lock runs in sp_executesql with the time left as its lock timeout. A lock it doesn't get in time (error 1222)
 	-- rolls the transaction back, rather than holding up the table's writers past @timeoutSeconds. XACT_ABORT stays on in
-	-- there, so cancelling the script rolls it back wherever it is.
+	-- there, so cancelling the script rolls it back wherever it is. The time left is read once and is never below 0: past
+	-- the deadline it's 0 (don't wait), never -1, which waits for ever.
 
 	-- Shared, so it waits for the table's open writing transactions and holds off new ones, but lets readers in
 	SET @lockTimeoutError = N'A transaction writing to the table didn''t finish within ' + @timeout + N' seconds, so the script couldn''t lock the table. Nothing was changed.';
-	SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+	SET @sql = N'SET LOCK_TIMEOUT ' + CAST((SELECT MAX(ms) FROM (VALUES (0), (DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline))) AS timeLeft (ms)) AS nvarchar(20)) + N';
 		DECLARE @locked int; SELECT TOP (1) @locked = 1 FROM ' + @table + N' WITH (TABLOCK, HOLDLOCK);';
 	EXEC sys.sp_executesql @sql;
 
@@ -161,7 +162,7 @@ BEGIN TRY
 
 		IF @messages IS NULL OR @messages > 0
 		BEGIN
-			SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+			SET @sql = N'SET LOCK_TIMEOUT ' + CAST((SELECT MAX(ms) FROM (VALUES (0), (DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline))) AS timeLeft (ms)) AS nvarchar(20)) + N';
 				' + @countQueues + N'
 				' + @countDeadLetters;
 			EXEC sys.sp_executesql @sql, N'@messages int OUTPUT, @deadLetters int OUTPUT', @messages = @messages OUTPUT, @deadLetters = @deadLetters OUTPUT;
@@ -195,7 +196,7 @@ BEGIN TRY
 		THROW 50000, N'CDC has no LSN for the capture instance yet. Nothing was changed.', 1;
 
 	SET @lockTimeoutError = N'A query reading the table didn''t finish within ' + @timeout + N' seconds, so the script couldn''t disable SqlChangeFeed''s trigger. Nothing was changed.';
-	SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+	SET @sql = N'SET LOCK_TIMEOUT ' + CAST((SELECT MAX(ms) FROM (VALUES (0), (DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline))) AS timeLeft (ms)) AS nvarchar(20)) + N';
 		UPDATE ' + @checkpoints + N' SET LastLsn = @seed, UpdatedAt = SYSUTCDATETIME()
 		WHERE SourceName = @sourceName AND CaptureInstance = @captureInstance;
 		IF @@ROWCOUNT = 0

@@ -165,11 +165,12 @@ BEGIN TRY
 	-- SET LOCK_TIMEOUT only takes a constant, and a SET inside sp_executesql ends with it, so each statement that waits
 	-- for a lock runs in sp_executesql with the time left as its lock timeout. A lock it doesn't get in time (error 1222)
 	-- rolls the transaction back, rather than holding up the table's writers past @timeoutSeconds. XACT_ABORT stays on in
-	-- there, so cancelling the script rolls it back wherever it is.
+	-- there, so cancelling the script rolls it back wherever it is. The time left is read once and is never below 0: past
+	-- the deadline it's 0 (don't wait), never -1, which waits for ever.
 
 	-- Writers wait from here; transactions already writing to the table finish first
 	SET @lockTimeoutError = N'A transaction writing to the table didn''t finish within ' + @timeout + N' seconds, so the script couldn''t lock the table. Nothing was changed.';
-	SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+	SET @sql = N'SET LOCK_TIMEOUT ' + CAST((SELECT MAX(ms) FROM (VALUES (0), (DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline))) AS timeLeft (ms)) AS nvarchar(20)) + N';
 		DECLARE @locked int; SELECT TOP (1) @locked = 1 FROM ' + @table + N' WITH (TABLOCK, HOLDLOCK);';
 	EXEC sys.sp_executesql @sql;
 
@@ -197,14 +198,14 @@ BEGIN TRY
 	DECLARE @last binary(10), @behind int;
 	SET @lockTimeoutError = N'A transaction writing to the capture instance''s change table (CDC''s capture or cleanup job) didn''t finish within ' + @timeout
 		+ N' seconds, so the script couldn''t read its last change. Nothing was changed.';
-	SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+	SET @sql = N'SET LOCK_TIMEOUT ' + CAST((SELECT MAX(ms) FROM (VALUES (0), (DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline))) AS timeLeft (ms)) AS nvarchar(20)) + N';
 		SELECT @last = MAX(__$start_lsn) FROM ' + @changeTable + N';';
 	EXEC sys.sp_executesql @sql, N'@last binary(10) OUTPUT', @last OUTPUT;
 	WHILE 1 = 1
 	BEGIN
 		SET @lockTimeoutError = N'A transaction writing to the relay''s checkpoints, or CDC''s cleanup job moving the capture instance''s oldest LSN, didn''t finish within ' + @timeout
 			+ N' seconds, so the script couldn''t tell whether a CDC source is on a gap. Nothing was changed.';
-		SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+		SET @sql = N'SET LOCK_TIMEOUT ' + CAST((SELECT MAX(ms) FROM (VALUES (0), (DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline))) AS timeLeft (ms)) AS nvarchar(20)) + N';
 			' + @countGapped;
 		EXEC sys.sp_executesql @sql, N'@captureInstance sysname, @oldest binary(10) OUTPUT, @gapped int OUTPUT, @gappedLsn binary(10) OUTPUT',
 			@captureInstance, @oldest OUTPUT, @gapped OUTPUT, @gappedLsn OUTPUT;
@@ -215,7 +216,7 @@ BEGIN TRY
 		END
 		SET @lockTimeoutError = N'A transaction writing to the relay''s checkpoints didn''t finish within ' + @timeout
 			+ N' seconds, so the script couldn''t tell whether the CDC sources had caught up. Nothing was changed.';
-		SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+		SET @sql = N'SET LOCK_TIMEOUT ' + CAST((SELECT MAX(ms) FROM (VALUES (0), (DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline))) AS timeLeft (ms)) AS nvarchar(20)) + N';
 			SELECT @behind = COUNT(*) FROM ' + @checkpoints + N' WHERE CaptureInstance = @captureInstance AND LastLsn < @last;';
 		EXEC sys.sp_executesql @sql, N'@captureInstance sysname, @last binary(10), @behind int OUTPUT', @captureInstance, @last, @behind OUTPUT;
 		IF @behind = 0
@@ -234,7 +235,7 @@ BEGIN TRY
 		+ N' seconds, so the script couldn''t tell whether a change of the capture instance is parked. Nothing was changed.';
 	IF OBJECT_ID(@parkedChanges, N'U') IS NOT NULL
 	BEGIN
-		SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+		SET @sql = N'SET LOCK_TIMEOUT ' + CAST((SELECT MAX(ms) FROM (VALUES (0), (DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline))) AS timeLeft (ms)) AS nvarchar(20)) + N';
 			' + @countParked;
 		EXEC sys.sp_executesql @sql, N'@captureInstance sysname, @parked int OUTPUT', @captureInstance, @parked OUTPUT;
 	END
@@ -244,7 +245,7 @@ BEGIN TRY
 	DECLARE @sealedCount int;
 	SET @lockTimeoutError = N'A transaction using the relay''s checkpoints didn''t finish within ' + @timeout
 		+ N' seconds, so the script couldn''t seal them. Nothing was changed.';
-	SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+	SET @sql = N'SET LOCK_TIMEOUT ' + CAST((SELECT MAX(ms) FROM (VALUES (0), (DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline))) AS timeLeft (ms)) AS nvarchar(20)) + N';
 		UPDATE ' + @checkpoints + N' SET LastLsn = @sealed, UpdatedAt = SYSUTCDATETIME() WHERE CaptureInstance = @captureInstance; SET @sealedCount = @@ROWCOUNT;';
 	EXEC sys.sp_executesql @sql, N'@captureInstance sysname, @sealed binary(10), @sealedCount int OUTPUT', @captureInstance, @sealed, @sealedCount OUTPUT;
 
@@ -259,11 +260,11 @@ BEGIN TRY
 		SET @install = QUOTENAME(@tableSchema) + N'.' + QUOTENAME(N'Chatter_InstallChangeFeed_' + @suffix);
 		IF OBJECT_ID(@install, N'P') IS NOT NULL
 		BEGIN
-			SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+			SET @sql = N'SET LOCK_TIMEOUT ' + CAST((SELECT MAX(ms) FROM (VALUES (0), (DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline))) AS timeLeft (ms)) AS nvarchar(20)) + N';
 				EXEC ' + @install + N';';
 			EXEC sys.sp_executesql @sql;
 		END
-		SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+		SET @sql = N'SET LOCK_TIMEOUT ' + CAST((SELECT MAX(ms) FROM (VALUES (0), (DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline))) AS timeLeft (ms)) AS nvarchar(20)) + N';
 			ENABLE TRIGGER ' + QUOTENAME(@tableSchema) + N'.' + QUOTENAME(N'Chatter_ChangeFeedTrigger_' + @suffix) + N' ON ' + @table + N';';
 		EXEC sys.sp_executesql @sql;
 	END
@@ -301,7 +302,7 @@ BEGIN TRY
 	SAVE TRANSACTION Probe;
 	IF @disableInsteadOf IS NOT NULL
 	BEGIN
-		SET @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+		SET @sql = N'SET LOCK_TIMEOUT ' + CAST((SELECT MAX(ms) FROM (VALUES (0), (DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline))) AS timeLeft (ms)) AS nvarchar(20)) + N';
 			' + @disableInsteadOf;
 		EXEC sys.sp_executesql @sql;
 	END
@@ -309,7 +310,7 @@ BEGIN TRY
 	SET @id = 0;
 	WHILE 1 = 1
 	BEGIN
-		SELECT TOP (1) @id = Id, @sql = N'SET LOCK_TIMEOUT ' + CAST(CASE WHEN SYSDATETIME() < @deadline THEN DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline) ELSE 0 END AS nvarchar(20)) + N';
+		SELECT TOP (1) @id = Id, @sql = N'SET LOCK_TIMEOUT ' + CAST((SELECT MAX(ms) FROM (VALUES (0), (DATEDIFF_BIG(millisecond, SYSDATETIME(), @deadline))) AS timeLeft (ms)) AS nvarchar(20)) + N';
 			' + Statement
 		FROM @probes WHERE Id > @id ORDER BY Id;
 		IF @@ROWCOUNT = 0
