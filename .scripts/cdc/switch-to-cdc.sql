@@ -10,6 +10,12 @@
 -- relays. A CDC relay whose checkpoint switch-to-service-broker.sql sealed relays nothing and can keep running; it
 -- starts from the new checkpoint at its next poll.
 --
+-- While it runs, don't deploy the relay or SqlChangeFeed migrations for the table, and don't change its SqlChangeFeed
+-- services, queues, dead-letter queues or procedures. The script reads the table's triggers before it locks the table,
+-- so a trigger created in between isn't switched: it stays enabled, and both sources relay its event type's changes.
+-- The lock doesn't hold off changes to the services, queues, dead-letter queues or procedures, which aren't the
+-- table's.
+--
 -- In one transaction, it:
 -- 1. Takes a shared lock on the table. Writes to the table wait until the script ends; reads don't, until the last
 --    step. A transaction that wrote to the table and is still open when the script starts must finish first.

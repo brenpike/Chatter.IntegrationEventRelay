@@ -15,6 +15,11 @@
 -- relay reads it. Run it outside a transaction: it commits the switch itself, or rolls all of it back and changes
 -- nothing.
 --
+-- While it runs, don't deploy the relay or SqlChangeFeed migrations for the table, and don't change its SqlChangeFeed
+-- services, queues, dead-letter queues or procedures. The script reads the table's triggers before it locks the table,
+-- so a trigger created in between isn't switched: it stays disabled, and nobody relays its event type's changes. The
+-- lock doesn't hold off changes to the services, queues, dead-letter queues or procedures, which aren't the table's.
+--
 -- It takes a shared lock on the table, so writes to it wait until the script ends (it waits, too, for transactions
 -- already writing to it to finish); reads don't, except for a moment at the end, while it enables the triggers. Holding
 -- the lock, it waits until CDC's capture job has read the log past the moment it took it, and then until every CDC
