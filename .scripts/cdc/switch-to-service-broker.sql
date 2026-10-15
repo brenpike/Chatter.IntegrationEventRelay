@@ -5,7 +5,9 @@
 -- Run it in the source database as a member of db_owner (it needs no server permission), on a table that
 -- switch-to-cdc.sql switched to CDC, while the CDC relay is running. Every CDC source of @captureInstance must have
 -- saved its checkpoint in @relaySchema before the script runs, and no other may start until the CDC source is removed
--- from the table's mappings: the script waits for and seals only the checkpoints that exist. A source with no
+-- from the table's mappings: the script waits for and seals only the checkpoints that exist. No CDC source of the table's
+-- other capture instance, if it has one (after a schema change), may relay it either: the script seals only
+-- @captureInstance's checkpoints, and refuses an unsealed checkpoint of the other one in @relaySchema. A source with no
 -- checkpoint saves one at its first poll with StartPosition Latest, but with Earliest only once it has relayed its
 -- first batch; one that saves it while the script runs can be sealed before it has relayed every change committed
 -- before the switch, and one that saves it after the seal relays changes committed after the switch too, which SQL
@@ -44,7 +46,9 @@
 -- It refuses, changing nothing, when the table has no SqlChangeFeed trigger or one that's enabled (it isn't on CDC, or
 -- was switched to CDC by dropping its change feed, which this script can't undo), the capture instance doesn't capture
 -- the table, SQL Service Broker is disabled in the database or a trigger's service or queue is missing or disabled, no
--- CDC source has a checkpoint for the capture instance in @relaySchema, any change of the capture instance is parked
+-- CDC source has a checkpoint for the capture instance in @relaySchema, a CDC source of the table's other capture
+-- instance has a checkpoint in @relaySchema that isn't sealed (it would keep relaying the table after the switch: remove
+-- it from the table's mappings and delete its checkpoint), any change of the capture instance is parked
 -- (replay or delete them first, also when one is parked while it waits), or a CDC source is on a gap, before it waits or
 -- while it does: CDC cleanup has removed changes past its checkpoint, which nothing would relay after the switch (delete
 -- the checkpoints of sources that no longer run; for a running source see "Gaps" under "Limitations" in the README). It
@@ -119,6 +123,24 @@ EXEC sys.sp_executesql @sql, N'@captureInstance sysname, @sources int OUTPUT', @
 IF @sources = 0
 	THROW 50000, N'No CDC source has a checkpoint for the capture instance in @relaySchema, so none relays it. Check @captureInstance and @relaySchema.', 1;
 
+DECLARE @sealed binary(10) = 0xFFFFFFFFFFFFFFFFFFFE;  -- one below the largest LSN, which the relay can't step past
+-- A table has at most two capture instances: the script seals only @captureInstance's checkpoints, so a CDC source of the
+-- other one would keep relaying the table after the switch
+DECLARE @otherInstance sysname = (SELECT capture_instance FROM cdc.change_tables WHERE source_object_id = @tableId AND capture_instance <> @captureInstance);
+DECLARE @otherSources int = 0;
+IF @otherInstance IS NOT NULL
+BEGIN
+	SET @sql = N'SELECT @otherSources = COUNT(*) FROM ' + @checkpoints + N' WHERE CaptureInstance = @otherInstance AND LastLsn < @sealed;';
+	EXEC sys.sp_executesql @sql, N'@otherInstance sysname, @sealed binary(10), @otherSources int OUTPUT', @otherInstance, @sealed, @otherSources OUTPUT;
+END
+IF @otherSources > 0
+BEGIN
+	SET @error = CONVERT(nvarchar(11), @otherSources) + N' CDC source(s) of the table''s other capture instance ' + QUOTENAME(@otherInstance)
+		+ N' have a checkpoint in ' + @checkpoints + N' that isn''t sealed, and would keep relaying the table alongside SQL Service Broker after the switch. '
+		+ N'Remove those sources from the table''s mappings and delete their checkpoints (the old capture instance''s, after a schema change), or check @captureInstance. Nothing was changed.';
+	THROW 50000, @error, 1;
+END
+
 DECLARE @parked int = 0;
 DECLARE @countParked nvarchar(max) = N'SELECT @parked = COUNT(*) FROM ' + @parkedChanges + N' WHERE CaptureInstance = @captureInstance;';
 DECLARE @parkedError nvarchar(2048) = N'Changes of the capture instance are parked in ' + @parkedChanges
@@ -157,7 +179,6 @@ DECLARE @lockTimeoutError nvarchar(2048);
 
 SET XACT_ABORT ON;
 SET DEADLOCK_PRIORITY LOW;
-DECLARE @sealed binary(10) = 0xFFFFFFFFFFFFFFFFFFFE;  -- one below the largest LSN, which the relay can't step past
 DECLARE @probing bit = 0;
 BEGIN TRY
 	BEGIN TRANSACTION;

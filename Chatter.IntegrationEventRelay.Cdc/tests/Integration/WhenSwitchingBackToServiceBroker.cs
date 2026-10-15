@@ -229,6 +229,30 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
         }
 
         [Fact]
+        public async Task MustRefuseWhileASourceOfTheTablesOtherCaptureInstanceHasACheckpointThatIsntSealed()
+        {
+            await using var db = await _sql.CreateDatabaseAsync();
+            var (captureInstance, feed) = await PutOnCdcAsync(db, SourceName);
+            var otherInstance = await db.EnableCdcAsync(_table, captureInstance: $"{captureInstance}_v2");
+            await SeedCheckpointAsync(db, otherInstance, "v2-cdc");
+            // A source of another table's capture instance, whose checkpoint isn't sealed, isn't the table's
+            var otherTableInstance = await db.CreateCapturedTableAsync($"{_table}_other");
+            await SeedCheckpointAsync(db, otherTableInstance, "other-table-cdc");
+
+            var e = await AssertRefusedAsync(db, captureInstance);
+
+            Assert.Contains($"[{otherInstance}]", e.Message);
+            Assert.Contains("isn't sealed", e.Message);
+            Assert.EndsWith("Nothing was changed.", e.Message);
+            await AssertOnCdcAsync(db, captureInstance, feed);
+
+            await db.ExecuteAsync($"UPDATE {Quote(db.RelaySchema)}.Chatter_RelayCheckpoints SET LastLsn = 0xFFFFFFFFFFFFFFFFFFFE WHERE CaptureInstance = N'{otherInstance}';");
+            await SwitchAsync(db, captureInstance);
+
+            Assert.False(await feed.IsTriggerDisabledAsync(), "The trigger wasn't enabled");
+        }
+
+        [Fact]
         public async Task MustRollBackWhenAChangeIsParkedWhileItWaits()
         {
             await using var db = await _sql.CreateDatabaseAsync();
