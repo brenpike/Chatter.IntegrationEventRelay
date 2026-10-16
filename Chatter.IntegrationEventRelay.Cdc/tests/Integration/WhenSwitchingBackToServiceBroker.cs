@@ -516,6 +516,42 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
         }
 
         [Fact]
+        public async Task MustTurnIdentityInsertOffWhenATriggerOnATableWithOnlyAnIdentityColumnFails()
+        {
+            await using var db = await _sql.CreateDatabaseAsync();
+            await db.ExecuteAsync($"CREATE TABLE dbo.[{_table}] (Id int IDENTITY PRIMARY KEY);");
+            var captureInstance = await db.EnableCdcAsync(_table);
+            var feed = await ServiceBrokerChangeFeed.InstallAsync<SwitchedEvent>(db.ConnectionString, _table);
+            var definition = await TriggerDefinitionAsync(db, feed);
+            Assert.Contains("AFTER INSERT, UPDATE, DELETE", definition);
+            Assert.Contains("SET NOCOUNT ON;", definition);
+            await db.ExecuteAsync($"DROP TRIGGER {feed.QualifiedTrigger};");
+            await db.ExecuteAsync(definition
+                .Replace("AFTER INSERT, UPDATE, DELETE", "AFTER INSERT", StringComparison.Ordinal)
+                .Replace("SET NOCOUNT ON;", "SET NOCOUNT ON; THROW 50001, N'The trigger fails', 1;", StringComparison.Ordinal));
+            await db.ExecuteAsync($"DISABLE TRIGGER {feed.QualifiedTrigger} ON {feed.QualifiedTable};");
+            await feed.DropProceduresAsync();
+            await SeedCheckpointAsync(db, captureInstance, SourceName);
+
+            // In the session that ran the script, IDENTITY_INSERT is off again: an insert that leaves out the identity column works
+            await using (var connection = new SqlConnection(db.ConnectionString))
+            {
+                await connection.OpenAsync();
+                await using (var command = new SqlCommand(SwitchScripts.RenderToServiceBroker("dbo", _table, captureInstance, db.RelaySchema), connection) { CommandTimeout = 360 })
+                {
+                    var e = await Assert.ThrowsAsync<SqlException>(() => command.ExecuteNonQueryAsync());
+                    Assert.Equal(50000, e.Number);
+                    Assert.Contains("The trigger fails", e.Message);
+                }
+                await using (var command = new SqlCommand($"INSERT INTO dbo.[{_table}] DEFAULT VALUES;", connection))
+                    await command.ExecuteNonQueryAsync();
+            }
+
+            await AssertOnCdcAsync(db, captureInstance, feed);
+            Assert.Equal(1, await db.ScalarAsync<int>($"SELECT COUNT(*) FROM dbo.[{_table}];"));
+        }
+
+        [Fact]
         public async Task MustLeaveTheTablesInsteadOfTriggersEnabled()
         {
             await using var db = await _sql.CreateDatabaseAsync();

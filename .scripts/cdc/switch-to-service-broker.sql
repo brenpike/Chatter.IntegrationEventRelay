@@ -302,8 +302,9 @@ BEGIN TRY
 
 	-- Fires each trigger with a statement that changes no row, by the first of DELETE, UPDATE and INSERT it fires on that
 	-- the script can run on the table: UPDATE needs a column it can set, and INSERT one it can name, which on a table whose
-	-- other columns are all generated is its identity column, with IDENTITY_INSERT on. The triggers send a message even
-	-- for no row, so this is rolled back to a savepoint. An enabled INSTEAD OF trigger on the table runs in place of the
+	-- other columns are all generated is its identity column, with IDENTITY_INSERT on. Like any SET in sp_executesql,
+	-- IDENTITY_INSERT ends with it, also when a trigger fails or the script is cancelled, so it's never left on for the
+	-- session. The triggers send a message even for no row, so this is rolled back to a savepoint. An enabled INSTEAD OF trigger on the table runs in place of the
 	-- statement, and the triggers don't fire, so the table's others are disabled after the savepoint and rolling back to it
 	-- enables them again. @probing is set after that, so failing to disable one isn't reported as a SqlChangeFeed trigger
 	-- that fails.
