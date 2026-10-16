@@ -137,6 +137,31 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
         }
 
         [Fact]
+        public async Task MustSwitchInASessionThatSetAnotherIsolationLevel()
+        {
+            const int timeoutSeconds = 90;
+            await using var db = await _sql.CreateDatabaseAsync();
+            var (captureInstance, feed) = await PutOnCdcAsync(db, SourceName);
+            await using var receiver = ServiceBrokerReceiver.Start(feed);
+            await using var relay = CdcRelay.Start(db, captureInstance, _table, SourceName);
+            await relay.StopAsync();
+            await db.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id) VALUES (1);");
+            await WaitForCaptureAsync(db, captureInstance, 1);
+
+            // The switch reads the CDC source's checkpoint before the source moves it: a read that kept its lock would hold off the move
+            var switching = SwitchAsync(db.ConnectionString, "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;\n"
+                + SwitchScripts.RenderToServiceBroker("dbo", _table, captureInstance, db.RelaySchema, timeoutSeconds), timeoutSeconds);
+            Assert.NotSame(switching, await Task.WhenAny(switching, Task.Delay(TimeSpan.FromSeconds(10))));
+            relay.Resume();
+            await switching;
+            await db.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id) VALUES (2);");
+            await WaitUntilAsync(() => receiver.RowIds.Count >= 1);
+
+            Assert.Equal(new[] { 1 }, relay.RowIds);
+            Assert.Equal(new[] { 2 }, receiver.RowIds);
+        }
+
+        [Fact]
         public async Task MustLeaveTheCdcRelayHealthyCaughtUpAndRelayingNothingMore()
         {
             await using var db = await _sql.CreateDatabaseAsync();

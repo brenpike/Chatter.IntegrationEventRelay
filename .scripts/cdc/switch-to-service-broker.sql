@@ -191,6 +191,9 @@ DECLARE @lockTimeoutError nvarchar(2048);
 
 SET XACT_ABORT ON;
 SET DEADLOCK_PRIORITY LOW;
+-- Whatever the session set: a read that kept its locks until the end, or read a snapshot, would hold off or miss CDC's
+-- capture job and the CDC sources moving their checkpoints, so the script would time out
+SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
 DECLARE @probing bit = 0;
 BEGIN TRY
 	BEGIN TRANSACTION;

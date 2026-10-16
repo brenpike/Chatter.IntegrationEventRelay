@@ -136,6 +136,9 @@ DECLARE @error nvarchar(2048), @sql nvarchar(max), @seed binary(10);
 
 SET XACT_ABORT ON;
 SET DEADLOCK_PRIORITY LOW;
+-- Whatever the session set: a read that kept its locks until the end, or read a snapshot, would hold off or miss the
+-- relay draining the queues and CDC's capture job, so the script would time out
+SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
 BEGIN TRY
 	BEGIN TRAN;
 

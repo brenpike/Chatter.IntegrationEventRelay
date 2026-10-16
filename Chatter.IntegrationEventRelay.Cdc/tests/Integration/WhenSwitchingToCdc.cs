@@ -127,6 +127,26 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
         }
 
         [Fact]
+        public async Task MustSwitchInASessionThatSetAnotherIsolationLevel()
+        {
+            await using var db = await _sql.CreateDatabaseAsync();
+            var (captureInstance, feed) = await CreateServiceBrokerTableAsync(db);
+            await InsertAsync(feed, 1);
+
+            // The switch counts the message before the relay receives it: a count that kept its lock would hold off the receive
+            var switching = ExecuteAsync(db.ConnectionString, "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;\n"
+                + SwitchScripts.RenderToCdc("dbo", _table, captureInstance, SourceName, timeoutSeconds: ScriptTimeoutSeconds), ScriptTimeoutSeconds);
+            await WaitUntilAsync(() => CountTableLocksAsync(db, feed, "GRANT"));
+            await Task.Delay(Blocked);
+            await using var receiver = ServiceBrokerReceiver.Start(feed);
+            await switching;
+            await InsertAsync(feed, 2);
+
+            Assert.Equal(new[] { 2 }, await RelayWithCdcAsync(db, captureInstance, inserted: 2));
+            Assert.Equal(new[] { 1 }, receiver.RowIds);
+        }
+
+        [Fact]
         public async Task MustWaitForAReceiveThatRollsBackUntilTheRelayReceivesItAgain()
         {
             await using var db = await _sql.CreateDatabaseAsync();
