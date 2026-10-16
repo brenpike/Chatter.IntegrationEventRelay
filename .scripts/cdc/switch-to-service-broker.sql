@@ -44,8 +44,8 @@
 -- Holding the lock, a transaction of CDC's capture or cleanup job writing cdc.lsn_time_mapping, or one changing the
 -- catalog, holds up the read, and writes to the table with it, until it ends. So writes to the table wait about
 -- @timeoutSeconds at most, plus any such wait, plus the time the install procedures and the table's triggers take to
--- run once each at the end, which @timeoutSeconds doesn't cut short. If the script doesn't finish, cancel it: that
--- rolls it back and changes nothing.
+-- run once each at the end, which @timeoutSeconds doesn't cut short. If the script doesn't finish, cancel it: it sets
+-- XACT_ABORT ON, so SQL Server rolls it back and nothing changes.
 --
 -- The CDC relay keeps polling the capture instance, stays healthy with a lag of 0, and relays none of its later changes.
 -- Remove the CDC source from the table's mappings when you redeploy; switch-to-cdc.sql replaces the seal if you switch

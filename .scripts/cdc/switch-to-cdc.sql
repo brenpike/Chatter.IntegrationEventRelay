@@ -40,7 +40,7 @@
 -- cleanup job is moving the capture instance's oldest LSN in cdc.change_tables. Holding the lock, a transaction of
 -- CDC's capture or cleanup job writing cdc.lsn_time_mapping or cdc.change_tables holds up the read, and writes to the
 -- table with it, until it ends. So writes to the table wait about @timeoutSeconds at most, plus any such wait. If the
--- script doesn't finish, cancel it: that rolls it back and changes nothing.
+-- script doesn't finish, cancel it: it sets XACT_ABORT ON, so SQL Server rolls it back and nothing changes.
 --
 -- It refuses, changing nothing: inside a transaction; if the capture instance doesn't exist or captures another table;
 -- if the table has no SqlChangeFeed trigger (Chatter_ChangeFeedTrigger_<SourceEventType>), or a trigger's service or
