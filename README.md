@@ -19,6 +19,13 @@
     - [Metrics and health check](#metrics-and-health-check)
     - [Limitations](#limitations)
   - [Switching a table from SQL Service Broker to CDC](#switching-a-table-from-sql-service-broker-to-cdc)
+    - [The pause](#the-pause)
+    - [Switching to CDC](#switching-to-cdc)
+    - [Switching back to SQL Service Broker](#switching-back-to-sql-service-broker)
+    - [Sealed checkpoints](#sealed-checkpoints)
+    - [Dead letters](#dead-letters)
+    - [Removing SqlChangeFeed's objects](#removing-sqlchangefeeds-objects)
+    - [Switching limitations](#switching-limitations)
   - [Upgrading to 0.4.0](#upgrading-to-040)
     - [Migrating mappers](#migrating-mappers)
   - [Upgrading to 0.3.0](#upgrading-to-030)
@@ -232,32 +239,83 @@ It is unhealthy when a poller stopped on a gap, failed `FailuresBeforeCritical` 
 
 ## Switching a table from SQL Service Broker to CDC
 
-The goal is that each change is relayed by only one of the two sources. Pick a switch point: the source you switch away from relays every change committed before it, including changes it set aside, and the source you switch to relays every change committed after it. Each source still delivers at least once (see [Delivery semantics](#delivery-semantics)). Do it in a short write pause on the table; without one, changes made during the switch are relayed by both sources, with different message ids.
+Two scripts switch a table between the change sources: [`.scripts/cdc/switch-to-cdc.sql`](.scripts/cdc/switch-to-cdc.sql) from SQL Service Broker to CDC, and [`.scripts/cdc/switch-to-service-broker.sql`](.scripts/cdc/switch-to-service-broker.sql) back. Each picks a switch point so that every change is relayed by only one of the two sources: the source you switch away from relays every change committed before it, and the source you switch to every change committed after it. Each source still delivers at least once (see [Delivery semantics](#delivery-semantics)), but a change relayed by both would be published twice, with different message ids.
 
-Apart from enabling CDC (see [Enable CDC](#enable-cdc)), the steps need `db_owner` in the source database. Step 4, and step 1 of the switch back, also query `sys.dm_db_log_stats`, which needs `VIEW SERVER STATE` (on SQL Server 2022, `VIEW SERVER PERFORMANCE STATE` is enough); `db_owner` alone isn't enough for it.
+Set the parameters at the top of the script and run it in the source database, on its own (not inside a transaction), as a member of `db_owner`. It needs no server permission. SQL Server Agent and CDC's capture job must be running. The script commits the switch in one transaction, or rolls all of it back and changes nothing.
 
-1. Enable CDC on the table and create the relay's tables ([Enable CDC](#enable-cdc)), and grant the [permissions](#permissions). The current relay keeps running on SQL Service Broker.
-2. Pause writes to the table: stop its writers, then wait until every transaction that wrote to it has committed or rolled back, since one still open can commit after the switch point. This takes an exclusive lock on the table, so it waits for them and returns once they all have:
+### The pause
+
+Each script takes a shared lock on the table, so writes to the table wait until it ends, including writes that arrive while it waits for the lock. A transaction that wrote to the table and is still open when the script starts must commit or roll back first. Reads aren't blocked, except for a moment at the end: disabling or enabling SqlChangeFeed's trigger waits for queries running on the table and holds up new ones until the script commits.
+
+The pause normally lasts a few seconds (the capture job scans the log every 5 seconds by default). The scripts' waits for the relay, the capture job and the CDC sources end within about `@timeoutSeconds` (default 300), and so do the lock waits of the statements they run holding the lock, except their reads of `cdc.lsn_time_mapping` while they wait for the capture job, `switch-to-cdc.sql`'s read of the oldest and latest LSN it picks the checkpoint from, and `switch-to-service-broker.sql`'s reads of the catalog. Switching back adds the time SqlChangeFeed's install procedures and the table's triggers take to run once each at the end, which `@timeoutSeconds` doesn't cut short. Past `@timeoutSeconds` the script rolls back, changing nothing, and the table stays on the source it was on; the error says what it was waiting for. Cancelling the script, or any error, rolls it back too.
+
+Those reads, and the checks a script makes before it locks the table, aren't bounded by `@timeoutSeconds`: one blocked by another transaction's lock waits until that transaction ends. Before the lock that holds up no writes; a check waits, for example, while a relay transaction is still writing its checkpoint, or CDC's cleanup job is moving the capture instance's oldest LSN. Holding the lock, a transaction of CDC's capture or cleanup job writing CDC's metadata, or one changing the catalog, holds up the read, and writes to the table with it, until it ends. If the script doesn't finish, cancel it: the scripts set `XACT_ABORT ON`, so SQL Server rolls it back and nothing changes.
+
+### Switching to CDC
+
+Before running `switch-to-cdc.sql`:
+
+1. Enable CDC on the table, create the relay's tables ([Enable CDC](#enable-cdc)), and grant the relay's login ([Permissions](#permissions)).
+2. Keep the relay running with the table's mappings on SQL Service Broker: the script waits for it to drain the table's queues.
+3. Don't relay the capture instance with CDC as `@sourceName` yet. With no checkpoint, the source starts from its `StartPosition`, and from `Earliest` it relays changes that SQL Service Broker relays too. Nor relay the table with any other CDC source: another `SourceName` of the capture instance, or a source of the table's other capture instance (for example the old one after a [schema change](#limitations)). The script seeds only `@sourceName`'s checkpoint, and refuses while another source of the table has a checkpoint in `@relaySchema` that isn't [sealed](#sealed-checkpoints): remove those sources from the table's mappings and delete their checkpoints.
+
+Set `@tableSchema`, `@tableName`, `@captureInstance` (the mapping's `CaptureInstance`), `@sourceName` (the CDC source's name in `Sources`), `@relaySchema` (the relay's `Schema`), `@keepDeadLetters` and `@timeoutSeconds`. Holding the lock, the script:
+
+1. Waits until the relay has drained every SqlChangeFeed queue of the table (`Chatter_Queue_<SourceEventType>`), and the capture job has read the log past the moment it took the lock. A message the relay has received but not committed counts until it commits, or goes back to the queue if the relay rolls back.
+2. Refuses if a dead-letter queue of the table holds messages (see [Dead letters](#dead-letters)).
+3. Saves `@sourceName`'s checkpoint of the capture instance at the latest change CDC has captured, replacing an earlier or [sealed](#sealed-checkpoints) one, so CDC relays only changes committed after the switch.
+4. Disables SqlChangeFeed's triggers on the table (`Chatter_ChangeFeedTrigger_<SourceEventType>`, one per source event type), and commits.
+
+Then deploy the relay with the CDC source configured ([Configure the relay](#configure-the-relay)) and the table's mappings switched to it with `Source`. Mappers don't change. Changes committed after the switch wait in the change table until the relay reads it. A CDC relay that is already running with a checkpoint sealed by an earlier switch back can keep running: it relays from the new checkpoint at its next poll.
+
+SQL Service Broker relays nothing more of the table. The table's queues, services, dead-letter queues and procedures stay, with the trigger disabled, so the table can be switched back; see [Removing SqlChangeFeed's objects](#removing-sqlchangefeeds-objects) to remove them for good.
+
+The script refuses, changing nothing, inside a transaction; when the capture instance doesn't exist or captures another table, or the relay's tables don't exist in `@relaySchema`; when the table has no SqlChangeFeed trigger, or one is disabled (the table is on CDC already, so running the script again after it succeeded is refused); when SQL Service Broker is disabled in the database, or a trigger's service or queue is missing or disabled; and when a CDC source of the table other than `@sourceName`'s of the capture instance has a checkpoint in `@relaySchema` that isn't sealed, since it would relay the table's changes alongside SQL Service Broker before the switch and `@sourceName` after it.
+
+### Switching back to SQL Service Broker
+
+`switch-to-service-broker.sql` switches back a table that `switch-to-cdc.sql` switched. Before running it:
+
+1. Keep the relay running with the table's mappings on CDC: the script waits for every CDC source with a checkpoint for the capture instance in `@relaySchema` to catch up. A source stopped on a gap ([Gaps](#limitations)) can't catch up, and the script refuses it: CDC cleanup has removed changes it hadn't relayed, and sealing its checkpoint would hide them.
+2. Make sure every CDC source of the capture instance has saved a checkpoint in `@relaySchema`, and start no other source of it until you've redeployed without the CDC source. The script sees a source only by its checkpoint: it waits for and seals the checkpoints that exist. A source with no checkpoint saves one at its first poll with `StartPosition` `Latest`, but with `Earliest` only once it has relayed its first batch. One that saves it while the script runs can be sealed before it has relayed every change committed before the switch, and one that saves it after the seal relays changes committed after the switch, which SQL Service Broker relays too. The same goes for every other CDC source of the table: if the table has another capture instance (for example the old one after a [schema change](#limitations)), seal or delete the checkpoints of its sources in `@relaySchema` and remove those sources from the table's mappings. The script seals only `@captureInstance`'s checkpoints, and refuses while a source of the other capture instance has a checkpoint that isn't sealed.
+3. Replay or delete the capture instance's parked changes ([Error policy and parked changes](#error-policy-and-parked-changes)). Nothing would relay them after the switch, so the script refuses while any is parked, including one parked while it waits.
+4. Don't deploy the relay with the table's mappings back on SQL Service Broker yet. Its SqlChangeFeed migrations re-create, enabled, a trigger whose table's columns changed while the table was on CDC; both sources would then relay the table's changes, and the script refuses a table with an enabled trigger.
+
+Set `@tableSchema`, `@tableName`, `@captureInstance`, `@relaySchema` and `@timeoutSeconds`. Holding the lock, the script:
+
+1. Waits until the capture job has read the log past the moment it took the lock, and then until every CDC source with a checkpoint for the capture instance in `@relaySchema` has relayed the capture instance's last change. Before it takes the lock, and on every pass of that wait, it refuses if CDC cleanup has passed a source's checkpoint (a gap).
+2. Refuses if a change of the capture instance was parked while it waited.
+3. [Seals](#sealed-checkpoints) those checkpoints.
+4. Runs each trigger's install procedure (`Chatter_InstallChangeFeed_<SourceEventType>`), if it still exists, which re-creates a trigger whose table's columns have changed, and enables SqlChangeFeed's triggers on the table.
+5. Fires the triggers with a statement that changes no row (or, to fire an `INSERT` trigger on a table whose columns are all generated, inserts a row of default values), and rolls that back, so a trigger that no longer compiles fails the switch rather than every write after it. The table's other `INSTEAD OF` triggers are disabled for that statement only, since they would replace it and the `AFTER` triggers would never fire; rolling back to the probe's savepoint enables them again, so they are never seen disabled outside the switch. Then it commits.
+
+Then deploy the relay with `Source` removed from the table's mappings, and the CDC source removed if no other mapping uses it. Changes committed after the switch wait in the table's queue until the relay reads it.
+
+The script refuses, changing nothing, inside a transaction; when the capture instance doesn't exist or captures another table, or the relay's tables don't exist in `@relaySchema`; when the table has no SqlChangeFeed trigger, or one is enabled (the table isn't on CDC); when SQL Service Broker is disabled in the database, or a trigger's service or queue is missing or disabled; when no CDC source has a checkpoint for the capture instance in `@relaySchema`; when a source of the table's other capture instance has a checkpoint in `@relaySchema` that isn't sealed, since it would keep relaying the table alongside SQL Service Broker; while a change of the capture instance is parked; and when CDC cleanup has passed a source's checkpoint of the capture instance (a [gap](#limitations): a non-zero checkpoint below the capture instance's oldest LSN), checked before the script takes the lock and again while it waits. A checkpoint of 0 starts from the oldest change and is never a gap. It rolls back when the capture job or a CDC source doesn't catch up in time, for example a source halted on a change it can't publish, or one that no longer runs: delete the checkpoints of sources that no longer run. If a trigger fails because a column it reads changed while the table was on CDC and its install procedure no longer exists, the script rolls back and says so: re-create the trigger for the table's current columns, disable it, and run the script again.
+
+CDC keeps capturing the table. Disabling it is a separate, manual step: run `sys.sp_cdc_disable_table` once no relay reads the capture instance. To switch to CDC again after that, enable CDC on the table again first.
+
+### Sealed checkpoints
+
+`switch-to-service-broker.sql` sets `LastLsn` of each checkpoint of the capture instance in `@relaySchema` to `0xFFFFFFFFFFFFFFFFFFFE`, past any LSN SQL Server will write. A CDC relay still running with the table's mappings keeps polling the capture instance, stays healthy with a lag of 0, and relays none of its later changes. Remove the CDC source from the table's mappings when you redeploy. If you switch the table to CDC again, `switch-to-cdc.sql` replaces `@sourceName`'s seal with a new checkpoint.
+
+### Dead letters
+
+A change that ran out of receive attempts is in the table's dead-letter queue (`Chatter_DeadLetterQueue_<SourceEventType>`), and nothing relays it from there. `switch-to-cdc.sql` refuses while a dead-letter queue of the table holds messages, since nothing relays them after the switch either. Relay them yourself, or copy them out (`SELECT * INTO dbo.Orders_DeadLetters FROM dbo.[Chatter_DeadLetterQueue_<SourceEventType>]` keeps every message, `message_body` included), then run the script with `@keepDeadLetters = 1`: it switches the table and leaves them where they are.
+
+### Removing SqlChangeFeed's objects
+
+Neither script drops SqlChangeFeed's objects. Once the table is on CDC and won't be switched back, they can be removed for good:
+
+1. Deal with the dead-letter queue first ([Dead letters](#dead-letters)): dropping it deletes its messages.
+2. Make sure no relay receives from the table's queues (a relay deployed with the table's mappings on CDC doesn't): a receive waiting on a queue holds up `DROP QUEUE`.
+3. For each source event type, run the uninstall procedure, if it exists. It drops the trigger, the services and queues, ending their conversations, and both procedures:
 
    ```sql
-   BEGIN TRAN; SELECT TOP (1) 1 FROM dbo.Orders WITH (TABLOCKX); COMMIT;
+   EXEC dbo.[Chatter_UninstallChangeFeed_<SourceEventType>];
    ```
 
-3. Let the relay drain the table's queue, until `SELECT COUNT(*) FROM dbo.[Chatter_Queue_<SourceEventType>]` returns 0. Then check `dbo.[Chatter_DeadLetterQueue_<SourceEventType>]`: changes there ran out of receive attempts and nothing replays them. Step 5 drops the queue, so before it, relay them yourself or copy them out (`SELECT * INTO dbo.Orders_DeadLetters FROM dbo.[Chatter_DeadLetterQueue_<SourceEventType>]` keeps every message, `message_body` included).
-4. Seed the checkpoint at the end of the transaction log, so CDC relays only changes committed after the pause. Every change made before the pause has a lower LSN, whether or not the capture job has read it yet, so there's no need to wait for the job. It replaces a checkpoint left by an earlier switch, so it can be run again:
-
-   ```sql
-   DECLARE @lsn binary(10) = (SELECT CONVERT(binary(10), REPLACE(log_end_lsn, ':', ''), 2) FROM sys.dm_db_log_stats(DB_ID()));
-   UPDATE Chatter.Chatter_RelayCheckpoints SET LastLsn = @lsn, UpdatedAt = SYSUTCDATETIME()
-   WHERE SourceName = N'orders-cdc' AND CaptureInstance = N'dbo_Orders';
-   IF @@ROWCOUNT = 0
-       INSERT INTO Chatter.Chatter_RelayCheckpoints (SourceName, CaptureInstance, LastLsn, UpdatedAt)
-       VALUES (N'orders-cdc', N'dbo_Orders', @lsn, SYSUTCDATETIME());
-   ```
-
-   Don't seed it with `sys.fn_cdc_get_max_lsn()`: that's the last change the capture job has read, so if the job is behind, CDC also relays changes that SQL Service Broker already relayed.
-
-5. Drop SqlChangeFeed's trigger, then its services and queues:
+   Or drop them yourself:
 
    ```sql
    DROP TRIGGER dbo.[Chatter_ChangeFeedTrigger_<SourceEventType>];
@@ -265,19 +323,21 @@ Apart from enabling CDC (see [Enable CDC](#enable-cdc)), the steps need `db_owne
    DROP SERVICE [Chatter_DeadLetterService_<SourceEventType>];
    DROP QUEUE dbo.[Chatter_Queue_<SourceEventType>];
    DROP QUEUE dbo.[Chatter_DeadLetterQueue_<SourceEventType>];
+   DROP PROCEDURE dbo.[Chatter_InstallChangeFeed_<SourceEventType>];
+   DROP PROCEDURE dbo.[Chatter_UninstallChangeFeed_<SourceEventType>];
    ```
 
-6. Deploy the relay with the CDC source configured ([Configure the relay](#configure-the-relay)) and the table's mappings switched to it with `Source`. Mappers don't change.
-7. Resume writes.
+Leave the message type `//Chatter/BrokeredMessage` and the contract `//Chatter`: every table on SQL Service Broker in the database uses them. Once the objects are gone, `switch-to-service-broker.sql` can't switch the table back.
 
-To switch back, the same rule applies the other way: CDC must relay everything committed before the pause, including parked changes, before the relay stops reading it.
+### Switching limitations
 
-1. Pause writes to the table as in step 2, then note the log end (`SELECT log_end_lsn FROM sys.dm_db_log_stats(DB_ID())`).
-2. Wait for the capture job to read past the pause: `sys.fn_cdc_get_max_lsn()` reaches the noted LSN, or `sys.dm_cdc_log_scan_sessions` shows a scan that ended after the pause with `empty_scan_count > 0` (nothing left to read). The second test only works when no other captured table in the database is being written.
-3. Wait for the relay to catch up: its checkpoint (`LastLsn` in `Chatter.Chatter_RelayCheckpoints`) reaches `sys.fn_cdc_get_max_lsn()` and the `chatter.relay.cdc.lag` gauge is 0. With `ParkRow`, replay or resolve the capture instance's rows in `Chatter.Chatter_RelayParkedChanges` until none remain.
-4. Deploy the relay with `Source` removed from the table's mappings, and install SqlChangeFeed's trigger, services and queues again by running `UseChangeFeedSqlMigrationsAsync()` with that configuration (for example at the relay's startup). It installs them only for mappings on SQL Service Broker, so it does nothing for the table while its mappings still name the CDC source. The queue starts empty; check that `dbo.[Chatter_ChangeFeedTrigger_<SourceEventType>]` exists before resuming writes.
-5. Resume writes.
-6. Disable CDC on the table (`sys.sp_cdc_disable_table`).
+- `switch-to-cdc.sql` seeds the checkpoint of one source, `@sourceName`, and refuses while another CDC source of the table has a checkpoint that isn't sealed. Another CDC source that should relay the same capture instance has no checkpoint (or a sealed one): before starting it, insert or update its checkpoint with the LSN the script printed as `LastLsn`. The script doesn't see checkpoints of relays that use another `Schema`, nor a source that hasn't saved its first checkpoint yet.
+- `switch-to-service-broker.sql` waits for and seals every checkpoint of the capture instance in `@relaySchema`, including those of sources that no longer run (delete them first: the script times out waiting for them, or refuses one whose checkpoint CDC cleanup has passed). It doesn't see checkpoints of relays that use another `Schema` (nor, for the table's other capture instance, refuse them), nor a source that hasn't saved its first checkpoint yet (see [Switching back to SQL Service Broker](#switching-back-to-sql-service-broker)).
+- To fire an `INSERT`-only SqlChangeFeed trigger on a table whose columns are all generated, `switch-to-service-broker.sql` inserts a real row of default values and rolls it back. If that row breaks a constraint, for example a `CHECK` or foreign key that the next identity value fails, the script refuses, changing nothing; its error reports the trigger as failing and quotes the constraint's error.
+- A table switched to CDC by dropping SqlChangeFeed's objects, as an earlier version of this README described, is already on CDC: `switch-to-cdc.sql` refuses it, and `switch-to-service-broker.sql` can't switch it back.
+- While the table is on CDC, anything that re-creates or re-enables SqlChangeFeed's trigger (a dacpac or migration that deploys it, or the relay's `UseChangeFeedSqlMigrationsAsync()` with the table's mappings on SQL Service Broker after the table's columns changed) makes both sources relay the table's changes. Leave the trigger out of such deployments, or remove SqlChangeFeed's objects for good.
+- While either script runs, don't deploy the relay or SqlChangeFeed migrations for the table, and don't change its SqlChangeFeed services, queues, dead-letter queues or procedures. The scripts read the table's triggers before they lock the table, so a trigger created in between isn't switched: `switch-to-cdc.sql` leaves it enabled, so both sources relay its event type's changes, and `switch-to-service-broker.sql` leaves it disabled, so nobody does. The table lock doesn't hold off changes to SqlChangeFeed's services, queues, dead-letter queues or procedures, which aren't the table's.
+- Disabling CDC on the table after switching back stays manual (`sys.sp_cdc_disable_table`).
 
 ## Upgrading to 0.4.0
 

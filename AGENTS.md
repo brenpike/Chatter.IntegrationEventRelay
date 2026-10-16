@@ -32,3 +32,17 @@ need fails the test.
 `README.md` ("Using the CDC change source" > "Permissions") and the permissions remark on `CdcChangeSource`
 (`Chatter.IntegrationEventRelay.Cdc/src/CdcChangeSource.cs`) describe the grants in prose. Keep them in step with the
 script, but treat the script as the source of truth.
+
+### The switch-over scripts
+
+Switching a table between the SQL Service Broker and CDC change sources lives in two scripts,
+`.scripts/cdc/switch-to-cdc.sql` and `.scripts/cdc/switch-to-service-broker.sql`. They are the source of truth for what
+a switch waits for, refuses and changes. The integration tests in `Chatter.IntegrationEventRelay.Cdc/tests/Integration/`
+run them against SQL Server: `WhenRelyingOnSqlServerToSwitchSources` checks the SQL Server behaviour they rely on and
+defines the capture predicate both scripts use, and `WhenSwitchingToCdc`, `WhenSwitchingBackToServiceBroker` and
+`WhenSwitchingThereAndBack` check that each change is relayed exactly once, by exactly one source. Change the scripts
+and those tests together.
+
+`README.md` ("Switching a table from SQL Service Broker to CDC") and each script's header comment describe the scripts in
+prose. Keep them in step with the scripts, but treat the scripts as the source of truth. Like the rest of
+`.scripts/cdc/`, the switch scripts are in scope for security review.
