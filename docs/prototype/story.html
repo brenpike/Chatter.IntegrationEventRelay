@@ -368,12 +368,13 @@
       @supports selector(:has(*)) {
         body:has(#m-ship:checked) .path-null { opacity: 0.15; }
         body:has(#m-other:checked) .path-event { opacity: 0.15; }
-        body:has(#src-ssb:checked) .l-cdc { opacity: 0.18; }
-        body:has(#src-cdc:checked) .l-ssb { opacity: 0.18; }
+        /* chapter 6 and chapter 8 both dim the bridges: when they disagree, dim neither */
+        body:has(#src-ssb:checked):not(:has(#sw-after:checked)) .l-cdc { opacity: 0.18; }
+        body:has(#src-cdc:checked):not(:has(#sw-before:checked)) .l-ssb { opacity: 0.18; }
         body:has(#src-ssb:checked) .card-cdc { opacity: 0.45; }
         body:has(#src-cdc:checked) .card-ssb { opacity: 0.45; }
-        body:has(#sw-before:checked) .l-cdc { opacity: 0.18; }
-        body:has(#sw-after:checked) .l-ssb { opacity: 0.18; }
+        body:has(#sw-before:checked):not(:has(#src-cdc:checked)) .l-cdc { opacity: 0.18; }
+        body:has(#sw-after:checked):not(:has(#src-ssb:checked)) .l-ssb { opacity: 0.18; }
       }
 
       /* ambient loops (paused by checkbox, hidden tab, offscreen, reduced motion) */
@@ -1216,6 +1217,19 @@ GO</code></pre>
             sync();
           });
         }
+
+        // Chapter 6's source toggle and chapter 8's switch toggle dim the same bridges:
+        // a choice in one resets the other, so the stage follows the latest choice.
+        function resetOnChange(name, otherDefaultId) {
+          Array.prototype.forEach.call(doc.querySelectorAll('input[name="' + name + '"]'), function (r) {
+            r.addEventListener('change', function () {
+              var d = doc.getElementById(otherDefaultId);
+              if (d) { d.checked = true; }
+            });
+          });
+        }
+        resetOnChange('src', 'sw-both');
+        resetOnChange('sw', 'src-both');
 
         // Background tab or story scrolled away: loops stop.
         doc.addEventListener('visibilitychange', sync);
