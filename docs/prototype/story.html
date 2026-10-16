@@ -397,7 +397,7 @@
       .art .pk-w2, .art .pk-n2 { animation-delay: -1.8s; }
       .art .rowhl { animation: pulse-row 2.6s ease-in-out infinite; }
 
-      html.paused .art *, html.idle .art *, html.paused .hero-art *, html.idle .hero-art * { animation-play-state: paused !important; }
+      html.paused .art *, html.js .story:not(.run) .art *, html.paused .hero-art * { animation-play-state: paused !important; }
       @supports selector(:has(*)) {
         body:has(#pause:checked) .art *, body:has(#pause:checked) .hero-art * { animation-play-state: paused !important; }
       }
@@ -1192,6 +1192,11 @@ GO</code></pre>
         // Reduced motion: pause ambient loops and drop scroll-linked work.
         var rm = window.matchMedia('(prefers-reduced-motion: reduce)');
         var userPaused = false;
+        var onScreen = false;
+        function sync() {
+          // INVARIANT: loops run only on an affirmative grant; onScreen stays false until the observer reports #story intersecting.
+          if (story) { story.classList.toggle('run', !rm.matches && !userPaused && !doc.hidden && onScreen); }
+        }
         function applyMotion() {
           root.classList.toggle('rm', rm.matches);
           if (pause) {
@@ -1199,6 +1204,7 @@ GO</code></pre>
             pause.disabled = rm.matches;
           }
           root.classList.toggle('paused', userPaused || rm.matches);
+          sync();
         }
         if (rm.addEventListener) { rm.addEventListener('change', applyMotion); }
         else if (rm.addListener) { rm.addListener(applyMotion); }
@@ -1207,15 +1213,12 @@ GO</code></pre>
           pause.addEventListener('change', function () {
             userPaused = pause.checked;
             root.classList.toggle('paused', userPaused);
+            sync();
           });
         }
 
         // Background tab or story scrolled away: loops stop.
-        var onScreen = true;
-        function syncIdle() {
-          root.classList.toggle('idle', doc.hidden || !onScreen);
-        }
-        doc.addEventListener('visibilitychange', syncIdle);
+        doc.addEventListener('visibilitychange', sync);
 
         if (!('IntersectionObserver' in window)) {
           // No observer: show the complete diagram and every chapter as read.
@@ -1226,8 +1229,8 @@ GO</code></pre>
         }
 
         var visIo = new IntersectionObserver(function (entries) {
-          onScreen = entries[0].isIntersecting;
-          syncIdle();
+          onScreen = entries[entries.length - 1].isIntersecting;
+          sync();
         });
         if (story) { visIo.observe(story); }
 
