@@ -106,6 +106,10 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # One deploy at a time, never cancelled mid-push. GitHub keeps only the newest pending run in a group, so a
+    # waiting deploy is replaced by a later push to main. Accepted: main is cumulative and the newest deploy
+    # publishes it, merges are rare and each deploy waits for approval; a version carried only by a replaced
+    # commit is not published.
     concurrency:
       group: deploy-production
       cancel-in-progress: false
@@ -113,17 +117,14 @@ jobs:
     environment:
       name: Production
 
-    env:
-      NUGET_AUTH_TOKEN: ${{ secrets.NUGET_API_KEY_INTEGRATIONEVENTRELAY }}
-      NUGET_URL: https://api.nuget.org/v3/index.json
+    # NuGet trusted publishing: id-token lets NuGet/login exchange the job's OIDC token for a short-lived API key
     permissions:
-      packages: write
+      id-token: write
       contents: read
     steps:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.dotnet-version }}
-          source-url: ${{ env.NUGET_URL }}
 
       - name: Download NuGet
         uses: actions/download-artifact@v4
@@ -135,8 +136,14 @@ jobs:
         run: ls -R
         working-directory: ./dist
 
+      - name: NuGet login (trusted publishing)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: brenpike
+
       # --skip-duplicate: merges that don't bump the package version (docs, samples, CI) must not fail the deploy
       - name: Push Nuget packages
         shell: bash
         run: |
-          dotnet nuget push "./dist/nuget/*.nupkg" -k '${{ env.NUGET_AUTH_TOKEN }}' -s '${{ env.NUGET_URL }}' --skip-duplicate
+          dotnet nuget push "./dist/nuget/*.nupkg" --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
