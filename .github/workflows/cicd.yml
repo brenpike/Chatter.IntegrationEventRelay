@@ -7,8 +7,27 @@ on:
         description: 'The reason for running the workflow'
         required: true
         default: 'Manual build from GitHub UI'
+  # Runs only when an input to the build, the tests or the e2e demo changes, so a push that changes only docs, the
+  # site (web/), markdown or another workflow doesn't build or start a Production deploy. Add new build inputs here.
   push:
     branches: [ main, feat/** ]
+    paths:
+      - 'Chatter.IntegrationEventRelay.*/**'
+      - '*.sln'
+      - '*.slnx'
+      - 'Directory.*.props'
+      - 'Directory.*.targets'
+      - 'global.json'
+      - '[Nn]u[Gg]et.[Cc]onfig'
+      - '.editorconfig'
+      - '.gitattributes'
+      - '.scripts/**'
+      - '.devops/**'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - '.github/workflows/cicd.yml'
+  # No path filter: build, cdc integration and e2e are required checks on main, and a required check whose workflow a
+  # path filter skips stays Pending and blocks the merge.
   pull_request:
     branches: [ main ]
     types: [ opened, synchronize, reopened ]
@@ -146,7 +165,7 @@ jobs:
         with:
           user: brenpike
 
-      # --skip-duplicate: merges that don't bump the package version (docs, samples, CI) must not fail the deploy
+      # --skip-duplicate: merges that don't bump the package version (tests, samples, scripts, CI) must not fail the deploy
       - name: Push Nuget packages
         shell: bash
         env:
