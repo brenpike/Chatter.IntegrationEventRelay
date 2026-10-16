@@ -30,9 +30,17 @@
 --    (or one sealed by switch-to-service-broker.sql), so CDC relays only changes committed after the switch.
 -- 5. Disables SqlChangeFeed's trigger on the table, which waits for and briefly blocks reads of the table, and commits.
 --
--- The transaction lasts at most about @timeoutSeconds, waits for locks included, so writes to the table wait at most
--- that long. Past it the script rolls back, changing nothing, and SQL Service Broker goes on relaying the table.
--- Cancelling the script rolls it back too.
+-- Its waits for the relay to drain the queues and for the capture job end within about @timeoutSeconds, and so do the
+-- lock waits of the statements it runs holding the lock, except its reads of CDC's metadata: of cdc.lsn_time_mapping
+-- while it waits for the capture job, and of the oldest and latest LSN it picks the checkpoint from. Past
+-- @timeoutSeconds the script rolls back, changing nothing, and SQL Service Broker goes on relaying the table.
+--
+-- Those reads, and its checks before it locks the table, aren't bounded: one blocked by another transaction's lock
+-- waits until that transaction ends. Before the lock that holds up no writes; a check waits, for example, while CDC's
+-- cleanup job is moving the capture instance's oldest LSN in cdc.change_tables. Holding the lock, a transaction of
+-- CDC's capture or cleanup job writing cdc.lsn_time_mapping or cdc.change_tables holds up the read, and writes to the
+-- table with it, until it ends. So writes to the table wait about @timeoutSeconds at most, plus any such wait. If the
+-- script doesn't finish, cancel it: that rolls it back and changes nothing.
 --
 -- It refuses, changing nothing: inside a transaction; if the capture instance doesn't exist or captures another table;
 -- if the table has no SqlChangeFeed trigger (Chatter_ChangeFeedTrigger_<SourceEventType>), or a trigger's service or
@@ -132,10 +140,11 @@ BEGIN TRY
 	BEGIN TRAN;
 
 	-- SET LOCK_TIMEOUT only takes a constant, and a SET inside sp_executesql ends with it, so each statement that waits
-	-- for a lock runs in sp_executesql with the time left as its lock timeout. A lock it doesn't get in time (error 1222)
-	-- rolls the transaction back, rather than holding up the table's writers past @timeoutSeconds. XACT_ABORT stays on in
-	-- there, so cancelling the script rolls it back wherever it is. The time left is read once and is never below 0: past
-	-- the deadline it's 0 (don't wait), never -1, which waits for ever.
+	-- for a lock on the table, the queues or the relay's tables runs in sp_executesql with the time left as its lock
+	-- timeout. A lock it doesn't get in time (error 1222) rolls the transaction back. The reads of CDC's metadata and
+	-- the catalog aren't wrapped; see the header. XACT_ABORT stays on in there, so cancelling the script rolls it back
+	-- wherever it is. The time left is read once and is never below 0: past the deadline it's 0 (don't wait), never -1,
+	-- which waits for ever.
 
 	-- Shared, so it waits for the table's open writing transactions and holds off new ones, but lets readers in
 	SET @lockTimeoutError = N'A transaction writing to the table didn''t finish within ' + @timeout + N' seconds, so the script couldn''t lock the table. Nothing was changed.';

@@ -33,10 +33,19 @@
 -- compiles fails the switch rather than every write after it. For that statement it disables the table's other INSTEAD
 -- OF triggers, which would stop the triggers firing, and rolling the statement back enables them again.
 --
--- Every wait, for locks included, ends within @timeoutSeconds: past it the script rolls back, changing nothing, and CDC
--- goes on relaying the table. Writes to the table wait about that long at most, plus the time the install procedures
--- and the table's triggers take to run once each at the end, which @timeoutSeconds doesn't cut short. Cancelling the
--- script rolls it back too.
+-- Its waits for the capture job and the CDC sources end within about @timeoutSeconds, and so do the lock waits of the
+-- statements it runs holding the lock, except its reads of cdc.lsn_time_mapping while it waits for the capture job, and
+-- its reads of the catalog. Past @timeoutSeconds the script rolls back, changing nothing, and CDC goes on relaying the
+-- table.
+--
+-- Those reads, and its checks before it locks the table, aren't bounded: one blocked by another transaction's lock
+-- waits until that transaction ends. Before the lock that holds up no writes; a check waits, for example, while a relay
+-- transaction is still writing its checkpoint, or CDC's cleanup job is moving the capture instance's oldest LSN.
+-- Holding the lock, a transaction of CDC's capture or cleanup job writing cdc.lsn_time_mapping, or one changing the
+-- catalog, holds up the read, and writes to the table with it, until it ends. So writes to the table wait about
+-- @timeoutSeconds at most, plus any such wait, plus the time the install procedures and the table's triggers take to
+-- run once each at the end, which @timeoutSeconds doesn't cut short. If the script doesn't finish, cancel it: that
+-- rolls it back and changes nothing.
 --
 -- The CDC relay keeps polling the capture instance, stays healthy with a lag of 0, and relays none of its later changes.
 -- Remove the CDC source from the table's mappings when you redeploy; switch-to-cdc.sql replaces the seal if you switch
@@ -59,7 +68,7 @@ DECLARE @tableSchema sysname = N'dbo';
 DECLARE @tableName sysname = N'Event2';
 DECLARE @captureInstance sysname = N'dbo_Event2';   -- the CDC source mapping's CaptureInstance
 DECLARE @relaySchema sysname = N'Chatter';          -- the relay's IntegrationEventRelay:Schema
-DECLARE @timeoutSeconds int = 300;                  -- how long the script may wait, for locks included, while it holds up writes to the table
+DECLARE @timeoutSeconds int = 300;                  -- bounds the script's waits while it holds up writes to the table, though not every read (see above)
 
 IF @@TRANCOUNT > 0
 	THROW 50000, N'Run the script outside a transaction: it commits the switch itself, or rolls all of it back.', 1;
@@ -184,10 +193,11 @@ BEGIN TRY
 	BEGIN TRANSACTION;
 
 	-- SET LOCK_TIMEOUT only takes a constant, and a SET inside sp_executesql ends with it, so each statement that waits
-	-- for a lock runs in sp_executesql with the time left as its lock timeout. A lock it doesn't get in time (error 1222)
-	-- rolls the transaction back, rather than holding up the table's writers past @timeoutSeconds. XACT_ABORT stays on in
-	-- there, so cancelling the script rolls it back wherever it is. The time left is read once and is never below 0: past
-	-- the deadline it's 0 (don't wait), never -1, which waits for ever.
+	-- for a lock on the table, the queues or the relay's tables runs in sp_executesql with the time left as its lock
+	-- timeout. A lock it doesn't get in time (error 1222) rolls the transaction back. The reads of CDC's metadata and
+	-- the catalog aren't wrapped; see the header. XACT_ABORT stays on in there, so cancelling the script rolls it back
+	-- wherever it is. The time left is read once and is never below 0: past the deadline it's 0 (don't wait), never -1,
+	-- which waits for ever.
 
 	-- Writers wait from here; transactions already writing to the table finish first
 	SET @lockTimeoutError = N'A transaction writing to the table didn''t finish within ' + @timeout + N' seconds, so the script couldn''t lock the table. Nothing was changed.';
