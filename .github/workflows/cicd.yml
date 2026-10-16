@@ -8,25 +8,27 @@ on:
         required: true
         default: 'Manual build from GitHub UI'
   push:
-    branches: [ feat/** ]
+    branches: [ main, feat/** ]
   pull_request:
     branches: [ main ]
-    types: [ opened, synchronize, reopened, closed ]
+    types: [ opened, synchronize, reopened ]
 
 env:
   dotnet-version: '10.0.x'
+
+# Read-only token for every job; deploy grants itself id-token: write for trusted publishing
+permissions:
+  contents: read
 
 jobs:
   build:
     name: build
     runs-on: ubuntu-latest
-    # Skip PRs that were closed without merging
-    if: github.event_name != 'pull_request' || github.event.action != 'closed' || github.event.pull_request.merged == true
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
       with:
         dotnet-version: ${{ env.dotnet-version }}
     - name: Install dependencies
@@ -47,14 +49,14 @@ jobs:
         dotnet pack Chatter.IntegrationEventRelay.ServiceBroker/src/Chatter.IntegrationEventRelay.ServiceBroker.csproj -c Release -o publish/nuget
         dotnet pack Chatter.IntegrationEventRelay.Cdc/src/Chatter.IntegrationEventRelay.Cdc.csproj -c Release -o publish/nuget
     - name: Upload Source
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: source
         path: publish/source/**
         retention-days: 5
         if-no-files-found: error
     - name: Upload NuGet
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: nuget
         path: publish/nuget/**
@@ -66,12 +68,13 @@ jobs:
     runs-on: ubuntu-latest
     # The tests, switch-over tests between Service Broker and CDC included, take about 21 minutes locally
     timeout-minutes: 45
-    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    # Validates changes before merge; not re-run for the merge to main
+    if: github.event_name != 'push' || github.ref != 'refs/heads/main'
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
       with:
         dotnet-version: ${{ env.dotnet-version }}
     - name: Test
@@ -82,11 +85,11 @@ jobs:
     runs-on: ubuntu-latest
     # Backstop for a hung startup; e2e.sh itself waits at most 10 minutes for events
     timeout-minutes: 20
-    # Validates changes before merge; not needed again once a PR is closed
-    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    # Validates changes before merge; not re-run for the merge to main
+    if: github.event_name != 'push' || github.ref != 'refs/heads/main'
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
     - name: Run demo end to end
       run: ./.devops/e2e.sh
     - name: Collect container logs
@@ -94,7 +97,7 @@ jobs:
       run: docker compose logs --no-color --timestamps > e2e-logs.txt 2>&1 || true
     - name: Upload container logs
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: e2e-logs
         path: e2e-logs.txt
@@ -106,25 +109,29 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # One deploy at a time, never cancelled mid-push. GitHub keeps only the newest pending run in a group, so a
+    # waiting deploy is replaced by a later push to main. Accepted: main is cumulative and the newest deploy
+    # publishes it, merges are rare and each deploy waits for approval; a version carried only by a replaced
+    # commit is not published.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
 
     environment:
       name: Production
 
-    env:
-      NUGET_AUTH_TOKEN: ${{ secrets.NUGET_API_KEY_INTEGRATIONEVENTRELAY }}
-      NUGET_URL: https://api.nuget.org/v3/index.json
+    # NuGet trusted publishing: id-token lets NuGet/login exchange the job's OIDC token for a short-lived API key
     permissions:
-      packages: write
+      id-token: write
       contents: read
     steps:
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: ${{ env.dotnet-version }}
-          source-url: ${{ env.NUGET_URL }}
 
       - name: Download NuGet
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: nuget
           path: ./dist/nuget
@@ -133,8 +140,16 @@ jobs:
         run: ls -R
         working-directory: ./dist
 
+      - name: NuGet login (trusted publishing)
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1
+        id: login
+        with:
+          user: brenpike
+
       # --skip-duplicate: merges that don't bump the package version (docs, samples, CI) must not fail the deploy
       - name: Push Nuget packages
         shell: bash
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
         run: |
-          dotnet nuget push "./dist/nuget/*.nupkg" -k '${{ env.NUGET_AUTH_TOKEN }}' -s '${{ env.NUGET_URL }}' --skip-duplicate
+          dotnet nuget push "./dist/nuget/*.nupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
