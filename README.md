@@ -257,7 +257,7 @@ Before running `switch-to-cdc.sql`:
 
 1. Enable CDC on the table, create the relay's tables ([Enable CDC](#enable-cdc)), and grant the relay's login ([Permissions](#permissions)).
 2. Keep the relay running with the table's mappings on SQL Service Broker: the script waits for it to drain the table's queues.
-3. Don't relay the capture instance with CDC as `@sourceName` yet. With no checkpoint, the source starts from its `StartPosition`, and from `Earliest` it relays changes that SQL Service Broker relays too.
+3. Don't relay the capture instance with CDC as `@sourceName` yet. With no checkpoint, the source starts from its `StartPosition`, and from `Earliest` it relays changes that SQL Service Broker relays too. Nor relay the table with any other CDC source: another `SourceName` of the capture instance, or a source of the table's other capture instance (for example the old one after a [schema change](#limitations)). The script seeds only `@sourceName`'s checkpoint, and refuses while another source of the table has a checkpoint in `@relaySchema` that isn't [sealed](#sealed-checkpoints): remove those sources from the table's mappings and delete their checkpoints.
 
 Set `@tableSchema`, `@tableName`, `@captureInstance` (the mapping's `CaptureInstance`), `@sourceName` (the CDC source's name in `Sources`), `@relaySchema` (the relay's `Schema`), `@keepDeadLetters` and `@timeoutSeconds`. Holding the lock, the script:
 
@@ -270,7 +270,7 @@ Then deploy the relay with the CDC source configured ([Configure the relay](#con
 
 SQL Service Broker relays nothing more of the table. The table's queues, services, dead-letter queues and procedures stay, with the trigger disabled, so the table can be switched back; see [Removing SqlChangeFeed's objects](#removing-sqlchangefeeds-objects) to remove them for good.
 
-The script refuses, changing nothing, inside a transaction; when the capture instance doesn't exist or captures another table, or the relay's tables don't exist in `@relaySchema`; when the table has no SqlChangeFeed trigger, or one is disabled (the table is on CDC already, so running the script again after it succeeded is refused); and when SQL Service Broker is disabled in the database, or a trigger's service or queue is missing or disabled.
+The script refuses, changing nothing, inside a transaction; when the capture instance doesn't exist or captures another table, or the relay's tables don't exist in `@relaySchema`; when the table has no SqlChangeFeed trigger, or one is disabled (the table is on CDC already, so running the script again after it succeeded is refused); when SQL Service Broker is disabled in the database, or a trigger's service or queue is missing or disabled; and when a CDC source of the table other than `@sourceName`'s of the capture instance has a checkpoint in `@relaySchema` that isn't sealed, since it would relay the table's changes alongside SQL Service Broker before the switch and `@sourceName` after it.
 
 ### Switching back to SQL Service Broker
 
@@ -331,7 +331,7 @@ Leave the message type `//Chatter/BrokeredMessage` and the contract `//Chatter`:
 
 ### Switching limitations
 
-- `switch-to-cdc.sql` seeds the checkpoint of one source, `@sourceName`. Another CDC source that should relay the same capture instance has no checkpoint: before starting it, insert its checkpoint with the LSN the script printed as `LastLsn`.
+- `switch-to-cdc.sql` seeds the checkpoint of one source, `@sourceName`, and refuses while another CDC source of the table has a checkpoint that isn't sealed. Another CDC source that should relay the same capture instance has no checkpoint (or a sealed one): before starting it, insert or update its checkpoint with the LSN the script printed as `LastLsn`. The script doesn't see checkpoints of relays that use another `Schema`, nor a source that hasn't saved its first checkpoint yet.
 - `switch-to-service-broker.sql` waits for and seals every checkpoint of the capture instance in `@relaySchema`, including those of sources that no longer run (delete them first: the script times out waiting for them, or refuses one whose checkpoint CDC cleanup has passed). It doesn't see checkpoints of relays that use another `Schema` (nor, for the table's other capture instance, refuse them), nor a source that hasn't saved its first checkpoint yet (see [Switching back to SQL Service Broker](#switching-back-to-sql-service-broker)).
 - To fire an `INSERT`-only SqlChangeFeed trigger on a table whose columns are all generated, `switch-to-service-broker.sql` inserts a real row of default values and rolls it back. If that row breaks a constraint, for example a `CHECK` or foreign key that the next identity value fails, the script refuses, changing nothing; its error reports the trigger as failing and quotes the constraint's error.
 - A table switched to CDC by dropping SqlChangeFeed's objects, as an earlier version of this README described, is already on CDC: `switch-to-cdc.sql` refuses it, and `switch-to-service-broker.sql` can't switch it back.

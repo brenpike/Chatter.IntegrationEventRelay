@@ -7,8 +7,9 @@
 -- create-relay-tables.sql) and grant the relay's login (grant-relay-permissions.sql). Leave the SQL Service Broker relay
 -- running: the script waits for it to drain the table's queues. Don't relay @captureInstance as @sourceName with CDC
 -- before the script has run: with no checkpoint, the relay starts from the oldest change, which SQL Service Broker also
--- relays. A CDC relay whose checkpoint switch-to-service-broker.sql sealed relays nothing and can keep running; it
--- starts from the new checkpoint at its next poll.
+-- relays. Nor relay the table with any other CDC source: the script seeds only @sourceName's checkpoint. A CDC relay
+-- whose checkpoint switch-to-service-broker.sql sealed relays nothing and can keep running; it starts from the new
+-- checkpoint at its next poll.
 --
 -- While it runs, don't deploy the relay or SqlChangeFeed migrations for the table, and don't change its SqlChangeFeed
 -- services, queues, dead-letter queues or procedures. The script reads the table's triggers before it locks the table,
@@ -44,8 +45,11 @@
 --
 -- It refuses, changing nothing: inside a transaction; if the capture instance doesn't exist or captures another table;
 -- if the table has no SqlChangeFeed trigger (Chatter_ChangeFeedTrigger_<SourceEventType>), or a trigger's service or
--- queue is missing or disabled; and if a SqlChangeFeed trigger on the table is disabled, so running it again after it
--- succeeded is refused (to switch back, run switch-to-service-broker.sql). A table switched to CDC by dropping
+-- queue is missing or disabled; if a SqlChangeFeed trigger on the table is disabled, so running it again after it
+-- succeeded is refused (to switch back, run switch-to-service-broker.sql); and if a CDC source of the table other than
+-- @sourceName's of @captureInstance (another SourceName, or a source of the table's other capture instance after a schema
+-- change) has a checkpoint in @relaySchema that isn't sealed: it would relay the table's changes too, so remove it from
+-- the table's mappings and delete its checkpoint. A table switched to CDC by dropping
 -- SqlChangeFeed's objects, as an earlier README described, is already on CDC.
 --
 -- It leaves SqlChangeFeed's queues, services, dead-letter queues and procedures, and the disabled trigger, in place, so
@@ -138,6 +142,25 @@ DECLARE @timeout nvarchar(10) = CAST(@timeoutSeconds AS nvarchar(10));
 -- What it means if the statement waiting for a lock now runs out of time
 DECLARE @lockTimeoutError nvarchar(2048);
 DECLARE @error nvarchar(2048), @sql nvarchar(max), @seed binary(10);
+
+-- The script seeds only @sourceName's checkpoint of @captureInstance. Any other CDC source of the table, of
+-- @captureInstance or of the table's other capture instance (a table has at most two), would relay its changes too:
+-- those SQL Service Broker relays before the switch, and those @sourceName relays after it. One whose checkpoint
+-- switch-to-service-broker.sql sealed relays nothing.
+DECLARE @sealed binary(10) = 0xFFFFFFFFFFFFFFFFFFFE;
+DECLARE @otherInstance sysname = (SELECT capture_instance FROM cdc.change_tables WHERE source_object_id = @tableId AND capture_instance <> @captureInstance);
+DECLARE @otherSources int;
+SET @sql = N'SELECT @otherSources = COUNT(*) FROM ' + @checkpoints + N'
+	WHERE LastLsn < @sealed AND ((CaptureInstance = @captureInstance AND SourceName <> @sourceName) OR CaptureInstance = @otherInstance);';
+EXEC sys.sp_executesql @sql, N'@captureInstance sysname, @otherInstance sysname, @sourceName nvarchar(128), @sealed binary(10), @otherSources int OUTPUT',
+	@captureInstance, @otherInstance, @sourceName, @sealed, @otherSources OUTPUT;
+IF @otherSources > 0
+BEGIN
+	SET @error = CONVERT(nvarchar(11), @otherSources) + N' other CDC source(s) of the table have a checkpoint in ' + @checkpoints
+		+ N' that isn''t sealed, and would relay the table''s changes alongside SQL Service Broker before the switch and @sourceName after it. '
+		+ N'Remove those sources from the table''s mappings and delete their checkpoints, or check @sourceName. Nothing was changed.';
+	THROW 50000, @error, 1;
+END
 
 SET XACT_ABORT ON;
 SET DEADLOCK_PRIORITY LOW;

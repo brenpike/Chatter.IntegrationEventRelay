@@ -437,6 +437,40 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             Assert.Equal(new[] { 1 }, receiver.RowIds);
         }
 
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task MustRefuseWhileAnotherSourceOfTheTableHasACheckpointThatIsntSealed(bool ofTheOtherCaptureInstance)
+        {
+            await using var db = await _sql.CreateDatabaseAsync();
+            var (captureInstance, feed) = await CreateServiceBrokerTableAsync(db);
+            var (source, instance) = ofTheOtherCaptureInstance
+                ? (SourceName, await db.EnableCdcAsync(_table, captureInstance: $"{captureInstance}_v2"))
+                : ("other-cdc", captureInstance);
+            // A source of another table's capture instance, whose checkpoint isn't sealed, isn't the table's
+            var otherTableInstance = await db.CreateCapturedTableAsync($"{_table}_other");
+            await db.ExecuteAsync($"""
+                INSERT INTO Chatter.Chatter_RelayCheckpoints (SourceName, CaptureInstance, LastLsn, UpdatedAt)
+                VALUES (N'{source}', N'{instance}', 0x00000000000000000001, SYSUTCDATETIME()),
+                    (N'other-table-cdc', N'{otherTableInstance}', 0x00000000000000000001, SYSUTCDATETIME());
+                """);
+            var seeded = $"SELECT COUNT(*) FROM Chatter.Chatter_RelayCheckpoints WHERE SourceName = N'{SourceName}' AND CaptureInstance = N'{captureInstance}';";
+
+            var e = await Assert.ThrowsAsync<SqlException>(() => SwitchAsync(db, captureInstance));
+
+            Assert.Equal(50000, e.Number);
+            Assert.Contains("isn't sealed", e.Message);
+            Assert.EndsWith("Nothing was changed.", e.Message);
+            Assert.False(await feed.IsTriggerDisabledAsync(), "The switch disabled the trigger");
+            Assert.Equal(0, await db.ScalarAsync<int>(seeded));
+
+            await db.ExecuteAsync($"UPDATE Chatter.Chatter_RelayCheckpoints SET LastLsn = 0xFFFFFFFFFFFFFFFFFFFE WHERE SourceName = N'{source}' AND CaptureInstance = N'{instance}';");
+            await SwitchAsync(db, captureInstance);
+
+            Assert.True(await feed.IsTriggerDisabledAsync());
+            Assert.Equal(1, await db.ScalarAsync<int>(seeded));
+        }
+
         [Fact]
         public async Task MustSeedACaptureInstanceEnabledJustBeforeTheSwitchWithoutAGap()
         {
