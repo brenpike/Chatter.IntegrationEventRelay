@@ -75,7 +75,6 @@
       position: relative;
       display: inline-flex;
       align-items: center;
-      flex-wrap: wrap;
       gap: 0 0.5ch;
       min-height: 44px;
       min-width: 44px;
@@ -83,9 +82,16 @@
       color: var(--text);
       text-decoration: none;
       isolation: isolate;
-      overflow-wrap: anywhere;
+      overflow-wrap: break-word;
     }
     .cmd .pr { flex: none; }
+    .cmd > span:not(.pr):not(.car) { min-width: 0; }
+    /* multi-line commands: prompt, text and caret share the first line; 44px target kept */
+    @supports (height: 1lh) {
+      .cmd { align-items: flex-start; padding-block: 0; }
+      .cmd > .pr, .cmd > span:not(.pr):not(.car) { padding-block: max(0.45rem, calc((44px - 1lh) / 2)); }
+      .cmd > .car { margin-block: calc(max(0.45rem, (44px - 1lh) / 2) + (1lh - 1.1em) / 2); }
+    }
     .cmd::before {
       content: "";
       position: absolute;
@@ -116,7 +122,8 @@
     /* ---------- header and footer ---------- */
     .top { background: var(--chrome); border-bottom: 1px solid var(--line); }
     .top .wrap { padding-block: 0.4rem 0.6rem; }
-    .brand { display: flex; align-items: center; gap: 0.7rem; margin: 0; min-height: 44px; font-weight: 700; color: var(--prompt); overflow-wrap: anywhere; }
+    .brand { display: flex; align-items: center; gap: 0.7rem; margin: 0; min-height: 44px; font-weight: 700; color: var(--prompt); overflow-wrap: break-word; }
+    .brand span { min-width: 0; }
     .brand svg { flex: none; width: 1.75rem; height: 1.75rem; }
     .navlist { display: flex; flex-wrap: wrap; gap: 0.15rem 0.35rem; margin: 0; padding: 0; list-style: none; }
     .navlist li { min-width: 0; }
@@ -131,7 +138,7 @@
     h1 {
       margin-bottom: 0.15em;
       color: var(--prompt);
-      font-size: clamp(1.5rem, 5.4vw, 3.4rem);
+      font-size: clamp(1.35rem, 5.4vw, 3.4rem);
       line-height: 1.15;
       letter-spacing: -0.01em;
       text-shadow: 0 0 22px rgba(92, 242, 139, 0.4);
@@ -333,17 +340,17 @@
     <div class="wrap">
       <p class="brand">
         <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect x="1.5" y="1.5" width="29" height="29" rx="6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 10l7 6-7 6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><rect x="17" y="20" width="8" height="3" fill="currentColor"/></svg>
-        <span>Chatter.IntegrationEventRelay</span>
+        <span>Chatter.<wbr>IntegrationEventRelay</span>
       </p>
       <nav aria-label="Primary">
         <ul class="navlist">
           <li><a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay"><span class="pr" aria-hidden="true">$</span> <span>open github</span><span class="car" aria-hidden="true"></span></a></li>
-          <li><a class="cmd" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay/"><span class="pr" aria-hidden="true">$</span> <span>open nuget Chatter.IntegrationEventRelay</span><span class="car" aria-hidden="true"></span></a></li>
-          <li><a class="cmd" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.ServiceBroker/"><span class="pr" aria-hidden="true">$</span> <span>open nuget Chatter.IntegrationEventRelay.ServiceBroker</span><span class="car" aria-hidden="true"></span></a></li>
-          <li><a class="cmd" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.Cdc/"><span class="pr" aria-hidden="true">$</span> <span>open nuget Chatter.IntegrationEventRelay.Cdc</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay/"><span class="pr" aria-hidden="true">$</span> <span>open nuget Chatter.<wbr>IntegrationEventRelay</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.ServiceBroker/"><span class="pr" aria-hidden="true">$</span> <span>open nuget Chatter.<wbr>IntegrationEventRelay.<wbr>ServiceBroker</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.Cdc/"><span class="pr" aria-hidden="true">$</span> <span>open nuget Chatter.<wbr>IntegrationEventRelay.<wbr>Cdc</span><span class="car" aria-hidden="true"></span></a></li>
           <li><a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#quick-start"><span class="pr" aria-hidden="true">$</span> <span>man readme#quick-start</span><span class="car" aria-hidden="true"></span></a></li>
           <li><a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#choosing-a-change-source"><span class="pr" aria-hidden="true">$</span> <span>man readme#choosing-a-change-source</span><span class="car" aria-hidden="true"></span></a></li>
-          <li><a class="cmd" href="index.html"><span class="pr" aria-hidden="true">$</span> <span>cd ..</span> <span>All prototypes</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="index.html"><span class="pr" aria-hidden="true">$</span> <span>cd .. All prototypes</span><span class="car" aria-hidden="true"></span></a></li>
         </ul>
       </nav>
     </div>
@@ -353,7 +360,7 @@
     <section class="hero" aria-labelledby="top-h">
       <div class="wrap">
         <p class="eyebrow"><span class="pr" aria-hidden="true">$</span> cat README.md</p>
-        <h1 id="top-h">Chatter.IntegrationEventRelay</h1>
+        <h1 id="top-h">Chatter.<wbr>IntegrationEventRelay</h1>
         <p class="subname">Integration Event Relay</p>
         <p class="lede">Relays changes to a legacy SQL Server database's tables to message broker infrastructure as integration events, so systems that can't publish events themselves can take part in an event-driven architecture.</p>
         <ul class="facts">
@@ -488,12 +495,12 @@
                 <tr><th scope="col">Aspect</th><th scope="col">SQL Service Broker</th><th scope="col">CDC</th></tr>
               </thead>
               <tbody>
-                <tr><th scope="row">Package</th><td data-label="SQL Service Broker"><code>Chatter.IntegrationEventRelay.ServiceBroker</code></td><td data-label="CDC"><code>Chatter.IntegrationEventRelay.Cdc</code></td></tr>
+                <tr><th scope="row">Package</th><td data-label="SQL Service Broker"><code>Chatter.<wbr>IntegrationEventRelay.<wbr>ServiceBroker</code></td><td data-label="CDC"><code>Chatter.<wbr>IntegrationEventRelay.<wbr>Cdc</code></td></tr>
                 <tr><th scope="row">Capture</th><td data-label="SQL Service Broker">A trigger on each watched table, in the writing transaction, adds modified rows to a SQL Service Broker queue. The Worker consumes it.</td><td data-label="CDC">The Worker polls the change tables CDC's capture job fills from the transaction log. No trigger on the table.</td></tr>
                 <tr><th scope="row">Order</th><td data-label="SQL Service Broker">Not guaranteed</td><td data-label="CDC">Commit order per table (capture instance); no order across tables</td></tr>
                 <tr><th scope="row">Delivery</th><td data-label="SQL Service Broker">At least once</td><td data-label="CDC">At least once: a batch is checkpointed only after every change in it is published</td></tr>
                 <tr><th scope="row">Message id</th><td data-label="SQL Service Broker">Generated by Chatter</td><td data-label="CDC">Derived from the source name, the change's position and the integration event type</td></tr>
-                <tr><th scope="row">Commit time</th><td data-label="SQL Service Broker">Not available</td><td data-label="CDC">Available as <code>RelayContext.CommittedAt</code></td></tr>
+                <tr><th scope="row">Commit time</th><td data-label="SQL Service Broker">Not available</td><td data-label="CDC">Available as <code>RelayContext.<wbr>CommittedAt</code></td></tr>
                 <tr><th scope="row">Capabilities</th><td data-label="SQL Service Broker">None</td><td data-label="CDC"><code>Ordered</code>, <code>Resumable</code>, <code>CommitTime</code> (<code>ParkRow</code> drops <code>Ordered</code>)</td></tr>
                 <tr><th scope="row">After downtime</th><td data-label="SQL Service Broker">Changes wait in the queue</td><td data-label="CDC">Resumes from a checkpoint while changes are still in the change table (retention default 3 days)</td></tr>
                 <tr><th scope="row">Latency</th><td data-label="SQL Service Broker">No CDC capture latency</td><td data-label="CDC">The capture job scans the log every 5 s by default</td></tr>
@@ -553,18 +560,18 @@
             </div>
             <div class="card">
               <h3><span class="tag warn">PARK</span><code>ParkRow</code></h3>
-              <p>After <code>MaxAttemptsBeforePark</code> attempts the change is parked in <code>&lt;Schema&gt;.Chatter_RelayParkedChanges</code>, and later changes to the same row park behind it. Other rows carry on. On request, a replay republishes the row's parked changes in order.</p>
+              <p>After <code>MaxAttemptsBeforePark</code> attempts the change is parked in <code>&lt;Schema&gt;.<wbr>Chatter_<wbr>RelayParkedChanges</code>, and later changes to the same row park behind it. Other rows carry on. On request, a replay republishes the row's parked changes in order.</p>
             </div>
           </div>
           <h3>Metrics and health check</h3>
-          <p>Meter <code>Chatter.IntegrationEventRelay.Cdc</code> publishes:</p>
+          <p>Meter <code>Chatter.<wbr>IntegrationEventRelay.<wbr>Cdc</code> publishes:</p>
           <ul class="bul">
-            <li><code>chatter.relay.cdc.changes</code></li>
-            <li><code>chatter.relay.cdc.parked</code></li>
-            <li><code>chatter.relay.cdc.batch.failures</code></li>
-            <li><code>chatter.relay.cdc.batch.duration</code></li>
-            <li><code>chatter.relay.cdc.lag</code></li>
-            <li><code>chatter.relay.cdc.parked.current</code></li>
+            <li><code>chatter.<wbr>relay.<wbr>cdc.<wbr>changes</code></li>
+            <li><code>chatter.<wbr>relay.<wbr>cdc.<wbr>parked</code></li>
+            <li><code>chatter.<wbr>relay.<wbr>cdc.<wbr>batch.<wbr>failures</code></li>
+            <li><code>chatter.<wbr>relay.<wbr>cdc.<wbr>batch.<wbr>duration</code></li>
+            <li><code>chatter.<wbr>relay.<wbr>cdc.<wbr>lag</code></li>
+            <li><code>chatter.<wbr>relay.<wbr>cdc.<wbr>parked.<wbr>current</code></li>
           </ul>
           <figure class="codefig">
             <p class="fl">health check</p>
@@ -629,15 +636,15 @@
           <p>Requires .NET 10 (<code>net10.0</code>) and SQL Server as the legacy system's database. The relay runs in a .NET Worker Service.</p>
           <ul class="pkgs">
             <li class="card">
-              <a class="pkgname" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay/">Chatter.IntegrationEventRelay</a>
+              <a class="pkgname" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay/">Chatter.<wbr>IntegrationEventRelay</a>
               <p>Core: mapping configuration, mapper interfaces, and the processor that maps row changes to integration events and publishes them. It doesn't capture changes itself.</p>
             </li>
             <li class="card">
-              <a class="pkgname" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.ServiceBroker/">Chatter.IntegrationEventRelay.ServiceBroker</a>
+              <a class="pkgname" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.ServiceBroker/">Chatter.<wbr>IntegrationEventRelay.<wbr>ServiceBroker</a>
               <p>The SQL Service Broker change source. It uses Chatter.SqlChangeFeed, which installs a trigger on each watched table that sends changed rows to a SQL Service Broker queue.</p>
             </li>
             <li class="card">
-              <a class="pkgname" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.Cdc/">Chatter.IntegrationEventRelay.Cdc</a>
+              <a class="pkgname" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.Cdc/">Chatter.<wbr>IntegrationEventRelay.<wbr>Cdc</a>
               <p>The CDC change source. It polls each capture instance's change table, hands the changes to the processor in commit order, and saves a checkpoint in the source database once a batch is published.</p>
             </li>
           </ul>
@@ -758,13 +765,13 @@ GO</code></pre>
       <nav aria-label="Footer">
         <ul class="navlist">
           <li><a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay"><span class="pr" aria-hidden="true">$</span> <span>open github</span><span class="car" aria-hidden="true"></span></a></li>
-          <li><a class="cmd" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay/"><span class="pr" aria-hidden="true">$</span> <span>open nuget Chatter.IntegrationEventRelay</span><span class="car" aria-hidden="true"></span></a></li>
-          <li><a class="cmd" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.ServiceBroker/"><span class="pr" aria-hidden="true">$</span> <span>open nuget Chatter.IntegrationEventRelay.ServiceBroker</span><span class="car" aria-hidden="true"></span></a></li>
-          <li><a class="cmd" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.Cdc/"><span class="pr" aria-hidden="true">$</span> <span>open nuget Chatter.IntegrationEventRelay.Cdc</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay/"><span class="pr" aria-hidden="true">$</span> <span>open nuget Chatter.<wbr>IntegrationEventRelay</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.ServiceBroker/"><span class="pr" aria-hidden="true">$</span> <span>open nuget Chatter.<wbr>IntegrationEventRelay.<wbr>ServiceBroker</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.Cdc/"><span class="pr" aria-hidden="true">$</span> <span>open nuget Chatter.<wbr>IntegrationEventRelay.<wbr>Cdc</span><span class="car" aria-hidden="true"></span></a></li>
           <li><a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#quick-start"><span class="pr" aria-hidden="true">$</span> <span>man readme#quick-start</span><span class="car" aria-hidden="true"></span></a></li>
           <li><a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#choosing-a-change-source"><span class="pr" aria-hidden="true">$</span> <span>man readme#choosing-a-change-source</span><span class="car" aria-hidden="true"></span></a></li>
           <li><a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/LICENSE"><span class="pr" aria-hidden="true">$</span> <span>cat LICENSE</span><span class="car" aria-hidden="true"></span></a></li>
-          <li><a class="cmd" href="index.html"><span class="pr" aria-hidden="true">$</span> <span>cd ..</span> <span>All prototypes</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="index.html"><span class="pr" aria-hidden="true">$</span> <span>cd .. All prototypes</span><span class="car" aria-hidden="true"></span></a></li>
         </ul>
       </nav>
     </div>

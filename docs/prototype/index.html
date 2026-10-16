@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Landing page prototypes: Chatter.IntegrationEventRelay</title>
+    <meta name="description" content="Four concepts for a GitHub Pages landing page for Chatter.IntegrationEventRelay. Open each prototype, compare them, and pick one.">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%233D3DB8'/%3E%3Crect x='6' y='6' width='9' height='9' rx='2' fill='%23F7F7F8'/%3E%3Crect x='17' y='6' width='9' height='9' rx='2' fill='%23F7F7F8'/%3E%3Crect x='6' y='17' width='9' height='9' rx='2' fill='%23F7F7F8'/%3E%3Crect x='17' y='17' width='9' height='9' rx='2' fill='%23F7F7F8'/%3E%3C/svg%3E">
+    <style>
+      :root {
+        --bg: #F7F7F8;
+        --text: #16161A;
+        --muted: #4B4B55;
+        --accent: #3D3DB8;
+        --card: #FFFFFF;
+        --line: #C4C4CC;
+        --pad: clamp(16px, 4vw, 40px);
+        --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
+      *, *::before, *::after { box-sizing: border-box; }
+      html { -webkit-text-size-adjust: 100%; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 400 1rem/1.6 var(--sans);
+        overflow-wrap: break-word;
+        overflow-x: clip;
+      }
+      h1, h2, p, ul { margin: 0; }
+      a { color: var(--accent); }
+      :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+      main:focus { outline: none; }
+      .wrap { width: min(100% - 2 * var(--pad), 1200px); margin-inline: auto; }
+      .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+      .skip {
+        position: absolute; left: 8px; top: -80px; z-index: 10;
+        background: var(--card); color: var(--text);
+        padding: 12px 18px; border: 2px solid var(--accent); border-radius: 8px; font-weight: 700;
+      }
+      .skip:focus { top: 8px; }
+      /* header and nav */
+      header { border-bottom: 1px solid var(--line); background: var(--card); }
+      .bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 20px; padding-block: 8px; }
+      .brand { font-weight: 700; font-size: clamp(.9rem, 3.8vw, 1rem); overflow-wrap: anywhere; min-width: 0; }
+      nav ul { display: flex; flex-wrap: wrap; gap: 0 4px; list-style: none; padding: 0; }
+      nav a {
+        display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; padding: 0 12px;
+        color: var(--text); font-weight: 600; font-size: .95rem; text-decoration: none;
+      }
+      nav a:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 4px; }
+      /* intro */
+      .intro { padding-block: clamp(32px, 6vw, 64px) clamp(20px, 3vw, 32px); }
+      h1 { font-size: clamp(1.7rem, 6vw, 2.75rem); line-height: 1.15; letter-spacing: -.01em; }
+      .intro p { max-width: 68ch; margin-top: 16px; color: var(--muted); font-size: 1.05rem; }
+      /* grid */
+      .grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; list-style: none; padding: 0 0 clamp(32px, 6vw, 64px); }
+      @media (min-width: 960px) {
+        .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; }
+      }
+      .card {
+        display: flex; flex-direction: column; min-width: 0;
+        background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+        box-shadow: 0 1px 2px rgb(22 22 26 / .06);
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        .card { transition: transform .2s ease, box-shadow .2s ease; }
+        .card:hover, .card:focus-within { transform: translateY(-4px); box-shadow: 0 10px 24px rgb(22 22 26 / .14); }
+      }
+      /* live preview: iframe is three times the card width, scaled to a third */
+      .shot { position: relative; aspect-ratio: 16 / 10; overflow: hidden; background: #E6E6EA; border-bottom: 1px solid var(--line); pointer-events: none; }
+      .shot iframe {
+        position: absolute; top: 0; left: 0; width: 300%; height: 300%; border: 0; background: #FFFFFF;
+        transform: scale(.33333); transform-origin: 0 0;
+      }
+      .body { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 20px; flex: 1; }
+      h2 { display: flex; align-items: center; gap: 10px; font-size: 1.35rem; line-height: 1.25; }
+      .num {
+        display: inline-flex; align-items: center; justify-content: center; flex: none;
+        width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #FFFFFF; font-size: .9rem; font-weight: 700;
+      }
+      .body p { color: var(--text); }
+      .body .motion { color: var(--muted); font-size: .95rem; }
+      .lbl { font-weight: 700; }
+      .open {
+        display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px;
+        margin-top: auto; padding: 0 20px; border: 2px solid var(--accent); border-radius: 8px;
+        background: var(--accent); color: #FFFFFF; font-weight: 700; text-decoration: none;
+      }
+      .open:hover { background: #FFFFFF; color: var(--accent); }
+      /* footer */
+      footer { border-top: 1px solid var(--line); background: var(--card); }
+      footer .wrap { padding-block: 24px; color: var(--muted); }
+      footer a { display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; }
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to main content</a>
+    <header>
+      <div class="wrap bar">
+        <span class="brand">Chatter.IntegrationEventRelay</span>
+        <nav aria-label="Prototypes">
+          <ul>
+          <li><a href="pipeline.html">Relay Pipeline</a></li>
+          <li><a href="story.html">Chapters</a></li>
+          <li><a href="blueprint.html">Blueprint</a></li>
+          <li><a href="console.html">Console</a></li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+    <main id="main" tabindex="-1">
+      <div class="wrap">
+        <section class="intro" aria-labelledby="title">
+          <h1 id="title">Landing page prototypes</h1>
+          <p>Four concepts for a GitHub Pages landing page for Chatter.IntegrationEventRelay. Open each one, compare them, and pick one. The chosen concept is finalized in a later run. Each prototype honours the reduced-motion setting.</p>
+        </section>
+        <ul class="grid">
+        <li class="card">
+          <div class="shot" aria-hidden="true" inert>
+            <iframe src="pipeline.html" loading="lazy" title="Preview of the Relay Pipeline prototype"></iframe>
+          </div>
+          <div class="body">
+            <h2><span class="num">1</span> Relay Pipeline</h2>
+            <p>An animated data-flow diagram carries the story: rows become events, packets travel the relay.</p>
+            <p class="motion"><span class="lbl">Motion:</span> Flowing packets, travelling-dot nav.</p>
+            <a class="open" href="pipeline.html">Open prototype<span class="sr"> Relay Pipeline</span></a>
+          </div>
+        </li>
+        <li class="card">
+          <div class="shot" aria-hidden="true" inert>
+            <iframe src="story.html" loading="lazy" title="Preview of the Chapters prototype"></iframe>
+          </div>
+          <div class="body">
+            <h2><span class="num">2</span> Chapters</h2>
+            <p>Editorial scroll story: a legacy island gets a bridge to the event-driven mainland, chapter by chapter.</p>
+            <p class="motion"><span class="lbl">Motion:</span> Scroll-driven reveals, ink-underline nav.</p>
+            <a class="open" href="story.html">Open prototype<span class="sr"> Chapters</span></a>
+          </div>
+        </li>
+        <li class="card">
+          <div class="shot" aria-hidden="true" inert>
+            <iframe src="blueprint.html" loading="lazy" title="Preview of the Blueprint prototype"></iframe>
+          </div>
+          <div class="body">
+            <h2><span class="num">3</span> Blueprint</h2>
+            <p>Engineering schematic: components, traces and spec sheets, with a switch between change sources.</p>
+            <p class="motion"><span class="lbl">Motion:</span> Self-drawing traces, pin-and-LED nav.</p>
+            <a class="open" href="blueprint.html">Open prototype<span class="sr"> Blueprint</span></a>
+          </div>
+        </li>
+        <li class="card">
+          <div class="shot" aria-hidden="true" inert>
+            <iframe src="console.html" loading="lazy" title="Preview of the Console prototype"></iframe>
+          </div>
+          <div class="body">
+            <h2><span class="num">4</span> Console</h2>
+            <p>Developer console: watch an UPDATE become a published integration event, then read the docs as commands.</p>
+            <p class="motion"><span class="lbl">Motion:</span> CSS typing, caret nav.</p>
+            <a class="open" href="console.html">Open prototype<span class="sr"> Console</span></a>
+          </div>
+        </li>
+        </ul>
+      </div>
+    </main>
+    <footer>
+      <div class="wrap">
+        <p>Source and documentation: <a href="https://github.com/brenpike/Chatter.IntegrationEventRelay">Chatter.IntegrationEventRelay on GitHub</a></p>
+      </div>
+    </footer>
+  </body>
+</html>
