@@ -783,17 +783,24 @@ GO</code></pre>
       root.classList.add('js');
       var mq = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
       var pause = document.getElementById('pause');
+      var userPaused = false;
 
       function applyPause(paused) {
         root.classList.toggle('paused', paused);
       }
       function syncMotion() {
         var reduced = !!(mq && mq.matches);
-        if (pause) { pause.checked = reduced; }
-        applyPause(reduced);
+        if (pause) {
+          pause.checked = reduced || userPaused;
+          pause.disabled = reduced;
+        }
+        applyPause(userPaused || reduced);
       }
       if (pause) {
-        pause.addEventListener('change', function () { applyPause(pause.checked); });
+        pause.addEventListener('change', function () {
+          userPaused = pause.checked;
+          applyPause(userPaused);
+        });
       }
       syncMotion();
       if (mq) {

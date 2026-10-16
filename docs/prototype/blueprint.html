@@ -996,8 +996,9 @@ GO</code></pre></div>
       var raf = 0;
       var last = 0;
       var clock = 0;
+      var userPaused = false;
 
-      function paused() { return !!(pause && pause.checked); }
+      function paused() { return userPaused; }
       function canRun() { return !state.reduced && !paused() && !document.hidden && state.onscreen && state.live; }
 
       function activeSvg() {
@@ -1058,17 +1059,18 @@ GO</code></pre></div>
         state.reduced = mq.matches;
         root.classList.toggle('reduced', state.reduced);
         if (pause) {
-          pause.checked = state.reduced;
+          pause.checked = state.reduced || userPaused;
           pause.disabled = state.reduced;
         }
         if (pauseNote) { pauseNote.textContent = state.reduced ? '(reduced motion is on)' : ''; }
-        root.classList.toggle('paused', paused());
+        root.classList.toggle('paused', userPaused || state.reduced);
         sync();
       }
 
       if (pause) {
         pause.addEventListener('change', function () {
-          root.classList.toggle('paused', paused());
+          userPaused = pause.checked;
+          root.classList.toggle('paused', userPaused);
           sync();
         });
       }

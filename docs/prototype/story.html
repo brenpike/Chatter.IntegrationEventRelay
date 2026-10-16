@@ -1191,17 +1191,22 @@ GO</code></pre>
 
         // Reduced motion: pause ambient loops and drop scroll-linked work.
         var rm = window.matchMedia('(prefers-reduced-motion: reduce)');
+        var userPaused = false;
         function applyMotion() {
           root.classList.toggle('rm', rm.matches);
-          if (pause) { pause.checked = rm.matches; }
-          root.classList.toggle('paused', !!(pause && pause.checked));
+          if (pause) {
+            pause.checked = rm.matches || userPaused;
+            pause.disabled = rm.matches;
+          }
+          root.classList.toggle('paused', userPaused || rm.matches);
         }
         if (rm.addEventListener) { rm.addEventListener('change', applyMotion); }
         else if (rm.addListener) { rm.addListener(applyMotion); }
         applyMotion();
         if (pause) {
           pause.addEventListener('change', function () {
-            root.classList.toggle('paused', pause.checked);
+            userPaused = pause.checked;
+            root.classList.toggle('paused', userPaused);
           });
         }
 
