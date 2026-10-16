@@ -8,10 +8,10 @@ on:
         required: true
         default: 'Manual build from GitHub UI'
   push:
-    branches: [ feat/** ]
+    branches: [ main, feat/** ]
   pull_request:
     branches: [ main ]
-    types: [ opened, synchronize, reopened, closed ]
+    types: [ opened, synchronize, reopened ]
 
 env:
   dotnet-version: '10.0.x'
@@ -20,8 +20,6 @@ jobs:
   build:
     name: build
     runs-on: ubuntu-latest
-    # Skip PRs that were closed without merging
-    if: github.event_name != 'pull_request' || github.event.action != 'closed' || github.event.pull_request.merged == true
 
     steps:
     - uses: actions/checkout@v4
@@ -66,7 +64,8 @@ jobs:
     runs-on: ubuntu-latest
     # The tests, switch-over tests between Service Broker and CDC included, take about 21 minutes locally
     timeout-minutes: 45
-    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    # Validates changes before merge; not re-run for the merge to main
+    if: github.event_name != 'push' || github.ref != 'refs/heads/main'
 
     steps:
     - uses: actions/checkout@v4
@@ -82,8 +81,8 @@ jobs:
     runs-on: ubuntu-latest
     # Backstop for a hung startup; e2e.sh itself waits at most 10 minutes for events
     timeout-minutes: 20
-    # Validates changes before merge; not needed again once a PR is closed
-    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    # Validates changes before merge; not re-run for the merge to main
+    if: github.event_name != 'push' || github.ref != 'refs/heads/main'
 
     steps:
     - uses: actions/checkout@v4
@@ -106,7 +105,7 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     environment:
       name: Production
