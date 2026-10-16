@@ -484,12 +484,13 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
         }
 
         [Theory]
-        [InlineData("INSERT")]
-        [InlineData("INSERT, UPDATE")]
-        public async Task MustFireATriggerOnATableWithOnlyAnIdentityColumnToCheckIt(string events)
+        [InlineData("Id int IDENTITY PRIMARY KEY", "INSERT")]
+        [InlineData("Id int IDENTITY PRIMARY KEY", "INSERT, UPDATE")]
+        [InlineData("Version rowversion PRIMARY KEY", "INSERT")]
+        public async Task MustFireATriggerOnATableWhoseColumnsAreAllGeneratedToCheckIt(string columns, string events)
         {
             await using var db = await _sql.CreateDatabaseAsync();
-            await db.ExecuteAsync($"CREATE TABLE dbo.[{_table}] (Id int IDENTITY PRIMARY KEY);");
+            await db.ExecuteAsync($"CREATE TABLE dbo.[{_table}] ({columns});");
             var captureInstance = await db.EnableCdcAsync(_table);
             var feed = await ServiceBrokerChangeFeed.InstallAsync<SwitchedEvent>(db.ConnectionString, _table);
             var definition = await TriggerDefinitionAsync(db, feed);
@@ -500,7 +501,6 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             await feed.DropProceduresAsync();
             await SeedCheckpointAsync(db, captureInstance, SourceName);
 
-            // In the session that ran the script, IDENTITY_INSERT is off again: an insert that leaves out the identity column works
             await using (var connection = new SqlConnection(db.ConnectionString))
             {
                 await connection.OpenAsync();
@@ -516,7 +516,7 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
         }
 
         [Fact]
-        public async Task MustTurnIdentityInsertOffWhenATriggerOnATableWithOnlyAnIdentityColumnFails()
+        public async Task MustRollBackWhenATriggerOnATableWithOnlyAnIdentityColumnFails()
         {
             await using var db = await _sql.CreateDatabaseAsync();
             await db.ExecuteAsync($"CREATE TABLE dbo.[{_table}] (Id int IDENTITY PRIMARY KEY);");
@@ -533,7 +533,6 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             await feed.DropProceduresAsync();
             await SeedCheckpointAsync(db, captureInstance, SourceName);
 
-            // In the session that ran the script, IDENTITY_INSERT is off again: an insert that leaves out the identity column works
             await using (var connection = new SqlConnection(db.ConnectionString))
             {
                 await connection.OpenAsync();

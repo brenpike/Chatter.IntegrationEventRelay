@@ -301,10 +301,10 @@ BEGIN TRY
 	END
 
 	-- Fires each trigger with a statement that changes no row, by the first of DELETE, UPDATE and INSERT it fires on that
-	-- the script can run on the table: UPDATE needs a column it can set, and INSERT one it can name, which on a table whose
-	-- other columns are all generated is its identity column, with IDENTITY_INSERT on. Like any SET in sp_executesql,
-	-- IDENTITY_INSERT ends with it, also when a trigger fails or the script is cancelled, so it's never left on for the
-	-- session. The triggers send a message even for no row, so this is rolled back to a savepoint. An enabled INSTEAD OF trigger on the table runs in place of the
+	-- the script can run on the table: UPDATE needs a column it can set, and INSERT names one too, except on a table whose
+	-- columns are all generated, where it inserts a row of DEFAULT VALUES (an identity value it takes stays used, and the
+	-- table's other AFTER INSERT triggers see the row). The triggers send a message even for no row, so this is rolled
+	-- back to a savepoint, which also removes that row. An enabled INSTEAD OF trigger on the table runs in place of the
 	-- statement, and the triggers don't fire, so the table's others are disabled after the savepoint and rolling back to it
 	-- enables them again. @probing is set after that, so failing to disable one isn't reported as a SqlChangeFeed trigger
 	-- that fails.
@@ -312,11 +312,9 @@ BEGIN TRY
 		SELECT TOP (1) QUOTENAME(name) FROM sys.columns
 		WHERE object_id = @tableId AND is_computed = 0 AND is_identity = 0 AND generated_always_type = 0 AND system_type_id <> TYPE_ID(N'timestamp')
 		ORDER BY column_id);
-	DECLARE @identity nvarchar(max) = (SELECT QUOTENAME(name) FROM sys.columns WHERE object_id = @tableId AND is_identity = 1);
 	DECLARE @insert nvarchar(max) = CASE
 		WHEN @column IS NOT NULL THEN N'INSERT INTO ' + @table + N' (' + @column + N') SELECT ' + @column + N' FROM ' + @table + N' WHERE 1 = 0;'
-		WHEN @identity IS NOT NULL THEN N'SET IDENTITY_INSERT ' + @table + N' ON; INSERT INTO ' + @table + N' (' + @identity + N') SELECT ' + @identity
-			+ N' FROM ' + @table + N' WHERE 1 = 0; SET IDENTITY_INSERT ' + @table + N' OFF;'
+		ELSE N'INSERT INTO ' + @table + N' DEFAULT VALUES;'
 		END;
 	DECLARE @probes TABLE (Id int IDENTITY PRIMARY KEY, Statement nvarchar(max) NULL);
 	INSERT INTO @probes (Statement)
@@ -334,7 +332,7 @@ BEGIN TRY
 		WHERE tr.parent_id = @tableId AND tr.name LIKE N'Chatter[_]ChangeFeedTrigger[_]%'
 		GROUP BY tr.object_id) AS fires;
 	IF EXISTS (SELECT * FROM @probes WHERE Statement IS NULL)
-		THROW 50000, N'A SqlChangeFeed trigger fires only on INSERT or UPDATE, and the table has no column the script can update or insert to fire it. Nothing was changed.', 1;
+		THROW 50000, N'A SqlChangeFeed trigger fires only on UPDATE, and the table has no column the script can update to fire it. Nothing was changed.', 1;
 
 	SET @lockTimeoutError = N'A query reading the table didn''t finish within ' + @timeout + N' seconds, so the script couldn''t fire SqlChangeFeed''s triggers to check them. Nothing was changed.';
 	DECLARE @disableInsteadOf nvarchar(max) = (

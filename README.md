@@ -287,7 +287,7 @@ Set `@tableSchema`, `@tableName`, `@captureInstance`, `@relaySchema` and `@timeo
 2. Refuses if a change of the capture instance was parked while it waited.
 3. [Seals](#sealed-checkpoints) those checkpoints.
 4. Runs each trigger's install procedure (`Chatter_InstallChangeFeed_<SourceEventType>`), if it still exists, which re-creates a trigger whose table's columns have changed, and enables SqlChangeFeed's triggers on the table.
-5. Fires the triggers with a statement that changes no row, and rolls that back, so a trigger that no longer compiles fails the switch rather than every write after it. The table's other `INSTEAD OF` triggers are disabled for that statement only, since they would replace it and the `AFTER` triggers would never fire; rolling back to the probe's savepoint enables them again, so they are never seen disabled outside the switch. Then it commits.
+5. Fires the triggers with a statement that changes no row (or, to fire an `INSERT` trigger on a table whose columns are all generated, inserts a row of default values), and rolls that back, so a trigger that no longer compiles fails the switch rather than every write after it. The table's other `INSTEAD OF` triggers are disabled for that statement only, since they would replace it and the `AFTER` triggers would never fire; rolling back to the probe's savepoint enables them again, so they are never seen disabled outside the switch. Then it commits.
 
 Then deploy the relay with `Source` removed from the table's mappings, and the CDC source removed if no other mapping uses it. Changes committed after the switch wait in the table's queue until the relay reads it.
 
