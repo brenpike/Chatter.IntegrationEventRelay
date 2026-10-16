@@ -3,7 +3,9 @@
 Relays changes to a legacy SQL Server database's tables to message broker infrastructure as integration events, so systems that can't publish events themselves can take part in an event-driven architecture.
 
 [![ci](https://github.com/brenpike/Chatter.IntegrationEventRelay/actions/workflows/cicd.yml/badge.svg)](https://github.com/brenpike/Chatter.IntegrationEventRelay/actions/workflows/cicd.yml)
-[![NuGet](https://img.shields.io/nuget/v/Chatter.IntegrationEventRelay)](https://www.nuget.org/packages/Chatter.IntegrationEventRelay/)
+[![Core](https://img.shields.io/nuget/v/Chatter.IntegrationEventRelay?label=Chatter.IntegrationEventRelay)](https://www.nuget.org/packages/Chatter.IntegrationEventRelay/)
+[![ServiceBroker](https://img.shields.io/nuget/v/Chatter.IntegrationEventRelay.ServiceBroker?label=Chatter.IntegrationEventRelay.ServiceBroker)](https://www.nuget.org/packages/Chatter.IntegrationEventRelay.ServiceBroker/)
+[![Cdc](https://img.shields.io/nuget/v/Chatter.IntegrationEventRelay.Cdc?label=Chatter.IntegrationEventRelay.Cdc)](https://www.nuget.org/packages/Chatter.IntegrationEventRelay.Cdc/)
 [![License](https://img.shields.io/github/license/brenpike/Chatter.IntegrationEventRelay)](LICENSE)
 [![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)](https://dotnet.microsoft.com/download/dotnet/10.0)
 
@@ -80,8 +82,8 @@ Two change sources are available. Each mapping picks a *source*, a named, config
 | NuGet package | Project | Purpose |
 |---|---|---|
 | [Chatter.IntegrationEventRelay](https://www.nuget.org/packages/Chatter.IntegrationEventRelay/) | [Chatter.IntegrationEventRelay.Core](Chatter.IntegrationEventRelay.Core) | Mapping configuration, mapper interfaces, the processor that maps row changes to integration events and publishes them, and the extension methods to build a Worker Service. It doesn't capture changes itself: a change source package does. |
-| `Chatter.IntegrationEventRelay.ServiceBroker` | [Chatter.IntegrationEventRelay.ServiceBroker](Chatter.IntegrationEventRelay.ServiceBroker) | The SQL Service Broker change source. It uses [Chatter.SqlChangeFeed](https://github.com/brenpike/Chatter/tree/master/src/Chatter.SqlChangeFeed), which installs a trigger on each watched table that sends changed rows to a SQL Service Broker queue. |
-| `Chatter.IntegrationEventRelay.Cdc` | [Chatter.IntegrationEventRelay.Cdc](Chatter.IntegrationEventRelay.Cdc) | The CDC change source. It polls each capture instance's change table, hands the changes to the processor in commit order, and saves a checkpoint in the source database once a batch is published. |
+| [Chatter.IntegrationEventRelay.ServiceBroker](https://www.nuget.org/packages/Chatter.IntegrationEventRelay.ServiceBroker/) | [Chatter.IntegrationEventRelay.ServiceBroker](Chatter.IntegrationEventRelay.ServiceBroker) | The SQL Service Broker change source. It uses [Chatter.SqlChangeFeed](https://github.com/brenpike/Chatter/tree/master/src/Chatter.SqlChangeFeed), which installs a trigger on each watched table that sends changed rows to a SQL Service Broker queue. |
+| [Chatter.IntegrationEventRelay.Cdc](https://www.nuget.org/packages/Chatter.IntegrationEventRelay.Cdc/) | [Chatter.IntegrationEventRelay.Cdc](Chatter.IntegrationEventRelay.Cdc) | The CDC change source. It polls each capture instance's change table, hands the changes to the processor in commit order, and saves a checkpoint in the source database once a batch is published. |
 
 The repo also contains two samples, [Chatter.IntegrationEventRelay.Worker](Chatter.IntegrationEventRelay.Worker) and [Chatter.IntegrationEventRelay.Consumer](Chatter.IntegrationEventRelay.Consumer), which the demo runs end to end (see [Running this repo locally](#running-this-repo-locally)).
 
