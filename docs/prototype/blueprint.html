@@ -830,7 +830,7 @@ Published integration event 'OrderShippedEvent' to messaging infrastructure</pre
         <ul class="cards" style="margin-top:1.5rem">
           <li class="card"><span class="id">Only one source</span><p>Every change is relayed by only one of the two sources. Each source is still at least once.</p></li>
           <li class="card"><span class="id">One transaction</span><p>The switch commits in one transaction, or the script rolls all of it back and changes nothing.</p></li>
-          <li class="card"><span class="id">Writes pause</span><p>Writes to the table pause while the script runs, normally a few seconds. Past <code>@timeoutSeconds</code> (default 300) it rolls back.</p></li>
+          <li class="card"><span class="id">Writes pause</span><p>The script locks the table, so writes to it pause until the script ends, normally a few seconds. Its waits for the relay, the capture job and the CDC sources end within about <code>@timeoutSeconds</code> (default 300); past it, the script rolls back and changes nothing. Some reads, the checks before the lock and, switching back, SqlChangeFeed's install procedures and the table's triggers aren't bounded by <code>@timeoutSeconds</code>. If the script doesn't finish, cancel it: that rolls it back too.</p></li>
           <li class="card"><span class="id">Mappers unchanged</span><p>Mappers don't change.</p></li>
           <li class="card"><span class="id">Tested</span><p>Integration tests run both scripts in both directions.</p></li>
         </ul>

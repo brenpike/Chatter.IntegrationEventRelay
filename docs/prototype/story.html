@@ -1028,7 +1028,7 @@ WHERE SourceName = N'orders-cdc' AND CaptureInstance = N'dbo_Orders' AND RowKey 
           </fieldset>
           <ul>
             <li>The switch commits in one transaction, or the script rolls all of it back and changes nothing.</li>
-            <li>Writes to the table pause while the script runs, normally a few seconds. Past <code>@timeoutSeconds</code> (default 300) it rolls back.</li>
+            <li>The script locks the table, so writes to it pause until the script ends, normally a few seconds. Its waits for the relay, the capture job and the CDC sources end within about <code>@timeoutSeconds</code> (default 300); past it, the script rolls back and changes nothing. Some reads, the checks before the lock and, switching back, SqlChangeFeed&rsquo;s install procedures and the table&rsquo;s triggers aren&rsquo;t bounded by <code>@timeoutSeconds</code>. If the script doesn&rsquo;t finish, cancel it: that rolls it back too.</li>
             <li>Mappers don&rsquo;t change.</li>
             <li>Integration tests run both scripts in both directions.</li>
           </ul>

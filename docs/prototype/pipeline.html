@@ -1031,7 +1031,7 @@
                 <li>Each script picks a switch point. The source you switch away from relays every change committed before it; the source you switch to relays every change committed after it.</li>
                 <li>Every change is relayed by only one of the two sources, and each source is still at least once.</li>
                 <li>The switch commits in one transaction, or the script rolls all of it back and changes nothing.</li>
-                <li>Writes to the table pause while the script runs, normally a few seconds; past <code>@timeoutSeconds</code> (default 300) it rolls back.</li>
+                <li>The script locks the table, so writes to it pause until the script ends, normally a few seconds. Its waits for the relay, the capture job and the CDC sources end within about <code>@timeoutSeconds</code> (default 300); past it, the script rolls back and changes nothing. Some reads, the checks before the lock and, switching back, SqlChangeFeed&#39;s install procedures and the table&#39;s triggers aren&#39;t bounded by <code>@timeoutSeconds</code>. If the script doesn&#39;t finish, cancel it: that rolls it back too.</li>
                 <li>Mappers don&#39;t change.</li>
                 <li>Integration tests run both scripts in both directions.</li>
               </ul>
