@@ -1,0 +1,47 @@
+name: Pages
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'web/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+# Read-only token for every job; deploy grants itself pages: write and id-token: write
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: deploy
+    # Main only. The github-pages environment also allows only main and is the real boundary.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    # One deploy at a time, never cancelled mid-deploy. A later run on main replaces a waiting one, so the newest
+    # main is what gets published. Set on the job, not the workflow, so a run the if skips never joins the group and
+    # can't displace a waiting deploy.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    # pages: write publishes the site; id-token: write lets deploy-pages prove the artifact came from this run
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Configure Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
+      - name: Upload site
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
+        with:
+          path: web
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5

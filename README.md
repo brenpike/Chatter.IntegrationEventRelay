@@ -9,6 +9,8 @@ Relays changes to a legacy SQL Server database's tables to message broker infras
 [![License](https://img.shields.io/github/license/brenpike/Chatter.IntegrationEventRelay)](LICENSE)
 [![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)](https://dotnet.microsoft.com/download/dotnet/10.0)
 
+[Project site](https://brenpike.github.io/Chatter.IntegrationEventRelay/): the README told as a story in nine chapters.
+
 [context-landscape-diagram]: https://github.com/brenpike/Chatter.IntegrationEventRelay/raw/main/.docs/assets/context-landscape-diagram.png "Context Landscape Diagram"
 
 - [How it works](#how-it-works)
@@ -669,7 +671,7 @@ docker compose down -v
 
 ### Contributing
 
-The scripts in `.scripts/cdc/` are the source of truth for the CDC grants and the switch-over; change them together with their integration tests (see [AGENTS.md](AGENTS.md)). Open pull requests against `main`.
+The scripts in `.scripts/cdc/` are the source of truth for the CDC grants and the switch-over; change them together with their integration tests (see [AGENTS.md](AGENTS.md)). Open pull requests against `main`. The project site, `web/index.html`, retells this README; keep it in step with the README, which stays the source of truth. A merge to `main` that changes `web/` deploys it.
 
 ## Upgrading
 
