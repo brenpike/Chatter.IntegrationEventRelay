@@ -63,6 +63,11 @@ DECLARE @timeoutSeconds int = 300;
 
 IF @@TRANCOUNT > 0
 	THROW 50000, N'Run the script on its own, not inside a transaction: it commits or rolls back a transaction of its own.', 1;
+-- Whatever the session set, before the first read: with implicit transactions a read would open a transaction that the
+-- script's COMMIT leaves open, holding the switch and the table's lock, and a row count would stop a statement short of
+-- the table's other triggers
+SET IMPLICIT_TRANSACTIONS OFF;
+SET ROWCOUNT 0;
 IF @sourceName IS NULL OR @sourceName = N'' OR @keepDeadLetters IS NULL
 	THROW 50000, N'Set @sourceName to the CDC mapping''s SourceName, and @keepDeadLetters to 0 or 1.', 1;
 -- SET LOCK_TIMEOUT counts milliseconds in an int

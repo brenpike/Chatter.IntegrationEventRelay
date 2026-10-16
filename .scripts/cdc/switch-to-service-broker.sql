@@ -75,6 +75,11 @@ DECLARE @timeoutSeconds int = 300;                  -- bounds the script's waits
 
 IF @@TRANCOUNT > 0
 	THROW 50000, N'Run the script outside a transaction: it commits the switch itself, or rolls all of it back.', 1;
+-- Whatever the session set, before the first read: with implicit transactions a read would open a transaction that the
+-- script's COMMIT leaves open, holding the switch and the table's lock, and a row count would stop a statement short of
+-- the table's other triggers or the capture instance's other checkpoints
+SET IMPLICIT_TRANSACTIONS OFF;
+SET ROWCOUNT 0;
 -- SET LOCK_TIMEOUT counts milliseconds in an int
 IF @timeoutSeconds IS NULL OR @timeoutSeconds NOT BETWEEN 1 AND 86400
 	THROW 50000, N'@timeoutSeconds must be between 1 and 86400.', 1;

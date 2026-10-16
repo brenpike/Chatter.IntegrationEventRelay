@@ -161,6 +161,35 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             Assert.Equal(new[] { 2 }, receiver.RowIds);
         }
 
+        [Theory]
+        [InlineData("SET IMPLICIT_TRANSACTIONS ON;")]
+        [InlineData("SET ROWCOUNT 1;")]
+        public async Task MustSealEveryCheckpointAndCommitWhateverTheSessionSet(string setting)
+        {
+            const int timeoutSeconds = 90;
+            await using var db = await _sql.CreateDatabaseAsync();
+            var (captureInstance, feed) = await PutOnCdcAsync(db, "first-cdc", "second-cdc");
+            await using var receiver = ServiceBrokerReceiver.Start(feed);
+            await using var first = CdcRelay.Start(db, captureInstance, _table, "first-cdc");
+            await using var second = CdcRelay.Start(db, captureInstance, _table, "second-cdc");
+            await db.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id) VALUES (1);");
+
+            // Implicit transactions would leave the switch in a transaction of the session's that its COMMIT doesn't end, and
+            // a row count would seal only one of the capture instance's checkpoints
+            await SwitchAsync(db.ConnectionString, setting + "\n"
+                + SwitchScripts.RenderToServiceBroker("dbo", _table, captureInstance, db.RelaySchema, timeoutSeconds)
+                + "\nIF @@TRANCOUNT > 0 THROW 50000, N'The switch left a transaction open.', 1;", timeoutSeconds);
+            await db.ExecuteAsync($"INSERT INTO dbo.[{_table}] (Id) VALUES (2);");
+            await WaitUntilAsync(() => receiver.RowIds.Count >= 1);
+            var checkpoints = new SqlCheckpointStore(db.ConnectionString, db.RelaySchema);
+
+            Assert.Equal(Sealed, await checkpoints.GetAsync("first-cdc", captureInstance, CancellationToken.None));
+            Assert.Equal(Sealed, await checkpoints.GetAsync("second-cdc", captureInstance, CancellationToken.None));
+            Assert.Equal(new[] { 1 }, first.RowIds);
+            Assert.Equal(new[] { 1 }, second.RowIds);
+            Assert.Equal(new[] { 2 }, receiver.RowIds);
+        }
+
         [Fact]
         public async Task MustLeaveTheCdcRelayHealthyCaughtUpAndRelayingNothingMore()
         {

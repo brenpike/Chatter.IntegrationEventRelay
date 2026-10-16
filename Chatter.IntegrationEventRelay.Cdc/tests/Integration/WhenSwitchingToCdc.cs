@@ -146,6 +146,32 @@ namespace Chatter.IntegrationEventRelay.Cdc.Tests.Integration
             Assert.Equal(new[] { 1 }, receiver.RowIds);
         }
 
+        [Theory]
+        [InlineData("SET IMPLICIT_TRANSACTIONS ON;")]
+        [InlineData("SET ROWCOUNT 1;")]
+        public async Task MustSwitchEveryTriggerAndCommitWhateverTheSessionSet(string setting)
+        {
+            await using var db = await _sql.CreateDatabaseAsync();
+            var (captureInstance, feed) = await CreateServiceBrokerTableAsync(db);
+            var otherFeed = await ServiceBrokerChangeFeed.InstallAsync<OtherSwitchedEvent>(db.ConnectionString, _table);
+            await using var receiver = ServiceBrokerReceiver.Start(feed);
+            await using var otherReceiver = ServiceBrokerReceiver.Start(otherFeed);
+            await InsertAsync(feed, 1);
+
+            // Implicit transactions would leave the switch in a transaction of the session's that its COMMIT doesn't end, and
+            // a row count would switch only one of the table's triggers
+            await ExecuteAsync(db.ConnectionString, setting + "\n"
+                + SwitchScripts.RenderToCdc("dbo", _table, captureInstance, SourceName, timeoutSeconds: ScriptTimeoutSeconds)
+                + "\nIF @@TRANCOUNT > 0 THROW 50000, N'The switch left a transaction open.', 1;", ScriptTimeoutSeconds);
+            await InsertAsync(feed, 2);
+
+            Assert.Equal(new[] { 2 }, await RelayWithCdcAsync(db, captureInstance, inserted: 2));
+            Assert.Equal(new[] { 1 }, receiver.RowIds);
+            Assert.Equal(new[] { 1 }, otherReceiver.RowIds);
+            Assert.True(await feed.IsTriggerDisabledAsync());
+            Assert.True(await otherFeed.IsTriggerDisabledAsync());
+        }
+
         [Fact]
         public async Task MustWaitForAReceiveThatRollsBackUntilTheRelayReceivesItAgain()
         {
