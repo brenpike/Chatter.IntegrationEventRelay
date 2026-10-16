@@ -30,8 +30,9 @@
 -- 0xFFFFFFFFFFFFFFFFFFFE, past any LSN SQL Server will write, and enables SqlChangeFeed's triggers on the table, after
 -- running each one's install procedure, if it still exists, to re-create a trigger whose table's columns have changed.
 -- Last, it fires the triggers with a statement that changes no row (or, to fire an INSERT trigger on a table whose
--- columns are all generated, inserts a row of DEFAULT VALUES: an identity value it takes stays used, and the table's
--- other AFTER INSERT triggers see the row) and rolls that back, so a trigger that no longer compiles fails the switch
+-- columns are all generated, inserts a row of DEFAULT VALUES: an identity value it takes stays used, the table's other
+-- AFTER INSERT triggers see the row, and a constraint the row breaks, such as a CHECK or foreign key on the identity
+-- column, makes the script refuse) and rolls that back, so a trigger that no longer compiles fails the switch
 -- rather than every write after it. For that statement it disables the table's other INSTEAD
 -- OF triggers, which would stop the triggers firing, and rolling the statement back enables them again.
 --
