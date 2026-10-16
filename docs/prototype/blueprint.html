@@ -862,7 +862,7 @@ Published integration event 'OrderShippedEvent' to messaging infrastructure</pre
     <section class="sheet" id="s-try" aria-labelledby="h-try">
       <div class="sheet-head"><h2 id="h-try">Assembly instructions: try it</h2><dl class="tb"><div><dt>Sheet</dt><dd>09 / 09</dd></div><div><dt>Scale</dt><dd>Not to scale</dd></div></dl></div>
       <div class="sheet-body">
-        <p>The chain and package lines follow the Change source selector in the first sheet. Both are shown if your browser lacks <code>:has()</code>.</p>
+        <p>The package lines, chain and configuration follow the Change source selector in the first sheet. Both are shown if your browser lacks <code>:has()</code>.</p>
         <ol class="assembly">
           <li>
             <h3>Add the packages</h3>
@@ -874,15 +874,30 @@ Published integration event 'OrderShippedEvent' to messaging infrastructure</pre
         <div class="code" role="region" tabindex="0" aria-label="Program.cs chain for SQL Service Broker"><pre><code>// Wires up the mapper of each mapping in configuration
 .AddIntegrationEventRelay()
     // Captures changes to the mapped tables with triggers and SQL Service Broker
-    .UseServiceBrokerChangeSource();</code></pre></div></div>
+    .UseServiceBrokerChangeSource();</code></pre></div>
+            <p>In development, <code>await host.Services.UseChangeFeedSqlMigrationsAsync();</code> after <code>Build()</code> creates the triggers and SQL Service Broker queues.</p></div>
             <div class="only-cdc"><p class="code-cap"><code>Program.cs</code>: CDC chain</p>
         <div class="code" role="region" tabindex="0" aria-label="Program.cs chain for CDC"><pre><code>.AddIntegrationEventRelay()
-    .UseCdcChangeSource()
-    .UseServiceBrokerChangeSource();</code></pre></div></div>
+    // Chain .UseServiceBrokerChangeSource() too, with its package, if other mappings use SQL Service Broker
+    .UseCdcChangeSource();</code></pre></div>
+            <p>Enable CDC on <code>dbo.Orders</code> and create the relay's tables with <code>.scripts/cdc/enable-cdc.sql</code> and <code>.scripts/cdc/create-relay-tables.sql</code> (SQL Server Agent must be running), or in development call <code>await host.Services.UseCdcSqlMigrationsAsync();</code> after <code>Build()</code>.</p></div>
           </li>
           <li>
-            <h3>Add a CDC source and mapping to <code>appsettings.json</code></h3>
-            <p class="code-cap"><code>appsettings.json</code></p>
+            <h3>Add the mapping to <code>appsettings.json</code></h3>
+            <div class="only-ssb"><p class="code-cap"><code>appsettings.json</code>: SQL Service Broker mapping</p>
+        <div class="code" role="region" tabindex="0" aria-label="appsettings.json SQL Service Broker configuration"><pre><code>"IntegrationEventRelay": {
+  "ConnectionString": "...",
+  "Mappings": [
+    {
+      "SourceEventTypeName": "MyNewIntegrationEventRelay.OrderChangedEvent",
+      "IntegrationEventTypeName": "MyNewIntegrationEventRelay.OrderShippedEvent",
+      "SourceChangeType": "Update",
+      "TableName": "Orders"
+    }
+  ]
+}</code></pre></div>
+            <p>The mapping names no <code>Source</code>, so SQL Service Broker captures the table from the database in <code>ConnectionString</code>.</p></div>
+            <div class="only-cdc"><p class="code-cap"><code>appsettings.json</code>: CDC source and mapping</p>
         <div class="code" role="region" tabindex="0" aria-label="appsettings.json CDC configuration"><pre><code>"IntegrationEventRelay": {
   "ConnectionString": "...",
   "Schema": "Chatter",
@@ -900,7 +915,7 @@ Published integration event 'OrderShippedEvent' to messaging infrastructure</pre
       "CaptureInstance": "dbo_Orders"
     }
   ]
-}</code></pre></div>
+}</code></pre></div></div>
           </li>
           <li>
             <h3>Create the mapper</h3>
