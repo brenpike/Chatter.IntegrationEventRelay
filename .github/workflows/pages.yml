@@ -12,19 +12,21 @@ on:
 permissions:
   contents: read
 
-# One deploy at a time, never cancelled mid-deploy. A later push to main replaces a waiting run, and the newest main is
-# what gets published.
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
   deploy:
     name: deploy
+    # Main only. The github-pages environment also allows only main and is the real boundary.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    # One deploy at a time, never cancelled mid-deploy. A later run on main replaces a waiting one, so the newest
+    # main is what gets published. Set on the job, not the workflow, so a run the if skips never joins the group and
+    # can't displace a waiting deploy.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     # pages: write publishes the site; id-token: write lets deploy-pages prove the artifact came from this run
     permissions:
       contents: read
