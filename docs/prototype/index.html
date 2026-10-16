@@ -53,8 +53,11 @@
       .intro { padding-block: clamp(32px, 6vw, 64px) clamp(20px, 3vw, 32px); }
       h1 { font-size: clamp(1.7rem, 6vw, 2.75rem); line-height: 1.15; letter-spacing: -.01em; }
       .intro p { max-width: 68ch; margin-top: 16px; color: var(--muted); font-size: 1.05rem; }
+      /* stop control: a CSS-only checkbox, so it works without JavaScript */
+      .stop-input { width: 24px; height: 24px; margin: 0 10px 0 0; vertical-align: middle; accent-color: var(--accent); cursor: pointer; }
+      .stop-label { display: inline-flex; align-items: center; min-height: 44px; vertical-align: middle; font-weight: 600; cursor: pointer; }
       /* grid */
-      .grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; list-style: none; padding: 0 0 clamp(32px, 6vw, 64px); }
+      .grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; list-style: none; padding: 20px 0 clamp(32px, 6vw, 64px); }
       @media (min-width: 960px) {
         .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; }
       }
@@ -73,6 +76,12 @@
         position: absolute; top: 0; left: 0; width: 300%; height: 300%; border: 0; background: #FFFFFF;
         transform: scale(.33333); transform-origin: 0 0;
       }
+      .shot::after {
+        content: "Live preview stopped"; position: absolute; inset: 0; display: none;
+        align-items: center; justify-content: center; color: var(--muted); font-weight: 600;
+      }
+      .stop-input:checked ~ .grid .shot iframe { display: none; }
+      .stop-input:checked ~ .grid .shot::after { display: flex; }
       .body { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 20px; flex: 1; }
       h2 { display: flex; align-items: center; gap: 10px; font-size: 1.35rem; line-height: 1.25; }
       .num {
@@ -116,8 +125,10 @@
       <div class="wrap">
         <section class="intro" aria-labelledby="title">
           <h1 id="title">Landing page prototypes</h1>
-          <p>Four concepts for a GitHub Pages landing page for Chatter.IntegrationEventRelay. Open each one, compare them, and pick one. The chosen concept is finalized in a later run. Each prototype honours the reduced-motion setting.</p>
+          <p>Four concepts for a GitHub Pages landing page for Chatter.IntegrationEventRelay. Open each one, compare them, and pick one. The chosen concept is finalized in a later run. Each prototype honours the reduced-motion setting. The previews below are live pages; use Stop live previews to stop their motion.</p>
         </section>
+        <input class="stop-input" type="checkbox" id="stop-previews">
+        <label class="stop-label" for="stop-previews">Stop live previews</label>
         <ul class="grid">
         <li class="card">
           <div class="shot" aria-hidden="true" inert>
