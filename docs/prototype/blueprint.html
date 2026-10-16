@@ -1,0 +1,1120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chatter.IntegrationEventRelay | Blueprint</title>
+  <meta name="description" content="Relays changes to a legacy SQL Server database's tables to message broker infrastructure as integration events, shown as an engineering schematic.">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A2A4A'/%3E%3Cpath d='M3 16h7l3-9 6 18 3-9h7' fill='none' stroke='%23FFC857' stroke-width='2.5' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      --bg: #0A2A4A;
+      --grid: #16426C;
+      --line: #EAF4FF;
+      --muted: #B7CDE6;
+      --signal: #FFC857;
+      --cdc: #7CFFB2;
+      --ssb: #9CC8FF;
+      --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+      --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --pad: clamp(12px, 3vw, 32px);
+      color-scheme: dark;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background-color: var(--bg);
+      background-image:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+        linear-gradient(rgba(22, 66, 108, 0.55) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(22, 66, 108, 0.55) 1px, transparent 1px);
+      background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+      color: var(--line);
+      font: 400 1rem/1.6 var(--sans);
+      overflow-wrap: break-word;
+    }
+    h1, h2, h3, h4 { font-family: var(--mono); font-weight: 700; margin: 0; line-height: 1.25; }
+    p { margin: 0 0 1rem; max-width: 72ch; }
+    ul, ol { margin: 0; padding: 0; }
+    code, kbd { font-family: var(--mono); font-size: 0.88em; background: var(--grid); color: var(--line); padding: 0.08em 0.35em; overflow-wrap: anywhere; }
+    .muted { color: var(--muted); }
+    .wrap { width: 100%; max-width: 1320px; margin: 0 auto; padding-left: var(--pad); padding-right: var(--pad); }
+    :focus-visible { outline: 3px solid var(--signal); outline-offset: 3px; }
+
+    .skip { position: absolute; left: 8px; top: -80px; z-index: 50; background: var(--bg); color: var(--line); border: 2px solid var(--signal); padding: 0.75rem 1rem; font: 700 0.9rem var(--mono); text-decoration: none; }
+    .skip:focus { top: 8px; }
+
+    /* ---------- pins: trace and pin nav motion ---------- */
+    .pin {
+      --mk: linear-gradient(var(--muted), var(--muted));
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.55rem;
+      min-height: 44px;
+      min-width: 44px;
+      padding: 0.5rem 0.95rem;
+      color: var(--line);
+      text-decoration: none;
+      font: 600 0.8rem/1.25 var(--mono);
+      letter-spacing: 0.02em;
+      text-align: center;
+      background-color: var(--bg);
+      background-image: var(--mk), var(--mk), var(--mk), var(--mk), var(--mk), var(--mk), var(--mk), var(--mk);
+      background-repeat: no-repeat;
+      background-size: 7px 1px, 1px 7px, 7px 1px, 1px 7px, 7px 1px, 1px 7px, 7px 1px, 1px 7px;
+      background-position: 0 0, 0 0, 100% 0, 100% 0, 0 100%, 0 100%, 100% 100%, 100% 100%;
+      border: 1px solid var(--muted);
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .pin::before {
+      content: "";
+      position: absolute;
+      left: -1px;
+      right: -1px;
+      bottom: -1px;
+      height: 3px;
+      background: var(--signal);
+      transform: scaleX(0);
+      transform-origin: 0 50%;
+      transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+      pointer-events: none;
+    }
+    .pin::after {
+      content: "";
+      position: absolute;
+      inset: -6px;
+      pointer-events: none;
+      --mk2: linear-gradient(var(--signal), var(--signal));
+      background-image: var(--mk2), var(--mk2), var(--mk2), var(--mk2), var(--mk2), var(--mk2), var(--mk2), var(--mk2);
+      background-repeat: no-repeat;
+      background-size: 10px 2px, 2px 10px, 10px 2px, 2px 10px, 10px 2px, 2px 10px, 10px 2px, 2px 10px;
+      background-position: 0 0, 0 0, 100% 0, 100% 0, 0 100%, 0 100%, 100% 100%, 100% 100%;
+      opacity: 0;
+      transform: scale(1.14);
+      transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.25s ease;
+    }
+    .led { position: relative; flex: none; width: 10px; height: 10px; border: 1.5px solid var(--muted); border-radius: 50%; }
+    .led::after { content: ""; position: absolute; inset: 1px; border-radius: 50%; background: var(--signal); opacity: 0; transition: opacity 0.25s ease; }
+    .pin:hover::before, .pin:focus-visible::before, .chk:focus-within::before { transform: scaleX(1); }
+    .pin:hover::after, .pin:focus-visible::after, .chk:focus-within::after { opacity: 1; transform: none; }
+    .pin:hover .led::after, .pin:focus-visible .led::after, .chk:focus-within .led::after { opacity: 1; }
+    .pin:active { transform: translateY(1px); }
+    .pin.small { min-height: 44px; font-size: 0.74rem; padding: 0.4rem 0.7rem; }
+    .pins { list-style: none; display: flex; flex-wrap: wrap; gap: 0.7rem; }
+    .pins li { display: flex; }
+    .pin .num { color: var(--muted); }
+    .pin .arrow { color: var(--muted); font-weight: 400; }
+
+    /* ---------- header ---------- */
+    .top { border-bottom: 1px solid var(--muted); background: var(--bg); position: relative; }
+    .top .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.5rem; padding-top: 0.9rem; padding-bottom: 0.9rem; }
+    .brand { display: flex; align-items: center; gap: 0.6rem; margin: 0; font: 700 0.95rem/1.2 var(--mono); flex: 0 1 auto; max-width: 100%; }
+    .brand svg { flex: none; }
+    .top nav { flex: 1 1 auto; }
+    .top .pins { gap: 0.55rem; }
+    .ctl { display: flex; align-items: center; justify-content: flex-end; padding-bottom: 0.8rem; }
+    .chk { gap: 0.7rem; }
+    .chk input { width: 22px; height: 22px; margin: 0; accent-color: var(--signal); flex: none; }
+    .chk input:focus-visible { outline: 3px solid var(--signal); outline-offset: 3px; }
+    .chk .note { font-weight: 400; color: var(--muted); }
+
+    /* ---------- hero ---------- */
+    .hero { position: relative; padding: clamp(1.75rem, 5vw, 3.5rem) 0 1rem; }
+    .eyebrow { margin: 0 0 0.75rem; font: 700 0.78rem var(--mono); letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
+    .eyebrow::before { content: ""; display: inline-block; width: 2.2rem; height: 2px; background: var(--signal); vertical-align: middle; margin-right: 0.7rem; }
+    h1 { font-size: clamp(1.35rem, 4.4vw, 2.6rem); letter-spacing: -0.01em; margin-bottom: 1.25rem; overflow-wrap: anywhere; }
+    .lede { font-size: clamp(1.05rem, 2.2vw, 1.35rem); line-height: 1.55; color: var(--line); max-width: 60ch; margin-bottom: 1.5rem; }
+    .spec { list-style: none; display: flex; flex-wrap: wrap; gap: 0.6rem 0.9rem; margin: 0 0 1.5rem; }
+    .spec li { border: 1px solid var(--muted); padding: 0.35rem 0.75rem; font: 600 0.78rem/1.4 var(--mono); color: var(--line); }
+    .spec li span { color: var(--muted); font-weight: 400; margin-right: 0.4rem; }
+    .index-label { margin: 0 0 0.6rem; font: 700 0.72rem var(--mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+
+    .problem { margin: 1rem 0 0; border: 1px solid var(--muted); background: var(--bg); position: relative; padding: clamp(1rem, 3vw, 1.75rem); }
+    .problem::before { content: "THE PROBLEM"; position: absolute; top: -0.7rem; left: 1rem; background: var(--bg); padding: 0 0.6rem; font: 700 0.72rem var(--mono); letter-spacing: 0.16em; color: var(--muted); }
+    .problem h2 { font-size: clamp(0.95rem, 2vw, 1.15rem); margin-bottom: 1rem; }
+    .hero-top { display: grid; gap: 2rem; grid-template-columns: minmax(0, 1fr); align-items: start; margin-bottom: 1.5rem; }
+    .problem figcaption { margin: 0.6rem 0 1rem; font: 400 0.78rem/1.4 var(--mono); color: var(--muted); }
+    .problem ul { list-style: none; display: grid; gap: 0.5rem; margin: 0.6rem 0 1rem; }
+    .problem li { padding-left: 1.6rem; position: relative; }
+    .problem li::before { content: ""; position: absolute; left: 0; top: 0.55em; width: 0.9rem; height: 2px; background: var(--muted); }
+    .problem li::after { content: ""; position: absolute; left: 0.9rem; top: calc(0.55em - 3px); width: 1px; height: 8px; background: var(--muted); }
+    .req { border-left: 3px solid var(--signal); padding: 0.35rem 0 0.35rem 0.9rem; margin: 0; font-family: var(--mono); font-size: 0.9rem; }
+
+    /* ---------- sheets ---------- */
+    .sheet { position: relative; margin: clamp(2rem, 5vw, 3.5rem) 0; background: var(--bg); border: 1px solid var(--muted); }
+    .sheet::before { content: ""; position: absolute; inset: 5px; border: 1px solid var(--grid); pointer-events: none; }
+    .sheet-head { display: flex; flex-wrap: wrap; align-items: stretch; border-bottom: 1px solid var(--muted); position: relative; }
+    .sheet-head h2 { flex: 1 1 15rem; padding: 1rem clamp(1rem, 3vw, 1.75rem); font-size: clamp(0.95rem, 2.3vw, 1.2rem); letter-spacing: 0.1em; text-transform: uppercase; }
+    .tb { display: flex; margin: 0; border-left: 1px solid var(--muted); }
+    .tb div { padding: 0.55rem 1rem; border-left: 1px solid var(--grid); min-width: 6.5rem; }
+    .tb div:first-child { border-left: 0; }
+    .tb dt { font: 700 0.62rem var(--mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+    .tb dd { margin: 0; font: 700 0.9rem var(--mono); color: var(--line); }
+    .sheet-body { position: relative; padding: clamp(1.1rem, 3.2vw, 2rem); }
+    .sheet h3 { font-size: 1rem; margin: 1.75rem 0 0.75rem; letter-spacing: 0.04em; }
+    .sheet h3:first-child { margin-top: 0; }
+    .sheet h3 .tag { color: var(--muted); font-weight: 400; }
+    .js .sheet { opacity: 0; transform: translateY(18px); transition: opacity 0.6s ease, transform 0.6s ease; }
+    .js .sheet.in { opacity: 1; transform: none; }
+
+    .cols { display: grid; gap: 1.5rem; grid-template-columns: minmax(0, 1fr); }
+    .cards { list-style: none; display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15.5rem), 1fr)); }
+    .card { position: relative; border: 1px solid var(--muted); padding: 1rem 1.1rem 1.1rem; }
+    .card h3, .card h4 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+    .card p:last-child { margin-bottom: 0; }
+    .card > .id { display: block; margin-bottom: 0.5rem; font: 700 0.7rem var(--mono); letter-spacing: 0.16em; color: var(--muted); text-transform: uppercase; }
+    .card.dash { border-style: dashed; }
+
+    /* ---------- schematic stage ---------- */
+    .stage { display: grid; gap: 1.25rem; }
+    .seg { border: 0; margin: 0; padding: 0; min-width: 0; }
+    .seg legend { padding: 0; margin: 0 0 0.6rem; font: 700 0.75rem var(--mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+    .seg .row { display: flex; flex-wrap: wrap; gap: 0.7rem; }
+    .opt { position: relative; display: inline-flex; }
+    .opt input { position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0; opacity: 0; z-index: 0; }
+    .opt .pin { z-index: 1; font-size: 0.86rem; padding: 0.5rem 1.2rem; }
+    .opt input:focus-visible + .pin { outline: 3px solid var(--signal); outline-offset: 4px; }
+    .opt input:focus-visible + .pin::before { transform: scaleX(1); }
+    .opt input:focus-visible + .pin::after { opacity: 1; transform: none; }
+    .opt input:focus-visible + .pin .led::after { opacity: 1; }
+    .opt input:checked + .pin { box-shadow: inset 0 0 0 1px var(--line); }
+    .opt input:checked + .pin::before { transform: scaleX(1); }
+    .opt input:checked + .pin .led::after { opacity: 1; }
+    .opt .dsh, .opt .sld { display: inline-block; width: 26px; height: 0; flex: none; }
+    .opt .dsh { border-top: 3px dashed var(--ssb); }
+    .opt .sld { border-top: 3px solid var(--cdc); }
+
+    .fig { position: relative; margin: 0; }
+    .fig svg { display: block; width: 100%; height: auto; overflow: visible; }
+    .fig svg.v-tall { display: none; }
+    .sch-wrap { position: relative; border: 1px dashed var(--grid); padding: 0.5rem; }
+    .legend { list-style: none; display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; margin: 0.75rem 0 0; font: 0.78rem/1.4 var(--mono); color: var(--muted); }
+    .legend li { display: flex; align-items: center; gap: 0.5rem; }
+    .legend svg { width: 36px; height: 8px; flex: none; }
+    .callouts { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); }
+    .co { border: 1px solid var(--muted); padding: 1rem 1.1rem; position: relative; }
+    .co.co-ssb { border-style: dashed; }
+    .co h3 { margin: 0 0 0.75rem; font-size: 0.95rem; letter-spacing: 0.04em; }
+    .co ol { list-style: none; display: grid; gap: 0.7rem; }
+    .co li { display: grid; grid-template-columns: 1.7rem 1fr; gap: 0.7rem; align-items: start; }
+    .co li p { margin: 0; font-size: 0.95rem; }
+    .co li strong { font-family: var(--mono); font-size: 0.86rem; display: block; margin-bottom: 0.1rem; }
+    .badge { display: inline-grid; place-items: center; width: 1.6rem; height: 1.6rem; border-radius: 50%; border: 2px solid var(--muted); font: 700 0.75rem var(--mono); color: var(--line); }
+    .co-ssb .badge { border-color: var(--ssb); border-style: dashed; }
+    .co-cdc .badge { border-color: var(--cdc); }
+
+    /* svg vocabulary */
+    .nd { fill: var(--bg); stroke: var(--line); stroke-width: 1.6; }
+    .nd2 { fill: none; stroke: var(--line); stroke-width: 1.6; }
+    .nd.dashed { stroke-dasharray: 5 4; }
+    .cell { fill: var(--bg); stroke: var(--muted); stroke-width: 1.2; }
+    .nt { font: 700 12.5px var(--mono); fill: var(--line); }
+    .nt.sm { font-size: 11px; }
+    .ns { font: 400 10.5px var(--mono); fill: var(--muted); }
+    .lbl { font: 700 10.5px var(--mono); fill: var(--muted); letter-spacing: 0.1em; }
+    .tr { fill: none; stroke-width: 2.6; stroke-linejoin: round; stroke-linecap: butt; }
+    .rt, .mk { transition: opacity 0.3s ease; }
+    .tr.ssb { stroke: var(--ssb); stroke-dasharray: 7 5; }
+    .tr.cdc { stroke: var(--cdc); }
+    .tr.com { stroke: var(--line); }
+    .core { fill: none; stroke: var(--signal); stroke-width: 1.1; stroke-linejoin: round; opacity: 0; transition: opacity 0.3s ease; }
+    .core.dashed { stroke-dasharray: 7 5; }
+    .ah { transition: opacity 0.3s ease; }
+    .ah.ssb { fill: var(--ssb); }
+    .ah.cdc { fill: var(--cdc); }
+    .ah.com { fill: var(--line); }
+    .jn { fill: var(--line); }
+    .mkc { fill: var(--bg); stroke-width: 2; }
+    .r-ssb .mkc { stroke: var(--ssb); }
+    .r-cdc .mkc { stroke: var(--cdc); }
+    .mkt { font: 700 11px var(--mono); fill: var(--line); text-anchor: middle; dominant-baseline: central; }
+    .rp { fill: none; stroke: none; visibility: hidden; }
+    .pg { display: none; }
+    .js .pg.on { display: inline; }
+    .pulse { fill: var(--signal); }
+    .pring { fill: none; stroke: var(--signal); stroke-width: 1.5; opacity: 0.55; }
+    .nd, .cell, .nt, .ns, .ng { transition: opacity 0.3s ease; }
+    .lock { fill: none; stroke: var(--cdc); stroke-width: 1.8; }
+    .lock-body { fill: var(--bg); stroke: var(--cdc); stroke-width: 1.8; }
+    .msg { stroke: var(--line); stroke-width: 1.6; fill: none; }
+    .hatch { stroke: var(--muted); stroke-width: 1; }
+    .item { fill: var(--bg); stroke: var(--line); stroke-width: 1.6; }
+    .item.wait { stroke: var(--muted); stroke-dasharray: 3 3; }
+    .item.park { stroke: var(--signal); }
+    .it { font: 700 12px var(--mono); fill: var(--line); text-anchor: middle; dominant-baseline: central; }
+    .mid { text-anchor: middle; }
+    .end { text-anchor: end; }
+    .flow-line { fill: none; stroke: var(--line); stroke-width: 2; }
+    .flow-line.thin { stroke-width: 1.4; }
+    .flow-line.dash { stroke-dasharray: 5 4; stroke: var(--muted); }
+    .flow-line.cdcl { stroke: var(--cdc); }
+    .flow-line.ssbl { stroke: var(--ssb); stroke-dasharray: 7 5; }
+    .fill-line { fill: var(--line); }
+    .fill-cdc { fill: var(--cdc); }
+    .fill-ssb { fill: var(--ssb); }
+    .fill-muted { fill: var(--muted); }
+    .dial { fill: none; stroke: var(--muted); stroke-width: 2; }
+    .tick { stroke: var(--muted); stroke-width: 1.5; }
+    .needle { stroke: var(--signal); stroke-width: 3; stroke-linecap: round; }
+    .hub { fill: var(--bg); stroke: var(--signal); stroke-width: 2; }
+    .lever { fill: none; stroke: var(--line); stroke-width: 3; stroke-linecap: round; transition: transform 0.5s cubic-bezier(0.3, 0.7, 0.2, 1); }
+    .contact { fill: var(--bg); stroke: var(--line); stroke-width: 2; }
+    .ptline { stroke: var(--signal); stroke-width: 1.4; stroke-dasharray: 4 4; fill: none; }
+    .beat { animation: beat 2.4s ease-in-out infinite; }
+
+    @keyframes draw { to { stroke-dashoffset: 0; } }
+    @keyframes fadein { to { opacity: 1; } }
+    @keyframes beat { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+    .js .stage .draw { stroke-dasharray: 1; stroke-dashoffset: 1; }
+    .js .stage.live .draw { animation: draw 0.55s ease-out forwards; animation-delay: var(--d, 0s); }
+    .js .stage .ah, .js .stage .ng { opacity: 0; }
+    .js .stage.live .ah, .js .stage.live .ng { animation: fadein 0.45s ease-out forwards; animation-delay: var(--d, 0s); }
+
+    /* selection states (:has) */
+    @supports selector(:has(*)) {
+      .stage:has(#src-ssb:checked) .rt.r-cdc,
+      .stage:has(#src-cdc:checked) .rt.r-ssb { opacity: 0.3; }
+      .stage:has(#src-ssb:checked) .mk.r-cdc,
+      .stage:has(#src-cdc:checked) .mk.r-ssb { opacity: 0.55; }
+      .stage:has(#src-ssb:checked) .r-cdc .nd,
+      .stage:has(#src-ssb:checked) .r-cdc .nd2,
+      .stage:has(#src-ssb:checked) .r-cdc .cell,
+      .stage:has(#src-cdc:checked) .r-ssb .nd { opacity: 0.45; }
+      .stage:has(#src-ssb:checked) .r-cdc .nt,
+      .stage:has(#src-cdc:checked) .r-ssb .nt { fill: var(--muted); }
+      .stage:has(#src-ssb:checked) .r-ssb .core,
+      .stage:has(#src-cdc:checked) .r-cdc .core { opacity: 1; }
+      .stage:has(#src-ssb:checked) .co-cdc,
+      .stage:has(#src-cdc:checked) .co-ssb { display: none; }
+      body:has(#src-ssb:checked) .only-cdc,
+      body:has(#src-cdc:checked) .only-ssb { display: none; }
+      .sw-stage:has(#when-before:checked) .when-after,
+      .sw-stage:has(#when-after:checked) .when-before { display: none; }
+      .sw-stage:has(#when-before:checked) .new-core,
+      .sw-stage:has(#when-after:checked) .old-core { opacity: 0; }
+      .sw-stage:has(#when-before:checked) .old-core,
+      .sw-stage:has(#when-after:checked) .new-core { opacity: 1; }
+      .sw-stage:has(#when-after:checked) .swg .lever { transform: rotate(-25deg); }
+      body:has(#pause:checked) *, body:has(#pause:checked) *::before, body:has(#pause:checked) *::after { animation-play-state: paused !important; }
+    }
+    .paused *, .paused *::before, .paused *::after { animation-play-state: paused !important; }
+    .swg .lever { transform: rotate(0deg); }
+    @supports selector(:has(*)) {
+      .sw-stage:has(#when-before:checked) .swg .lever { transform: rotate(25deg); }
+      .stage:has(#src-ssb:checked) .lease { opacity: 0.4; }
+    }
+    .new-core, .old-core { opacity: 1; transition: opacity 0.3s ease; }
+    .problem svg { width: 100%; height: auto; overflow: visible; }
+    .problem .p-wide { display: block; }
+    .problem .p-tall { display: none; }
+    @media (max-width: 559px) {
+      .problem .p-wide { display: none; }
+      .problem .p-tall { display: block; max-width: 300px; margin: 0 auto; }
+    }
+
+    /* ---------- tables ---------- */
+    .scroll { overflow-x: auto; max-width: 100%; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+    th, td { text-align: left; vertical-align: top; padding: 0.75rem 0.9rem; border-bottom: 1px solid var(--grid); }
+    thead th { border-bottom: 1px solid var(--muted); font: 700 0.78rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; vertical-align: bottom; }
+    tbody th { font: 700 0.82rem var(--mono); color: var(--line); width: 11rem; }
+    td .caps { display: inline-flex; flex-wrap: wrap; gap: 0.35rem; }
+    th svg { display: block; width: 44px; height: 8px; margin-bottom: 0.4rem; }
+    .matrix td, .matrix th { overflow-wrap: anywhere; }
+    .chip { display: inline-block; font: 700 0.78rem var(--mono); border: 1px solid var(--muted); padding: 0.1rem 0.5rem; }
+    .none { font-family: var(--mono); font-weight: 700; }
+    .bom td.pkg { font-family: var(--mono); font-weight: 700; overflow-wrap: anywhere; }
+    .bom td.item { font-family: var(--mono); color: var(--muted); width: 4rem; }
+    .bom td.go { width: 1%; white-space: nowrap; }
+
+    .lists { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); }
+    .lists h3 { margin-top: 0; }
+    .when { list-style: none; display: grid; gap: 0.7rem; }
+    .when li { position: relative; padding-left: 1.5rem; }
+    .when li::before { content: ""; position: absolute; left: 0; top: 0.5em; width: 0.7rem; height: 0.7rem; border: 2px solid var(--muted); }
+    .when.cdc li::before { border-color: var(--cdc); }
+    .when.ssb li::before { border-color: var(--ssb); border-style: dashed; }
+
+    /* steps */
+    .steps { list-style: none; counter-reset: st; display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); margin-bottom: 1.5rem; }
+    .steps li { counter-increment: st; position: relative; border: 1px solid var(--muted); padding: 1rem 1.1rem; padding-top: 2.6rem; }
+    .steps li::before { content: counter(st); position: absolute; left: 0.9rem; top: -0.9rem; width: 2rem; height: 2rem; display: grid; place-items: center; background: var(--bg); border: 2px solid var(--signal); border-radius: 50%; font: 700 0.9rem var(--mono); }
+    .steps h3 { margin: 0 0 0.4rem; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.06em; }
+    .steps p { margin: 0; font-size: 0.95rem; }
+    .chain { list-style: none; display: flex; flex-wrap: wrap; align-items: stretch; gap: 0.5rem 0; margin: 0.5rem 0 1.25rem; }
+    .chain li { display: flex; align-items: center; }
+    .chain li > span { border: 1px solid var(--muted); padding: 0.45rem 0.8rem; font: 600 0.82rem/1.3 var(--mono); }
+    .chain li + li::before { content: ""; width: 1.6rem; height: 2px; background: var(--line); margin: 0 0.1rem; flex: none; }
+    .chain li + li::after { content: ""; order: 0; }
+    .readout { margin: 1rem 0 0; border: 1px solid var(--muted); }
+    .readout pre { margin: 0; padding: 0.9rem 1rem; overflow-x: auto; font: 0.82rem/1.6 var(--mono); }
+    .readout figcaption { border-top: 1px solid var(--muted); padding: 0.45rem 1rem; font: 700 0.72rem var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+
+    /* code */
+    .code { border: 1px solid var(--muted); background: var(--bg); overflow: auto; max-width: 100%; margin: 0 0 1.25rem; }
+    .code pre { margin: 0; padding: 0.9rem 1rem; font: 0.82rem/1.55 var(--mono); color: var(--line); tab-size: 4; }
+    .code .ln { display: block; }
+    .code-cap { margin: 0 0 0.4rem; font: 700 0.74rem var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+    .code-cap code { text-transform: none; letter-spacing: 0; }
+    .assembly { counter-reset: asm; list-style: none; display: grid; gap: 0.5rem; }
+    .assembly > li { counter-increment: asm; position: relative; padding-left: 3.1rem; padding-bottom: 0.5rem; min-width: 0; }
+    .assembly > li::before { content: counter(asm); position: absolute; left: 0; top: -0.1rem; width: 2rem; height: 2rem; display: grid; place-items: center; border: 2px solid var(--signal); border-radius: 50%; font: 700 0.85rem var(--mono); }
+    .assembly > li::after { content: ""; position: absolute; left: 1rem; top: 2rem; bottom: 0; width: 1px; background: var(--muted); }
+    .assembly > li:last-child::after { display: none; }
+    .assembly h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+
+    /* ledger */
+    .ledger { list-style: none; display: grid; gap: 0.9rem; margin: 1rem 0; }
+    .ledger .head { display: flex; flex-wrap: wrap; gap: 0.3rem 0.8rem; align-items: baseline; margin-bottom: 0.3rem; }
+    .ledger b { font: 700 1.3rem var(--mono); }
+    .ledger .nm { font: 600 0.88rem var(--mono); overflow-wrap: anywhere; }
+    .ledger .via { font: 400 0.78rem var(--mono); color: var(--muted); }
+    .bar { height: 18px; width: calc(var(--w) * 1%); border: 2px solid var(--cdc); background-image: repeating-linear-gradient(135deg, var(--cdc) 0 3px, transparent 3px 8px); }
+    .bar.ssb { border: 2px dashed var(--ssb); background-image: repeating-linear-gradient(45deg, var(--ssb) 0 2px, transparent 2px 9px); }
+    .cmd { margin: 0 0 1.25rem; }
+
+    footer { border-top: 1px solid var(--muted); background: var(--bg); margin-top: 3rem; padding: 2rem 0 3rem; }
+    footer .pins { margin-bottom: 1.5rem; }
+    footer p { font-size: 0.92rem; color: var(--muted); margin-bottom: 0.5rem; }
+    footer p strong { color: var(--line); }
+
+    .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+    /* ---------- responsive ---------- */
+    @media (min-width: 760px) {
+      .stage-grid { display: grid; gap: 1.5rem; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); align-items: start; }
+    }
+    @media (max-width: 1179px) {
+      .fig svg.v-wide { display: none; }
+      .fig svg.v-tall { display: block; max-width: 420px; margin-left: auto; margin-right: auto; }
+      .stage-grid .fig svg.v-tall { margin-left: 0; }
+    }
+    @media (min-width: 1000px) {
+      .hero-top { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2.5rem; }
+    }
+    @media (min-width: 1180px) {
+      .stage-grid { display: block; }
+      .callouts { margin-top: 1.25rem; }
+    }
+    @media (max-width: 759px) {
+      .top .pins { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .top .pins li { min-width: 0; }
+      .top .pin { width: 100%; padding-left: 0.5rem; padding-right: 0.5rem; font-size: 0.74rem; }
+      .ctl { justify-content: flex-start; }
+      .tb { border-left: 0; border-top: 1px solid var(--muted); width: 100%; }
+      .tb div { flex: 1 1 0; }
+      .matrix thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+      .matrix, .matrix tbody, .matrix tr, .matrix th, .matrix td { display: block; width: 100%; }
+      .matrix tbody th { width: auto; padding-bottom: 0.2rem; border-bottom: 0; color: var(--muted); }
+      .matrix td { padding-top: 0.3rem; padding-bottom: 0.3rem; border-bottom: 0; }
+      .matrix td::before { content: attr(data-label); display: block; font: 700 0.7rem var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+      .matrix tr { border-bottom: 1px solid var(--grid); padding: 0.6rem 0; }
+      .bom thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+      .bom, .bom tbody, .bom tr, .bom td { display: block; width: 100%; }
+      .bom tr { border: 1px solid var(--muted); padding: 0.75rem; margin-bottom: 1rem; }
+      .bom td { border-bottom: 0; padding: 0.25rem 0; }
+      .bom td.item { width: auto; }
+      .bom td.go { white-space: normal; padding-top: 0.6rem; }
+      .assembly > li { padding-left: 2.6rem; }
+    }
+    @media (max-width: 700px) {
+      .chain { flex-direction: column; align-items: flex-start; }
+      .chain li { flex-direction: column; align-items: flex-start; }
+      .chain li + li::before { width: 2px; height: 1rem; margin: 0 0 0 1.2rem; }
+    }
+    @media (max-width: 420px) {
+      .opt .pin { padding-left: 0.8rem; padding-right: 0.8rem; }
+      .seg .row { gap: 0.6rem; }
+    }
+
+    /* ---------- reduced motion ---------- */
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+      .js .sheet { opacity: 1; transform: none; }
+      .js .stage .draw { stroke-dasharray: none !important; stroke-dashoffset: 0 !important; }
+      .js .stage .ah, .js .stage .ng { opacity: 1 !important; }
+      .js .pg.on, .pg { display: none !important; }
+      .beat { opacity: 1; }
+    }
+
+    /* ---------- forced colors ---------- */
+    @media (forced-colors: active) {
+      body { background-image: none; }
+      .pin, .sheet, .card, .co, .code, .spec li, .problem, .readout, .steps li, .chip { border-color: CanvasText; }
+      .pin { background-image: none; forced-color-adjust: none; background-color: ButtonFace; color: ButtonText; border: 1px solid ButtonText; }
+      .pin::before { background: Highlight; }
+      .pin::after { display: none; }
+      .pin:hover, .pin:focus-visible { outline: 3px solid Highlight; }
+      .opt input:checked + .pin { border-width: 3px; }
+      :focus-visible { outline: 3px solid Highlight; outline-offset: 3px; }
+      .led { border-color: ButtonText; }
+      .led::after { background: Highlight; }
+      .badge { border-color: CanvasText; }
+      .steps li::before, .assembly > li::before { border-color: Highlight; }
+      .bar { forced-color-adjust: none; background-image: none; background-color: LinkText; border-color: CanvasText; }
+      .bar.ssb { background-color: Canvas; }
+      svg { forced-color-adjust: none; }
+      svg text, svg tspan, .nt, .ns, .lbl, .mkt, .it { fill: CanvasText !important; }
+      .nd, .cell, .item, .contact, .mkc, .lock-body, .hub { fill: Canvas !important; stroke: CanvasText !important; }
+      .nd2, .dial, .msg, .flow-line, .lock, .tick, .lever, .hatch, .tr.com, .tr.ssb, .flow-line.ssbl, .flow-line.dash { stroke: CanvasText !important; }
+      .tr.cdc, .flow-line.cdcl { stroke: LinkText !important; }
+      .core, .needle, .ptline, .pring { stroke: Highlight !important; }
+      .pulse { fill: Highlight !important; }
+      .item.park { stroke: Highlight !important; }
+      .ah, .jn, .fill-line, .fill-muted, .fill-ssb, .ah.ssb, .ah.com { fill: CanvasText !important; }
+      .ah.cdc, .fill-cdc { fill: LinkText !important; }
+      th svg line, .legend svg line, .legend svg circle { stroke: CanvasText; fill: CanvasText; }
+    }
+  </style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+  <div class="wrap bar">
+    <p class="brand"><svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect x="1" y="1" width="30" height="30" fill="none" stroke="#B7CDE6" stroke-width="1.5"/><path d="M3 16h7l3-9 6 18 3-9h7" fill="none" stroke="#FFC857" stroke-width="2.5" stroke-linejoin="round"/></svg><span>Chatter.<wbr>IntegrationEventRelay</span></p>
+    <nav aria-label="Primary">
+      <ul class="pins">
+        <li><a class="pin" href="https://github.com/brenpike/Chatter.IntegrationEventRelay"><span class="led" aria-hidden="true"></span><span>GitHub</span></a></li>
+        <li><a class="pin" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay/"><span class="led" aria-hidden="true"></span><span>NuGet: Core</span></a></li>
+        <li><a class="pin" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.ServiceBroker/"><span class="led" aria-hidden="true"></span><span>NuGet: ServiceBroker</span></a></li>
+        <li><a class="pin" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.Cdc/"><span class="led" aria-hidden="true"></span><span>NuGet: Cdc</span></a></li>
+        <li><a class="pin" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#how-it-works"><span class="led" aria-hidden="true"></span><span>README: How it works</span></a></li>
+        <li><a class="pin" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#quick-start"><span class="led" aria-hidden="true"></span><span>README: Quick start</span></a></li>
+        <li><a class="pin" href="index.html"><span class="led" aria-hidden="true"></span><span>All prototypes</span></a></li>
+      </ul>
+    </nav>
+  </div>
+  <div class="wrap ctl">
+    <label class="pin chk" for="pause"><input type="checkbox" id="pause"><span>Pause animations <span class="note" id="pause-note"></span></span></label>
+  </div>
+</header>
+<main id="main">
+  <div class="wrap">
+    <section class="hero" aria-labelledby="top-title">
+      <div class="hero-top">
+        <div class="hero-copy">
+          <p class="eyebrow">Integration Event Relay</p>
+          <h1 id="top-title">Chatter.<wbr>IntegrationEventRelay</h1>
+          <p class="lede">Relays changes to a legacy SQL Server database's tables to message broker infrastructure as integration events, so systems that can't publish events themselves can take part in an event-driven architecture.</p>
+          <ul class="spec">
+            <li><span>License</span>MIT</li>
+            <li><span>Author</span>Brennan Pike</li>
+            <li><span>Target</span>.NET 10 (<code>net10.0</code>)</li>
+            <li><span>Host</span>.NET Worker Service</li>
+            <li><span>Packages</span>3 on NuGet</li>
+          </ul>
+        </div>
+        <figure class="problem">
+          <h2>The problem: legacy systems stay outside the event-driven architecture</h2>
+          <svg class="p-wide" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 580 150" role="img" aria-label="Without the relay: legacy systems write to SQL Server, but no integration events reach the message broker infrastructure." focusable="false"><rect class="nd" x="8" y="40" width="150" height="70"/><text class="nt mid" x="83" y="70">Legacy systems</text><text class="ns mid" x="83" y="88">write to SQL Server</text><path class="flow-line" d="M158 75 H235"/><polygon class="fill-line" points="235,75 227,70.5 227,79.5"/><path class="nd" d="M235 45 A45 9 0 0 1 325 45 V105 A45 9 0 0 1 235 105 Z"/><ellipse class="nd2" cx="280" cy="45" rx="45" ry="9"/><text class="nt mid" x="280" y="80">SQL Server</text><path class="flow-line dash" d="M325 75 H355 M389 75 H420"/><path class="msg" d="M365 68 L379 82 M379 68 L365 82"/><text class="ns mid" x="372" y="56">no events</text><rect class="nd dashed" x="420" y="40" width="152" height="70"/><text class="nt mid" x="496" y="70">Message broker</text><text class="ns mid" x="496" y="88">infrastructure</text></svg><svg class="p-tall" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 330" role="img" aria-label="Without the relay: legacy systems write to SQL Server, but no integration events reach the message broker infrastructure." focusable="false"><rect class="nd" x="70" y="6" width="160" height="60"/><text class="nt mid" x="150" y="32">Legacy systems</text><text class="ns mid" x="150" y="50">write to SQL Server</text><path class="flow-line" d="M150 66 V96"/><polygon class="fill-line" points="150,96 145.5,88 154.5,88"/><path class="nd" d="M100 105 A50 9 0 0 1 200 105 V155 A50 9 0 0 1 100 155 Z"/><ellipse class="nd2" cx="150" cy="105" rx="50" ry="9"/><text class="nt mid" x="150" y="134">SQL Server</text><path class="flow-line dash" d="M150 164 V186 M150 230 V252"/><path class="msg" d="M142 198 L158 214 M158 198 L142 214"/><text class="ns" x="170" y="210">no events</text><rect class="nd dashed" x="70" y="252" width="160" height="70"/><text class="nt mid" x="150" y="282">Message broker</text><text class="ns mid" x="150" y="300">infrastructure</text></svg>
+          <figcaption>Without the relay: rows change in SQL Server, but no integration events reach the broker.</figcaption>
+          <p>Legacy systems write to a SQL Server database but can't create or publish integration events: the cause is their as-is architecture, technical debt, or an inability to integrate with message broker infrastructure. So they stay outside an event-driven architecture.</p>
+          <ul>
+            <li>A monolithic desktop app (WinForms or Swing)</li>
+            <li>A VBA Excel app</li>
+            <li>People editing tables directly</li>
+          </ul>
+          <p class="req">Requirement: the legacy backend is SQL Server.</p>
+        </figure>
+      </div>
+      <nav aria-label="Sheet index">
+        <p class="index-label">Drawing index</p>
+        <ul class="pins">
+          <li><a class="pin small" href="#s-schematic"><span class="led" aria-hidden="true"></span><span>01 Schematic</span></a></li>
+          <li><a class="pin small" href="#s-path"><span class="led" aria-hidden="true"></span><span>02 Signal path</span></a></li>
+          <li><a class="pin small" href="#s-sources"><span class="led" aria-hidden="true"></span><span>03 Change sources</span></a></li>
+          <li><a class="pin small" href="#s-delivery"><span class="led" aria-hidden="true"></span><span>04 Delivery and failure</span></a></li>
+          <li><a class="pin small" href="#s-lease"><span class="led" aria-hidden="true"></span><span>05 Lease</span></a></li>
+          <li><a class="pin small" href="#s-observe"><span class="led" aria-hidden="true"></span><span>06 Observability</span></a></li>
+          <li><a class="pin small" href="#s-switch"><span class="led" aria-hidden="true"></span><span>07 Switch-over</span></a></li>
+          <li><a class="pin small" href="#s-parts"><span class="led" aria-hidden="true"></span><span>08 Bill of materials</span></a></li>
+          <li><a class="pin small" href="#s-try"><span class="led" aria-hidden="true"></span><span>09 Try it</span></a></li>
+        </ul>
+      </nav>
+    </section>
+    <section class="sheet" id="s-schematic" aria-labelledby="h-schematic">
+      <div class="sheet-head"><h2 id="h-schematic">Schematic: one table, two routes</h2><dl class="tb"><div><dt>Sheet</dt><dd>01 / 09</dd></div><div><dt>Scale</dt><dd>Not to scale</dd></div></dl></div>
+      <div class="sheet-body">
+        <div class="stage" id="stage">
+          <div>
+            <p>One table, two ways to capture it. Choose a change source: its route energizes and its callouts appear. One relay can use both sources, but each table uses only one. The signal pulse follows the chosen route and stops with Pause animations.</p>
+            <fieldset class="seg">
+              <legend>Change source</legend>
+              <div class="row">
+                <div class="opt"><input type="radio" name="source" id="src-ssb" value="ssb"><label class="pin" for="src-ssb"><span class="led" aria-hidden="true"></span><span class="dsh" aria-hidden="true"></span><span>SQL Service Broker</span></label></div>
+                <div class="opt"><input type="radio" name="source" id="src-cdc" value="cdc" checked><label class="pin" for="src-cdc"><span class="led" aria-hidden="true"></span><span class="sld" aria-hidden="true"></span><span>CDC</span></label></div>
+              </div>
+            </fieldset>
+          </div>
+          <div class="stage-grid">
+            <div class="fig sch-wrap">
+              <svg class="sch v-wide" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 500" role="img" aria-label="Schematic. Legacy systems write to the dbo.Orders table. Route A, SQL Service Broker: a trigger in the writing transaction and a Service Broker queue. Route B, CDC: the transaction log, the change table cdc.dbo_Orders_CT, a lease lock, and the checkpoint table Chatter.Chatter_RelayCheckpoints. Both routes enter the Relay, whose mapping, mapper and publisher publish to the order-shipped-event topic read by consumers." focusable="false">
+              <defs><mask id="wm3" maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="500"><path class="draw" pathLength="1" style="--d:0.75s" d="M310 260 L310 130 L340 130" fill="none" stroke="#fff" stroke-width="8" stroke-linejoin="round"/></mask><mask id="wm4" maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="500"><path class="draw" pathLength="1" style="--d:1.15s" d="M490 130 L530 130" fill="none" stroke="#fff" stroke-width="8" stroke-linejoin="round"/></mask><mask id="wm5" maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="500"><path class="draw" pathLength="1" style="--d:1.55s" d="M700 130 L720 130 L720 250" fill="none" stroke="#fff" stroke-width="8" stroke-linejoin="round"/></mask></defs>
+              <g class="rt r-ssb"><path class="tr ssb" d="M310 260 L310 130 L340 130" mask="url(#wm3)"/><path class="core dashed" d="M310 260 L310 130 L340 130" mask="url(#wm3)"/><polygon class="ah ssb" style="--d:1.2s" points="340.0,130.0 332.0,134.5 332.0,125.5"/><path class="tr ssb" d="M490 130 L530 130" mask="url(#wm4)"/><path class="core dashed" d="M490 130 L530 130" mask="url(#wm4)"/><polygon class="ah ssb" style="--d:1.6s" points="530.0,130.0 522.0,134.5 522.0,125.5"/><path class="tr ssb" d="M700 130 L720 130 L720 250" mask="url(#wm5)"/><path class="core dashed" d="M700 130 L720 130 L720 250" mask="url(#wm5)"/></g>
+              <g class="rt r-cdc"><path class="tr cdc draw" pathLength="1" style="--d:0.75s" d="M310 260 L310 390 L340 390"/><path class="core draw" pathLength="1" style="--d:0.75s" d="M310 260 L310 390 L340 390"/><polygon class="ah cdc" style="--d:1.2s" points="340.0,390.0 332.0,394.5 332.0,385.5"/><path class="tr cdc draw" pathLength="1" style="--d:1.15s" d="M490 390 L530 390"/><path class="core draw" pathLength="1" style="--d:1.15s" d="M490 390 L530 390"/><polygon class="ah cdc" style="--d:1.6s" points="530.0,390.0 522.0,394.5 522.0,385.5"/><path class="tr cdc draw" pathLength="1" style="--d:1.55s" d="M700 390 L720 390 L720 250"/><path class="core draw" pathLength="1" style="--d:1.55s" d="M700 390 L720 390 L720 250"/><path class="tr cdc draw" pathLength="1" style="--d:2.3s" d="M855 320 L855 420"/><path class="core draw" pathLength="1" style="--d:2.3s" d="M855 320 L855 420"/><polygon class="ah cdc" style="--d:2.75s" points="855.0,420.0 850.5,412.0 859.5,412.0"/></g>
+              <g><path class="tr com draw" pathLength="1" style="--d:0.15s" d="M160 260 L190 260"/><polygon class="ah com" style="--d:0.6s" points="190.0,260.0 182.0,264.5 182.0,255.5"/><path class="tr com draw" pathLength="1" style="--d:0.55s" d="M280 260 L310 260"/><circle class="jn ng" style="--d:0.7s" cx="310" cy="260" r="4"/><circle class="jn ng" style="--d:1.9s" cx="720" cy="250" r="4"/><path class="tr com draw" pathLength="1" style="--d:1.9s" d="M720 250 L750 250"/><polygon class="ah com" style="--d:2.35s" points="750.0,250.0 742.0,254.5 742.0,245.5"/><path class="tr com draw" pathLength="1" style="--d:2.3s" d="M960 250 L1000 250"/><polygon class="ah com" style="--d:2.75s" points="1000.0,250.0 992.0,254.5 992.0,245.5"/><path class="tr com draw" pathLength="1" style="--d:2.7s" d="M1095 279 L1095 325"/><path class="tr com draw" pathLength="1" style="--d:2.8s" d="M1036 325 L1144 325"/><path class="tr com draw" pathLength="1" style="--d:2.9s" d="M1036 325 L1036 372"/><polygon class="ah com" style="--d:3.35s" points="1036.0,372.0 1031.5,364.0 1040.5,364.0"/><path class="tr com draw" pathLength="1" style="--d:2.9s" d="M1144 325 L1144 372"/><polygon class="ah com" style="--d:3.35s" points="1144.0,372.0 1139.5,364.0 1148.5,364.0"/></g>
+              <g class="rps"><path class="rp" data-route="ssb" d="M85 260 L310 260 L310 130 L720 130 L720 250 L1095 250 L1095 325 L1036 325 L1036 372"/><path class="rp" data-route="cdc" d="M85 260 L310 260 L310 390 L720 390 L720 250 L1095 250 L1095 325 L1036 325 L1036 372"/></g>
+              <g class="pg" aria-hidden="true"><circle class="pring" r="9"/><circle class="pulse" r="4.5"/></g>
+              <g class="ng" style="--d:0s"><rect class="nd" x="10" y="229" width="150" height="62"/><text class="nt mid" x="85.0" y="258.0">Legacy systems</text><text class="ns mid" x="85.0" y="273.0">can&#x27;t publish events</text></g>
+              <g class="ng" style="--d:0.3s"><path class="nd" d="M190 225 A45.0 9 0 0 1 280 225 V295 A45.0 9 0 0 1 190 295 Z"/><ellipse class="nd2" cx="235.0" cy="225" rx="45.0" ry="9"/><text class="nt mid" x="235.0" y="268.0">dbo.Orders</text></g>
+              <g class="ng r-ssb" style="--d:0.95s"><rect class="nd" x="340" y="101" width="150" height="58"/><text class="nt mid" x="415.0" y="128.0">Trigger</text><text class="ns mid" x="415.0" y="143.0">in writing transaction</text></g>
+              <g class="ng r-ssb" style="--d:1.35s"><rect class="nd" x="530" y="101" width="170" height="58"/><text class="nt mid" x="615.0" y="128.0">Service Broker queue</text><text class="ns mid" x="615.0" y="143.0">consumed by the Worker</text></g>
+              <g class="ng r-cdc" style="--d:0.95s"><rect class="nd" x="340" y="361" width="150" height="58"/><text class="nt mid" x="415.0" y="388.0">Transaction log</text><text class="ns mid" x="415.0" y="403.0">read by capture job</text></g>
+              <g class="ng r-cdc" style="--d:1.35s"><rect class="nd" x="530" y="361" width="170" height="58"/><text class="nt mid" x="615.0" y="388.0">cdc.dbo_Orders_CT</text><text class="ns mid" x="615.0" y="403.0">change table</text></g>
+              <g class="ng" style="--d:2.05s"><rect class="nd" x="750" y="180" width="210" height="140"/><text class="lbl" x="764" y="199">RELAY</text><g class="lease" aria-hidden="true"><path class="lock" d="M869 192 V189 a4 4 0 0 1 8 0 V192"/><rect class="lock-body" x="866" y="192" width="14" height="10" rx="1"/></g><text class="ns end lease" x="948" y="199">lease lock</text><rect class="cell" x="764" y="212" width="182" height="28"/><text class="nt" x="776" y="230">Mapping</text><rect class="cell" x="764" y="246" width="182" height="28"/><text class="nt" x="776" y="264">Mapper <tspan class="ns">your code</tspan></text><rect class="cell" x="764" y="280" width="182" height="28"/><text class="nt" x="776" y="298">Publisher</text></g>
+              <g class="ng" style="--d:2.5s"><rect class="nd" x="1000" y="221" width="190" height="58" rx="29"/><text class="nt mid" x="1095.0" y="248.0">order-shipped-event</text><text class="ns mid" x="1095.0" y="263.0">broker topic</text></g>
+              <g class="ng" style="--d:3.0s"><rect class="nd" x="990" y="372" width="92" height="52"/><text class="nt mid" x="1036.0" y="396.0">Consumer</text><text class="ns mid" x="1036.0" y="411.0">subscribes</text></g>
+              <g class="ng" style="--d:3.0s"><rect class="nd" x="1098" y="372" width="92" height="52"/><text class="nt mid" x="1144.0" y="396.0">Consumer</text><text class="ns mid" x="1144.0" y="411.0">subscribes</text></g>
+              <g class="ng r-cdc" style="--d:2.5s"><rect class="nd" x="735" y="420" width="240" height="58"/><text class="nt sm mid" x="855.0" y="447.0">Chatter.Chatter_RelayCheckpoints</text><text class="ns mid" x="855.0" y="462.0">checkpoint table</text></g>
+              <g class="mk r-ssb"><circle class="mkc" cx="484" cy="100" r="9"/><text class="mkt" x="484" y="100">1</text></g>
+              <g class="mk r-ssb"><circle class="mkc" cx="694" cy="100" r="9"/><text class="mkt" x="694" y="100">2</text></g>
+              <g class="mk r-ssb"><circle class="mkc" cx="720" cy="190" r="9"/><text class="mkt" x="720" y="190">3</text></g>
+              <g class="mk r-cdc"><circle class="mkc" cx="510" cy="390" r="9"/><text class="mkt" x="510" y="390">1</text></g>
+              <g class="mk r-cdc"><circle class="mkc" cx="694" cy="360" r="9"/><text class="mkt" x="694" y="360">2</text></g>
+              <g class="mk r-cdc"><circle class="mkc" cx="855" cy="372" r="9"/><text class="mkt" x="855" y="372">3</text></g>
+              <g class="mk r-cdc"><circle class="mkc" cx="980" cy="250" r="9"/><text class="mkt" x="980" y="250">4</text></g>
+              <text class="ns" x="868" y="376">after publish</text>
+              <text class="lbl" x="340" y="88">ROUTE A  SQL SERVICE BROKER (DASHED)</text>
+              <text class="lbl" x="340" y="446">ROUTE B  CDC (SOLID)</text>
+              </svg>
+              <svg class="sch v-tall" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 780" role="img" aria-label="Schematic. Legacy systems write to the dbo.Orders table. Route A, SQL Service Broker: a trigger in the writing transaction and a Service Broker queue. Route B, CDC: the transaction log, the change table cdc.dbo_Orders_CT, a lease lock, and the checkpoint table Chatter.Chatter_RelayCheckpoints. Both routes enter the Relay, whose mapping, mapper and publisher publish to the order-shipped-event topic read by consumers." focusable="false">
+              <defs><mask id="tm3" maskUnits="userSpaceOnUse" x="0" y="0" width="300" height="780"><path class="draw" pathLength="1" style="--d:0.75s" d="M150 160 L76 160 L76 176" fill="none" stroke="#fff" stroke-width="8" stroke-linejoin="round"/></mask><mask id="tm5" maskUnits="userSpaceOnUse" x="0" y="0" width="300" height="780"><path class="draw" pathLength="1" style="--d:1.0s" d="M76 198 L76 214" fill="none" stroke="#fff" stroke-width="8" stroke-linejoin="round"/></mask><mask id="tm7" maskUnits="userSpaceOnUse" x="0" y="0" width="300" height="780"><path class="draw" pathLength="1" style="--d:1.3s" d="M76 276 L76 304" fill="none" stroke="#fff" stroke-width="8" stroke-linejoin="round"/></mask><mask id="tm9" maskUnits="userSpaceOnUse" x="0" y="0" width="300" height="780"><path class="draw" pathLength="1" style="--d:1.7s" d="M76 366 L76 390 L150 390" fill="none" stroke="#fff" stroke-width="8" stroke-linejoin="round"/></mask></defs>
+              <g class="rt r-ssb"><path class="tr ssb" d="M150 160 L76 160 L76 176" mask="url(#tm3)"/><path class="core dashed" d="M150 160 L76 160 L76 176" mask="url(#tm3)"/><path class="tr ssb" d="M76 198 L76 214" mask="url(#tm5)"/><path class="core dashed" d="M76 198 L76 214" mask="url(#tm5)"/><polygon class="ah ssb" style="--d:1.45s" points="76.0,214.0 71.5,206.0 80.5,206.0"/><path class="tr ssb" d="M76 276 L76 304" mask="url(#tm7)"/><path class="core dashed" d="M76 276 L76 304" mask="url(#tm7)"/><polygon class="ah ssb" style="--d:1.75s" points="76.0,304.0 71.5,296.0 80.5,296.0"/><path class="tr ssb" d="M76 366 L76 390 L150 390" mask="url(#tm9)"/><path class="core dashed" d="M76 366 L76 390 L150 390" mask="url(#tm9)"/></g>
+              <g class="rt r-cdc"><path class="tr cdc draw" pathLength="1" style="--d:0.75s" d="M150 160 L224 160 L224 176"/><path class="core draw" pathLength="1" style="--d:0.75s" d="M150 160 L224 160 L224 176"/><path class="tr cdc draw" pathLength="1" style="--d:1.0s" d="M224 198 L224 214"/><path class="core draw" pathLength="1" style="--d:1.0s" d="M224 198 L224 214"/><polygon class="ah cdc" style="--d:1.45s" points="224.0,214.0 219.5,206.0 228.5,206.0"/><path class="tr cdc draw" pathLength="1" style="--d:1.3s" d="M224 276 L224 304"/><path class="core draw" pathLength="1" style="--d:1.3s" d="M224 276 L224 304"/><polygon class="ah cdc" style="--d:1.75s" points="224.0,304.0 219.5,296.0 228.5,296.0"/><path class="tr cdc draw" pathLength="1" style="--d:1.7s" d="M224 366 L224 390 L150 390"/><path class="core draw" pathLength="1" style="--d:1.7s" d="M224 366 L224 390 L150 390"/><path class="tr cdc draw" pathLength="1" style="--d:2.4s" d="M120 500 L120 548"/><path class="core draw" pathLength="1" style="--d:2.4s" d="M120 500 L120 548"/><polygon class="ah cdc" style="--d:2.85s" points="120.0,548.0 115.5,540.0 124.5,540.0"/></g>
+              <g><path class="tr com draw" pathLength="1" style="--d:0.15s" d="M150 56 L150 84"/><polygon class="ah com" style="--d:0.6s" points="150.0,84.0 145.5,76.0 154.5,76.0"/><path class="tr com draw" pathLength="1" style="--d:0.55s" d="M150 144 L150 160"/><circle class="jn ng" style="--d:0.7s" cx="150" cy="160" r="4"/><circle class="jn ng" style="--d:1.95s" cx="150" cy="390" r="4"/><path class="tr com draw" pathLength="1" style="--d:1.95s" d="M150 390 L150 412"/><polygon class="ah com" style="--d:2.4s" points="150.0,412.0 145.5,404.0 154.5,404.0"/><path class="tr com draw" pathLength="1" style="--d:2.4s" d="M262 500 L262 658 L240 658"/><polygon class="ah com" style="--d:2.85s" points="240.0,658.0 248.0,653.5 248.0,662.5"/><path class="tr com draw" pathLength="1" style="--d:2.8s" d="M150 682 L150 704"/><path class="tr com draw" pathLength="1" style="--d:2.9s" d="M82 704 L218 704"/><path class="tr com draw" pathLength="1" style="--d:3.0s" d="M82 704 L82 724"/><polygon class="ah com" style="--d:3.45s" points="82.0,724.0 77.5,716.0 86.5,716.0"/><path class="tr com draw" pathLength="1" style="--d:3.0s" d="M218 704 L218 724"/><polygon class="ah com" style="--d:3.45s" points="218.0,724.0 213.5,716.0 222.5,716.0"/></g>
+              <g class="rps"><path class="rp" data-route="ssb" d="M150 32 L150 160 L76 160 L76 390 L150 390 L150 456 L262 456 L262 658 L150 658 L150 704 L82 704 L82 724"/><path class="rp" data-route="cdc" d="M150 32 L150 160 L224 160 L224 390 L150 390 L150 456 L262 456 L262 658 L150 658 L150 704 L82 704 L82 724"/></g>
+              <g class="pg" aria-hidden="true"><circle class="pring" r="9"/><circle class="pulse" r="4.5"/></g>
+              <g class="ng" style="--d:0s"><rect class="nd" x="70" y="8" width="160" height="48"/><text class="nt mid" x="150.0" y="30.0">Legacy systems</text><text class="ns mid" x="150.0" y="45.0">can&#x27;t publish events</text></g>
+              <g class="ng" style="--d:0.3s"><path class="nd" d="M100 93 A50.0 9 0 0 1 200 93 V135 A50.0 9 0 0 1 100 135 Z"/><ellipse class="nd2" cx="150.0" cy="93" rx="50.0" ry="9"/><text class="nt mid" x="150.0" y="122.0">dbo.Orders</text></g>
+              <g class="ng r-ssb" style="--d:.9s"><rect class="nd dashed" x="6" y="176" width="140" height="22"/><text class="nt sm mid" x="76" y="191">SQL SERVICE BROKER</text></g>
+              <g class="ng r-cdc" style="--d:.9s"><rect class="nd" x="154" y="176" width="140" height="22"/><text class="nt sm mid" x="224" y="191">CDC</text></g>
+              <g class="ng r-ssb" style="--d:1.1s"><rect class="nd" x="6" y="214" width="140" height="62"/><text class="nt mid" x="76.0" y="236.5">Trigger</text><text class="ns mid" x="76.0" y="251.5">in the writing</text><text class="ns mid" x="76.0" y="264.5">transaction</text></g>
+              <g class="ng r-cdc" style="--d:1.1s"><rect class="nd" x="154" y="214" width="140" height="62"/><text class="nt mid" x="224.0" y="236.5">Transaction log</text><text class="ns mid" x="224.0" y="251.5">read by the</text><text class="ns mid" x="224.0" y="264.5">capture job</text></g>
+              <g class="ng r-ssb" style="--d:1.5s"><rect class="nd" x="6" y="304" width="140" height="62"/><text class="nt mid" x="76.0" y="326.5">Service Broker</text><text class="ns mid" x="76.0" y="341.5">queue, consumed</text><text class="ns mid" x="76.0" y="354.5">by the Worker</text></g>
+              <g class="ng r-cdc" style="--d:1.5s"><rect class="nd" x="154" y="304" width="140" height="62"/><text class="nt mid" x="224.0" y="333.0">cdc.dbo_Orders_CT</text><text class="ns mid" x="224.0" y="348.0">change table</text></g>
+              <g class="ng" style="--d:2.1s"><rect class="nd" x="10" y="412" width="280" height="88"/><text class="lbl" x="22" y="431">RELAY</text><g class="lease" aria-hidden="true"><path class="lock" d="M199 424 V421 a4 4 0 0 1 8 0 V424"/><rect class="lock-body" x="196" y="424" width="14" height="10" rx="1"/></g><text class="ns end lease" x="278" y="431">lease lock</text><rect class="cell" x="18" y="442" width="84" height="48"/><text class="nt mid" x="60" y="470">Mapping</text><rect class="cell" x="108" y="442" width="84" height="48"/><text class="nt mid" x="150" y="463">Mapper</text><text class="ns mid" x="150" y="478">your code</text><rect class="cell" x="198" y="442" width="84" height="48"/><text class="nt mid" x="240" y="470">Publisher</text></g>
+              <g class="ng r-cdc" style="--d:2.6s"><rect class="nd" x="8" y="548" width="224" height="52"/><text class="nt sm mid" x="120.0" y="572.0">Chatter.Chatter_RelayCheckpoints</text><text class="ns mid" x="120.0" y="587.0">checkpoint table</text></g>
+              <g class="ng" style="--d:2.6s"><rect class="nd" x="60" y="634" width="180" height="48" rx="24"/><text class="nt mid" x="150.0" y="656.0">order-shipped-event</text><text class="ns mid" x="150.0" y="671.0">broker topic</text></g>
+              <g class="ng" style="--d:3.1s"><rect class="nd" x="24" y="724" width="116" height="48"/><text class="nt mid" x="82.0" y="746.0">Consumer</text><text class="ns mid" x="82.0" y="761.0">subscribes</text></g>
+              <g class="ng" style="--d:3.1s"><rect class="nd" x="160" y="724" width="116" height="48"/><text class="nt mid" x="218.0" y="746.0">Consumer</text><text class="ns mid" x="218.0" y="761.0">subscribes</text></g>
+              <g class="mk r-ssb"><circle class="mkc" cx="140" cy="214" r="9"/><text class="mkt" x="140" y="214">1</text></g>
+              <g class="mk r-ssb"><circle class="mkc" cx="140" cy="304" r="9"/><text class="mkt" x="140" y="304">2</text></g>
+              <g class="mk r-ssb"><circle class="mkc" cx="76" cy="384" r="9"/><text class="mkt" x="76" y="384">3</text></g>
+              <g class="mk r-cdc"><circle class="mkc" cx="224" cy="286" r="9"/><text class="mkt" x="224" y="286">1</text></g>
+              <g class="mk r-cdc"><circle class="mkc" cx="288" cy="304" r="9"/><text class="mkt" x="288" y="304">2</text></g>
+              <g class="mk r-cdc"><circle class="mkc" cx="120" cy="524" r="9"/><text class="mkt" x="120" y="524">3</text></g>
+              <g class="mk r-cdc"><circle class="mkc" cx="262" cy="580" r="9"/><text class="mkt" x="262" y="580">4</text></g>
+              <text class="ns" x="133" y="528">after publish</text>
+              </svg>
+              <ul class="legend">
+                <li><svg viewBox="0 0 36 8" aria-hidden="true" focusable="false"><line x1="0" y1="4" x2="36" y2="4" stroke="#9CC8FF" stroke-width="3" stroke-dasharray="7 5"/></svg> SQL Service Broker route: dashed</li>
+                <li><svg viewBox="0 0 36 8" aria-hidden="true" focusable="false"><line x1="0" y1="4" x2="36" y2="4" stroke="#7CFFB2" stroke-width="3"/></svg> CDC route: solid</li>
+                <li><svg viewBox="0 0 36 8" aria-hidden="true" focusable="false"><circle cx="18" cy="4" r="3.5" fill="#FFC857"/></svg> Signal pulse: the chosen route</li>
+                <li>Numbered circles match the callouts</li>
+              </ul>
+            </div>
+            <div class="callouts">
+              <section class="co co-ssb" aria-labelledby="co-ssb-h">
+                <h3 id="co-ssb-h">Route A: SQL Service Broker (dashed)</h3>
+                <ol>
+                  <li><span class="badge" aria-hidden="true">1</span><div><strong>Trigger in the writing transaction</strong><p>A trigger on each watched table adds the modified rows to a Service Broker queue, inside the transaction that wrote them.</p></div></li>
+                  <li><span class="badge" aria-hidden="true">2</span><div><strong>Order not guaranteed</strong><p>The Worker consumes the queue. Order is not guaranteed. There is no CDC capture latency.</p></div></li>
+                  <li><span class="badge" aria-hidden="true">3</span><div><strong>At least once</strong><p>Acknowledged by committing Chatter's receive transaction once processing succeeds; Chatter's recovery options retry failures.</p></div></li>
+                </ol>
+              </section>
+              <section class="co co-cdc" aria-labelledby="co-cdc-h">
+                <h3 id="co-cdc-h">Route B: CDC (solid)</h3>
+                <ol>
+                  <li><span class="badge" aria-hidden="true">1</span><div><strong>Log to change table</strong><p>CDC's capture job fills the change table from the transaction log, scanning the log every 5 s by default. No trigger on the table.</p></div></li>
+                  <li><span class="badge" aria-hidden="true">2</span><div><strong>Commit order per table</strong><p>The Worker polls the change table and hands changes on in commit order per capture instance, with no order across tables. A lease lock lets one instance poll.</p></div></li>
+                  <li><span class="badge" aria-hidden="true">3</span><div><strong>Checkpoint after publish</strong><p>A batch is checkpointed only after every change in it is published, so the relay resumes from the checkpoint after downtime.</p></div></li>
+                  <li><span class="badge" aria-hidden="true">4</span><div><strong>Stable message ids</strong><p>Derived from the source name, the change's position and the integration event type, so a replay republishes the same ids.</p></div></li>
+                </ol>
+              </section>
+            </div>
+          </div>
+        </div>
+        <p class="more"><a class="pin small" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#choosing-a-change-source"><span class="led" aria-hidden="true"></span><span>README: Choosing a change source</span></a></p>
+      </div>
+    </section>
+    <section class="sheet" id="s-path" aria-labelledby="h-path">
+      <div class="sheet-head"><h2 id="h-path">Signal path: how it works</h2><dl class="tb"><div><dt>Sheet</dt><dd>02 / 09</dd></div><div><dt>Scale</dt><dd>Not to scale</dd></div></dl></div>
+      <div class="sheet-body">
+        <ol class="steps">
+          <li><h3>Change source</h3><p>Watches tables for <strong>row changes</strong>: an insert, update or delete of one row.</p></li>
+          <li><h3>Source event</h3><p>Each row change becomes a <strong>source event</strong>: the row's values, typed by the mapping's source event type.</p></li>
+          <li><h3>Mapping</h3><p>A <strong>mapping</strong> in configuration pairs a table and change type with a source event type and an integration event type. Each mapping has exactly one mapper.</p></li>
+          <li><h3>Mapper</h3><p>Your code. It decides whether the source event becomes an <strong>integration event</strong> and builds it. Return <code>null</code> and nothing is published. For updates it sees <code>OldValue</code> and <code>NewValue</code>.</p></li>
+          <li><h3>Publish</h3><p>The relay publishes through any Chatter message broker infrastructure implementation, such as Azure Service Bus. <code>[BrokeredMessage("order-shipped-event")]</code> names the topic; consumers subscribe.</p></li>
+          <li><h3>Startup check</h3><p>The relay checks its configuration when the host starts and stops with a list of problems.</p></li>
+        </ol>
+        <p>Each mapping picks a <strong>source</strong>: a named, configured instance of a change source.</p>
+        <h3>Running example</h3>
+        <p>The <code>Orders</code> table. When <code>OrderStatus</code> changes to <code>Shipped</code>, the mapper publishes <code>OrderShippedEvent</code> to the <code>order-shipped-event</code> topic.</p>
+        <ol class="chain" aria-label="Running example, in order">
+          <li><span><code>Orders</code> row changes</span></li>
+          <li><span><code>OrderStatus</code> becomes <code>Shipped</code></span></li>
+          <li><span>Mapper builds <code>OrderShippedEvent</code></span></li>
+          <li><span>Topic <code>order-shipped-event</code></span></li>
+        </ol>
+        <figure class="readout">
+          <pre>Processing Update of 'OrderChangedEvent' from source 'orders-cdc' with 1 mapping(s)
+Published integration event 'OrderShippedEvent' to messaging infrastructure</pre>
+          <figcaption>Illustrative log output for the running example</figcaption>
+        </figure>
+        <p class="more"><a class="pin small" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#how-it-works"><span class="led" aria-hidden="true"></span><span>README: How it works</span></a></p>
+      </div>
+    </section>
+    <section class="sheet" id="s-sources" aria-labelledby="h-sources">
+      <div class="sheet-head"><h2 id="h-sources">Change sources: capabilities matrix</h2><dl class="tb"><div><dt>Sheet</dt><dd>03 / 09</dd></div><div><dt>Scale</dt><dd>Not to scale</dd></div></dl></div>
+      <div class="sheet-body">
+        <p>Two change sources. One relay can use both, but each table uses only one. Each mapping names its source in <code>Source</code>; a mapping without one uses SQL Service Broker with the relay's <code>ConnectionString</code>.</p>
+        <div class="scroll">
+        <table class="matrix">
+          <caption class="sr-only">Capabilities matrix: SQL Service Broker compared with CDC</caption>
+          <thead>
+            <tr><th scope="col">Spec</th><th scope="col"><svg style="display:block" viewBox="0 0 36 8" aria-hidden="true" focusable="false"><line x1="0" y1="4" x2="36" y2="4" stroke="#9CC8FF" stroke-width="3" stroke-dasharray="7 5"/></svg> SQL Service Broker (dashed)</th><th scope="col"><svg viewBox="0 0 36 8" aria-hidden="true" focusable="false"><line x1="0" y1="4" x2="36" y2="4" stroke="#7CFFB2" stroke-width="3"/></svg> CDC (solid)</th></tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row">Capture</th><td data-label="SQL Service Broker">Trigger in the writing transaction adds modified rows to a Service Broker queue.</td><td data-label="CDC">Capture job reads the transaction log into change tables; the Worker polls them. No trigger on the table.</td></tr>
+            <tr><th scope="row">Order</th><td data-label="SQL Service Broker">Not guaranteed</td><td data-label="CDC">Commit order per table (capture instance); no order across tables</td></tr>
+            <tr><th scope="row">Delivery</th><td data-label="SQL Service Broker">At least once (Chatter's receive transaction and recovery options)</td><td data-label="CDC">At least once: a batch is checkpointed only after every change in it is published</td></tr>
+            <tr><th scope="row">Message id</th><td data-label="SQL Service Broker">Generated by Chatter</td><td data-label="CDC">Derived from the source name, the change's position and the integration event type, so a replay republishes the same ids</td></tr>
+            <tr><th scope="row">Commit time</th><td data-label="SQL Service Broker">Not available</td><td data-label="CDC">Available (<code>RelayContext.CommittedAt</code>)</td></tr>
+            <tr><th scope="row">Capabilities</th><td data-label="SQL Service Broker"><span class="none">None</span></td><td data-label="CDC"><span class="caps"><span class="chip">Ordered</span><span class="chip">Resumable</span><span class="chip">CommitTime</span></span> <span class="muted">(<code>ParkRow</code> drops <code>Ordered</code>)</span></td></tr>
+            <tr><th scope="row">After downtime</th><td data-label="SQL Service Broker">Changes wait in the queue</td><td data-label="CDC">Resumes from the checkpoint while the changes are still in the change table (retention default 3 days)</td></tr>
+            <tr><th scope="row">Latency</th><td data-label="SQL Service Broker">No CDC capture latency</td><td data-label="CDC">Capture job scans the log every 5 s by default</td></tr>
+            <tr><th scope="row">Needs</th><td data-label="SQL Service Broker">SQL Server with Service Broker (most PaaS offerings don't support it)</td><td data-label="CDC">SQL Server Agent; <code>sysadmin</code> to enable CDC on the database; <code>db_owner</code> per table</td></tr>
+          </tbody>
+        </table>
+        </div>
+        <p style="margin-top:1rem">A mapping can require capabilities with <code>RequiredCapabilities</code> (for example <code>"Ordered"</code> or <code>"Ordered, CommitTime"</code>); the relay stops at startup if the mapping's source doesn't provide them. The relay is tested against SQL Server 2019 and 2022.</p>
+        <p>Tested SQL scripts enable CDC and grant the relay's login least-privilege permissions; the integration tests run the relay under exactly those grants.</p>
+        <div class="lists">
+          <div>
+            <h3>Use CDC when</h3>
+            <ul class="when cdc">
+              <li>mappers compare old and new values or depend on the order of changes (for example soft delete followed by restore), since CDC delivers each table's changes in commit order and keeps the before-image of every update;</li>
+              <li>you can't, or don't want to, add triggers to the legacy system's tables, or the writes must not pay for a trigger and a Service Broker send;</li>
+              <li>the relay must resume where it stopped after downtime, from changes still in the change table.</li>
+            </ul>
+          </div>
+          <div>
+            <h3>Use SQL Service Broker when</h3>
+            <ul class="when ssb">
+              <li>SQL Server Agent isn't available (CDC's capture job needs it), or CDC can't be enabled on the database;</li>
+              <li>changes must reach the relay without CDC's capture latency (the capture job scans the log every few seconds by default);</li>
+              <li>the table is already relayed this way and works as needed.</li>
+            </ul>
+          </div>
+        </div>
+        <p class="more"><a class="pin small" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#choosing-a-change-source"><span class="led" aria-hidden="true"></span><span>README: Choosing a change source</span></a></p>
+      </div>
+    </section>
+    <section class="sheet" id="s-delivery" aria-labelledby="h-delivery">
+      <div class="sheet-head"><h2 id="h-delivery">Delivery and failure</h2><dl class="tb"><div><dt>Sheet</dt><dd>04 / 09</dd></div><div><dt>Scale</dt><dd>Not to scale</dd></div></dl></div>
+      <div class="sheet-body">
+        <ul class="cards">
+          <li class="card"><span class="id">At least once</span><p>Both sources deliver at least once. SQL Service Broker acknowledges by committing Chatter's receive transaction once processing succeeds; Chatter's recovery options retry failures.</p></li>
+          <li class="card"><span class="id">Checkpoint after publish</span><p>With CDC a batch is checkpointed only after every change in it is published. After a crash the batch is republished with the same message ids, derived from the source name, the change's position and the integration event type.</p></li>
+          <li class="card"><span class="id">Duplicates</span><p>Enable duplicate detection on topics (Azure Service Bus) or make consumers idempotent.</p></li>
+          <li class="card"><span class="id">Transient failures</span><p>Retried with exponential backoff and never parked.</p></li>
+        </ul>
+        <div class="cols" style="margin-top:1.5rem">
+          <figure class="fig" style="max-width:420px">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 140" role="img" aria-label="Checkpoint after publish. A batch is read, every change in it is published, then the checkpoint is saved. After a crash before the checkpoint, the batch is republished with the same message ids." focusable="false"><rect class="nd" x="8" y="22" width="96" height="48"/><text class="nt mid" x="56" y="50">Read batch</text><rect class="nd" x="122" y="22" width="96" height="48"/><text class="nt mid" x="170" y="43">Publish</text><text class="ns mid" x="170" y="58">every change</text><rect class="nd" x="236" y="22" width="96" height="48"/><text class="nt mid" x="284" y="43">Save</text><text class="ns mid" x="284" y="58">checkpoint</text><path class="flow-line thin" d="M104 46 H122"/><polygon class="fill-line" points="122,46 115,42 115,50"/><path class="flow-line thin" d="M218 46 H236"/><polygon class="fill-line" points="236,46 229,42 229,50"/><path class="msg" d="M229 28 L222 44 L230 44 L223 62" stroke="#FFC857" stroke-width="2"/><text class="ns mid" x="227" y="16">crash</text><path class="flow-line dash" d="M170 70 V104 H56 V76"/><polygon class="fill-muted" points="56,72 51.5,80 60.5,80"/><text class="ns mid" x="113" y="124">batch republished, same message ids</text></svg>
+            <figcaption class="muted">Illustrative sequence: a crash after publishing but before the checkpoint republishes the batch.</figcaption>
+          </figure>
+        </div>
+        <h3>Error policy: what happens to a change that keeps failing</h3>
+        <div class="lists">
+          <figure class="fig card">
+            <h4>Halt <span class="tag">(default)</span></h4>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 150" role="img" aria-label="Halt. Changes 1 and 2 are published. Change 3 fails and is retried. Changes 4 and 5 wait behind it and are not published." focusable="false"><path class="flow-line thin" d="M10 78 H326"/><polygon class="fill-line" points="334,78 326,73.5 326,82.5"/><rect class="fill-line" x="196" y="40" width="8" height="76"/><text class="lbl mid" x="200" y="134">HALT</text><rect class="item" x="296" y="64" width="28" height="28"/><text class="it" x="310" y="78">1</text><rect class="item" x="258" y="64" width="28" height="28"/><text class="it" x="272" y="78">2</text><rect class="item park" x="160" y="64" width="28" height="28"/><text class="it" x="174" y="78">3</text><circle class="item" cx="188" cy="64" r="8"/><path class="msg" d="M184.5 60.5 L191.5 67.5 M191.5 60.5 L184.5 67.5"/><path class="msg" d="M166 58 C166 36 184 36 184 52"/><polygon class="fill-line" points="184,56 180,48 188,48"/><text class="ns mid" x="157" y="38">retry</text><rect class="item wait" x="118" y="64" width="28" height="28"/><text class="it" x="132" y="78">4</text><rect class="item wait" x="80" y="64" width="28" height="28"/><text class="it" x="94" y="78">5</text><text class="ns mid" x="291" y="112">published</text><text class="ns mid" x="113" y="112">not published</text></svg>
+            <p>The poller stops at the change and keeps retrying it. Nothing after it is published, so order holds.</p>
+          </figure>
+          <figure class="fig card">
+            <h4>ParkRow</h4>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 170" role="img" aria-label="ParkRow. Changes 1, 2 and 4 are published; 4 belongs to another row. Change 3, of row A, is parked in the parked-changes table, and change 5, also row A, is parked behind it." focusable="false"><path class="flow-line thin" d="M10 60 H326"/><polygon class="fill-line" points="334,60 326,55.5 326,64.5"/><rect class="item" x="296" y="46" width="28" height="28"/><text class="it" x="310" y="60">1</text><rect class="item" x="258" y="46" width="28" height="28"/><text class="it" x="272" y="60">2</text><rect class="item" x="220" y="46" width="28" height="28"/><text class="it" x="234" y="60">4</text><text class="ns mid" x="234" y="90">row B</text><rect class="item wait" x="100" y="46" width="28" height="28"/><text class="it" x="114" y="60">5</text><text class="ns mid" x="114" y="90">row A</text><circle class="jn" cx="170" cy="60" r="3.5"/><path class="flow-line" d="M170 64 V112"/><polygon class="fill-line" points="170,112 165.5,104 174.5,104"/><path class="flow-line dash" d="M128 74 C150 100 150 104 160 108"/><text class="lbl mid" x="170" y="34">PER ROW</text><text class="ns mid" x="291" y="102">published</text><rect class="nd" x="10" y="114" width="320" height="48"/><rect class="item park" x="20" y="124" width="28" height="28"/><text class="it" x="34" y="138">3</text><text class="nt sm" x="58" y="134">&lt;Schema&gt;.Chatter_RelayParkedChanges</text><text class="ns" x="58" y="150">3 parked; 5 parks behind it</text></svg>
+            <p>After <code>MaxAttemptsBeforePark</code> attempts the change is parked in <code>&lt;Schema&gt;.Chatter_RelayParkedChanges</code>, and later changes to the same row park behind it. Other rows carry on. On request, a replay republishes the row's parked changes in order. The source is then ordered per row only, so <code>ParkRow</code> drops <code>Ordered</code>.</p>
+          </figure>
+        </div>
+        <p class="more"><a class="pin small" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#error-policy-and-parked-changes"><span class="led" aria-hidden="true"></span><span>README: Error policy and parked changes</span></a></p>
+      </div>
+    </section>
+    <section class="sheet" id="s-lease" aria-labelledby="h-lease">
+      <div class="sheet-head"><h2 id="h-lease">Lease: one active, others standing by</h2><dl class="tb"><div><dt>Sheet</dt><dd>05 / 09</dd></div><div><dt>Scale</dt><dd>Not to scale</dd></div></dl></div>
+      <div class="sheet-body">
+        <div class="lists">
+          <div>
+            <p>Several relay instances can run with the same configuration. A lease, a SQL Server application lock, lets one of them poll each capture instance while the others stand by.</p>
+            <p>The lock and the checkpoint belong to the source name and the capture instance.</p>
+            <ul class="cards" style="grid-template-columns:1fr">
+              <li class="card"><span class="id">ACTIVE</span><p>Holds the lease and polls the capture instance.</p></li>
+              <li class="card dash"><span class="id">STANDBY</span><p>Stands by without polling. Standby instances are healthy.</p></li>
+            </ul>
+          </div>
+          <figure class="fig" style="max-width:420px">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 236" role="img" aria-label="Lease. Two Worker instances with the same configuration. The ACTIVE Worker holds the lease, a SQL Server application lock, and polls the capture instance. The STANDBY Worker waits." focusable="false"><rect class="nd" x="10" y="10" width="140" height="66"/><text class="nt" x="22" y="30">Worker</text><rect class="cell" x="22" y="40" width="76" height="24"/><text class="nt sm" x="32" y="56">ACTIVE</text><circle class="fill-cdc beat" cx="118" cy="52" r="5"/><rect class="nd dashed" x="190" y="10" width="140" height="66"/><text class="nt" x="202" y="30">Worker</text><rect class="cell" x="202" y="40" width="88" height="24" stroke-dasharray="3 3"/><text class="nt sm" x="212" y="56">STANDBY</text><path class="flow-line cdcl" d="M80 76 V128 H148"/><polygon class="fill-cdc" points="156,128 148,123.5 148,132.5"/><text class="ns" x="88" y="108">holds lease</text><path class="flow-line dash" d="M260 76 V128 H184"/><text class="ns end" x="252" y="108">waits</text><path class="lock" d="M165 112 V108 a5 5 0 0 1 10 0 V112"/><rect class="lock-body" x="160" y="112" width="20" height="16" rx="2"/><text class="nt mid" x="170" y="150">lease</text><path class="flow-line cdcl" d="M170 156 V184"/><polygon class="fill-cdc" points="170,184 165.5,176 174.5,176"/><rect class="nd" x="60" y="186" width="220" height="44"/><text class="nt mid" x="170" y="204">capture instance</text><text class="ns mid" x="170" y="220">polled by one relay at a time</text></svg>
+          </figure>
+        </div>
+        <p class="more"><a class="pin small" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#using-the-cdc-change-source"><span class="led" aria-hidden="true"></span><span>README: Using the CDC change source</span></a></p>
+      </div>
+    </section>
+    <section class="sheet" id="s-observe" aria-labelledby="h-observe">
+      <div class="sheet-head"><h2 id="h-observe">Observability: meter and health check</h2><dl class="tb"><div><dt>Sheet</dt><dd>06 / 09</dd></div><div><dt>Scale</dt><dd>Not to scale</dd></div></dl></div>
+      <div class="sheet-body">
+        <div class="lists">
+          <div>
+            <p>Metrics are published on the meter <code>Chatter.IntegrationEventRelay.Cdc</code> (<code>System.Diagnostics.Metrics</code>), tagged with <code>source</code> and <code>capture_instance</code>. Collect them with OpenTelemetry (<code>.AddMeter("Chatter.IntegrationEventRelay.Cdc")</code>) or <code>dotnet-counters</code>.</p>
+          </div>
+          <figure class="fig" style="max-width:300px">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 160" role="img" aria-label="Illustrative lag gauge for the instrument chatter.relay.cdc.lag, with a marker for the health check maxLag. Not measured data." focusable="false"><path class="dial" d="M42.1 75.0 A90 90 0 0 1 197.9 75.0"/><path class="tick" d="M50.7 80.0 L39.5 73.5"/><path class="tick" d="M80.0 50.7 L73.5 39.5"/><path class="tick" d="M120.0 40.0 L120.0 27.0"/><path class="tick" d="M160.0 50.7 L166.5 39.5"/><path class="tick" d="M189.3 80.0 L200.5 73.5"/><path class="ptline" d="M151.0 66.3 L172.0 29.9"/><text class="ns" x="178.0" y="22.5">maxLag</text><path class="needle" d="M120 120 L95.4 52.3"/><circle class="hub" cx="120" cy="120" r="6"/><text class="ns mid" x="34.1" y="91.0">0</text><text class="nt sm mid" x="120" y="146">chatter.relay.cdc.lag</text></svg>
+            <figcaption class="muted">Illustrative gauge, not measured data.</figcaption>
+          </figure>
+        </div>
+        <div class="scroll">
+          <table style="min-width:640px">
+            <caption class="sr-only">Instruments on the Chatter.IntegrationEventRelay.Cdc meter</caption>
+            <thead><tr><th scope="col">Instrument</th><th scope="col">Type</th><th scope="col">Unit</th><th scope="col">Description</th></tr></thead>
+            <tbody>
+              <tr><th scope="row"><code>chatter.relay.cdc.changes</code></th><td>Counter</td><td><code>{change}</code></td><td>Changes relayed (published or, with ParkRow, parked)</td></tr>
+              <tr><th scope="row"><code>chatter.relay.cdc.parked</code></th><td>Counter</td><td><code>{change}</code></td><td>Changes parked</td></tr>
+              <tr><th scope="row"><code>chatter.relay.cdc.batch.failures</code></th><td>Counter</td><td><code>{batch}</code></td><td>Failed attempts at a batch</td></tr>
+              <tr><th scope="row"><code>chatter.relay.cdc.batch.duration</code></th><td>Histogram</td><td><code>s</code></td><td>Time to read, process and checkpoint a batch</td></tr>
+              <tr><th scope="row"><code>chatter.relay.cdc.lag</code></th><td>Gauge</td><td><code>s</code></td><td>Time since the last relayed change was committed; 0 when caught up</td></tr>
+              <tr><th scope="row"><code>chatter.relay.cdc.parked.current</code></th><td>Gauge</td><td><code>{change}</code></td><td>Changes currently parked</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Health check</h3>
+        <p>The health check reports this instance's pollers.</p>
+        <p class="code-cap">Health check registration</p>
+        <div class="code" role="region" tabindex="0" aria-label="Health check registration"><pre><code>services.AddHealthChecks().AddCdcChangeSource(maxLag: TimeSpan.FromMinutes(5));</code></pre></div>
+        <p>It is unhealthy when a poller stopped on a gap, failed <code>FailuresBeforeCritical</code> times in a row, or lags more than <code>maxLag</code>; degraded while retrying a batch or while changes are parked. Standby instances are healthy.</p>
+        <p class="more"><a class="pin small" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#metrics-and-health-check"><span class="led" aria-hidden="true"></span><span>README: Metrics and health check</span></a></p>
+      </div>
+    </section>
+    <section class="sheet" id="s-switch" aria-labelledby="h-switch">
+      <div class="sheet-head"><h2 id="h-switch">Switch-over: flipping a table's route</h2><dl class="tb"><div><dt>Sheet</dt><dd>07 / 09</dd></div><div><dt>Scale</dt><dd>Not to scale</dd></div></dl></div>
+      <div class="sheet-body">
+        <div class="sw-stage">
+          <p>Two scripts switch a table between the change sources: <code>.scripts/cdc/switch-to-cdc.sql</code> and <code>.scripts/cdc/switch-to-service-broker.sql</code>. Each picks a switch point: the source you switch away from relays every change committed before it, the source you switch to relays every change committed after it.</p>
+          <fieldset class="seg">
+            <legend>Change committed</legend>
+            <div class="row">
+              <div class="opt"><input type="radio" name="when" id="when-before" value="before" checked><label class="pin" for="when-before"><span class="led" aria-hidden="true"></span><span>Before the switch point</span></label></div>
+              <div class="opt"><input type="radio" name="when" id="when-after" value="after"><label class="pin" for="when-after"><span class="led" aria-hidden="true"></span><span>After the switch point</span></label></div>
+            </div>
+          </fieldset>
+          <p class="when-before" style="margin-top:1rem"><strong>Before:</strong> the source you switch away from relays the change. The lever rests on the old route.</p>
+          <p class="when-after" style="margin-top:1rem"><strong>After:</strong> the source you switch to relays the change. The lever has flipped to the new route.</p>
+          <div class="lists">
+            <figure class="fig card">
+              <h3><code>switch-to-cdc.sql</code></h3>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 150" role="img" aria-label="Switch from SQL Service Broker to CDC. A switch lever sits at the switch point and flips the relay's input from SQL Service Broker to CDC." focusable="false"><path class="flow-line ssbl" d="M10 45 H146"/><path class="core dashed old-core" d="M10 45 H146"/><path class="flow-line cdcl" d="M10 95 H146"/><path class="core new-core" d="M10 95 H146"/><text class="ns" x="10" y="35">from: SQL Service Broker</text><text class="ns" x="10" y="85">to: CDC</text><rect class="cell" x="184" y="20" width="32" height="104" fill="none" stroke-dasharray="2 3"/><path class="ptline" d="M200 14 V130"/><text class="lbl mid" x="200" y="10">SWITCH POINT</text><text class="ns mid" x="200" y="144">writes pause</text><circle class="contact" cx="146" cy="45" r="4.5"/><circle class="contact" cx="146" cy="95" r="4.5"/><path class="flow-line" d="M205 70 H350"/><text class="ns end" x="350" y="60">Relay</text><g class="swg" transform="translate(200 70)"><line class="lever" x1="0" y1="0" x2="-59" y2="0"/></g><circle class="contact" cx="200" cy="70" r="5"/></svg>
+            </figure>
+            <figure class="fig card">
+              <h3><code>switch-to-service-broker.sql</code></h3>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 150" role="img" aria-label="Switch from CDC to SQL Service Broker. A switch lever sits at the switch point and flips the relay's input from CDC to SQL Service Broker." focusable="false"><path class="flow-line cdcl" d="M10 45 H146"/><path class="core old-core" d="M10 45 H146"/><path class="flow-line ssbl" d="M10 95 H146"/><path class="core dashed new-core" d="M10 95 H146"/><text class="ns" x="10" y="35">from: CDC</text><text class="ns" x="10" y="85">to: SQL Service Broker</text><rect class="cell" x="184" y="20" width="32" height="104" fill="none" stroke-dasharray="2 3"/><path class="ptline" d="M200 14 V130"/><text class="lbl mid" x="200" y="10">SWITCH POINT</text><text class="ns mid" x="200" y="144">writes pause</text><circle class="contact" cx="146" cy="45" r="4.5"/><circle class="contact" cx="146" cy="95" r="4.5"/><path class="flow-line" d="M205 70 H350"/><text class="ns end" x="350" y="60">Relay</text><g class="swg" transform="translate(200 70)"><line class="lever" x1="0" y1="0" x2="-59" y2="0"/></g><circle class="contact" cx="200" cy="70" r="5"/></svg>
+            </figure>
+          </div>
+        </div>
+        <ul class="cards" style="margin-top:1.5rem">
+          <li class="card"><span class="id">Only one source</span><p>Every change is relayed by only one of the two sources. Each source is still at least once.</p></li>
+          <li class="card"><span class="id">One transaction</span><p>The switch commits in one transaction, or the script rolls all of it back and changes nothing.</p></li>
+          <li class="card"><span class="id">Writes pause</span><p>Writes to the table pause while the script runs, normally a few seconds. Past <code>@timeoutSeconds</code> (default 300) it rolls back.</p></li>
+          <li class="card"><span class="id">Mappers unchanged</span><p>Mappers don't change.</p></li>
+          <li class="card"><span class="id">Tested</span><p>Integration tests run both scripts in both directions.</p></li>
+        </ul>
+        <p class="more"><a class="pin small" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#switching-a-table-from-sql-service-broker-to-cdc"><span class="led" aria-hidden="true"></span><span>README: Switching a table from SQL Service Broker to CDC</span></a></p>
+      </div>
+    </section>
+    <section class="sheet" id="s-parts" aria-labelledby="h-parts">
+      <div class="sheet-head"><h2 id="h-parts">Bill of materials</h2><dl class="tb"><div><dt>Sheet</dt><dd>08 / 09</dd></div><div><dt>Scale</dt><dd>Not to scale</dd></div></dl></div>
+      <div class="sheet-body">
+        <div class="scroll">
+          <table class="bom">
+            <caption class="sr-only">Bill of materials: the three NuGet packages</caption>
+            <thead><tr><th scope="col">Item</th><th scope="col">NuGet package</th><th scope="col">Purpose</th><th scope="col">Link</th></tr></thead>
+            <tbody>
+              <tr><td class="item" data-label="Item">01</td><td class="pkg" data-label="Package">Chatter.IntegrationEventRelay</td><td data-label="Purpose">Core: mapping configuration, mapper interfaces, and the processor that maps row changes to integration events and publishes them. It doesn't capture changes itself: a change source package does.</td><td class="go"><a class="pin small" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay/"><span class="led" aria-hidden="true"></span><span>NuGet: Core package</span></a></td></tr>
+              <tr><td class="item" data-label="Item">02</td><td class="pkg" data-label="Package">Chatter.IntegrationEventRelay.ServiceBroker</td><td data-label="Purpose">The SQL Service Broker change source. It uses Chatter.SqlChangeFeed, which installs a trigger on each watched table that sends changed rows to a SQL Service Broker queue.</td><td class="go"><a class="pin small" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.ServiceBroker/"><span class="led" aria-hidden="true"></span><span>NuGet: ServiceBroker package</span></a></td></tr>
+              <tr><td class="item" data-label="Item">03</td><td class="pkg" data-label="Package">Chatter.IntegrationEventRelay.Cdc</td><td data-label="Purpose">The CDC change source. It polls each capture instance's change table, hands the changes to the processor in commit order, and saves a checkpoint in the source database once a batch is published.</td><td class="go"><a class="pin small" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.Cdc/"><span class="led" aria-hidden="true"></span><span>NuGet: Cdc package</span></a></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <ul class="spec" style="margin-top:1.25rem">
+          <li><span>Target</span>.NET 10 (<code>net10.0</code>)</li>
+          <li><span>Database</span>SQL Server, tested on 2019 and 2022</li>
+          <li><span>License</span>MIT</li>
+        </ul>
+        <p class="more"><a class="pin small" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#packages"><span class="led" aria-hidden="true"></span><span>README: Packages</span></a></p>
+      </div>
+    </section>
+    <section class="sheet" id="s-try" aria-labelledby="h-try">
+      <div class="sheet-head"><h2 id="h-try">Assembly instructions: try it</h2><dl class="tb"><div><dt>Sheet</dt><dd>09 / 09</dd></div><div><dt>Scale</dt><dd>Not to scale</dd></div></dl></div>
+      <div class="sheet-body">
+        <p>The chain and package lines follow the Change source selector in the first sheet. Both are shown if your browser lacks <code>:has()</code>.</p>
+        <ol class="assembly">
+          <li>
+            <h3>Add the packages</h3>
+            <div class="code" role="region" tabindex="0" aria-label="Packages to add"><pre><code><span class="ln">dotnet add package Chatter.IntegrationEventRelay</span><span class="ln only-ssb">dotnet add package Chatter.IntegrationEventRelay.ServiceBroker</span><span class="ln only-cdc">dotnet add package Chatter.IntegrationEventRelay.Cdc</span><span class="ln">dotnet add package Chatter.MessageBrokers.AzureServiceBus</span><span class="ln">dotnet add package Chatter.MessageBrokers.AzureServiceBus.Auth</span></code></pre></div>
+          </li>
+          <li>
+            <h3>Wire up the relay in <code>Program.cs</code></h3>
+            <div class="only-ssb"><p class="code-cap"><code>Program.cs</code>: SQL Service Broker chain</p>
+        <div class="code" role="region" tabindex="0" aria-label="Program.cs chain for SQL Service Broker"><pre><code>// Wires up the mapper of each mapping in configuration
+.AddIntegrationEventRelay()
+    // Captures changes to the mapped tables with triggers and SQL Service Broker
+    .UseServiceBrokerChangeSource();</code></pre></div></div>
+            <div class="only-cdc"><p class="code-cap"><code>Program.cs</code>: CDC chain</p>
+        <div class="code" role="region" tabindex="0" aria-label="Program.cs chain for CDC"><pre><code>.AddIntegrationEventRelay()
+    .UseCdcChangeSource()
+    .UseServiceBrokerChangeSource();</code></pre></div></div>
+          </li>
+          <li>
+            <h3>Add a CDC source and mapping to <code>appsettings.json</code></h3>
+            <p class="code-cap"><code>appsettings.json</code></p>
+        <div class="code" role="region" tabindex="0" aria-label="appsettings.json CDC configuration"><pre><code>"IntegrationEventRelay": {
+  "ConnectionString": "...",
+  "Schema": "Chatter",
+  "Sources": {
+    "orders-cdc": { "Type": "Cdc", "PollInterval": "00:00:01" }
+  },
+  "Mappings": [
+    {
+      "Source": "orders-cdc",
+      "SourceEventTypeName": "MyNewIntegrationEventRelay.OrderChangedEvent",
+      "IntegrationEventTypeName": "MyNewIntegrationEventRelay.OrderShippedEvent",
+      "SourceChangeType": "Update",
+      "TableName": "Orders",
+      "TableSchema": "dbo",
+      "CaptureInstance": "dbo_Orders"
+    }
+  ]
+}</code></pre></div>
+          </li>
+          <li>
+            <h3>Create the mapper</h3>
+            <p class="code-cap"><code>OrderShippedMapper</code></p>
+        <div class="code" role="region" tabindex="0" aria-label="OrderShippedMapper"><pre><code>using Chatter.IntegrationEventRelay.Core.Abstractions;
+using Chatter.IntegrationEventRelay.Core.Configuration;
+using Chatter.IntegrationEventRelay.Core.Mapping;
+
+namespace MyNewIntegrationEventRelay;
+
+public class OrderShippedMapper : IMapSourceUpdateToIntegrationEvent&lt;OrderChangedEvent, OrderShippedEvent&gt;
+{
+    public Task&lt;OrderShippedEvent?&gt; MapAsync(MappingData&lt;OrderChangedEvent&gt; mappingData, RelayContext context, EventMappingConfigurationItem? mappingConfig)
+    {
+        OrderShippedEvent? orderShippedEvent = null;
+
+        // mappingData.OldValue only has a value for an update
+        if (mappingData.OldValue?.OrderStatus != "Shipped" &amp;&amp; mappingData.NewValue?.OrderStatus == "Shipped")
+        {
+            orderShippedEvent = new OrderShippedEvent
+            {
+                Id = mappingData.NewValue.Id,
+                CustomerId = mappingData.NewValue.CustomerId,
+                ProductId = mappingData.NewValue.ProductId,
+                OrderPlacedOn = mappingData.NewValue.OrderPlacedOn,
+                OccurredAt = DateTime.UtcNow
+            };
+        }
+
+        return Task.FromResult(orderShippedEvent);
+    }
+}</code></pre></div>
+          </li>
+          <li>
+            <h3>Ship the seeded order</h3>
+            <p>Run the Worker Service with <code>dotnet run</code>, put a breakpoint on the mapper's <code>return</code>, then run:</p>
+            <p class="code-cap">SQL</p>
+        <div class="code" role="region" tabindex="0" aria-label="SQL to ship the seeded order"><pre><code>USE [OrdersDB]
+GO
+
+UPDATE [dbo].[Orders]
+   SET [OrderStatus] = 'Shipped'
+ WHERE Id = '52CBE9FF-2496-4F46-9331-7F122AA3D973'
+GO</code></pre></div>
+            <p>The mapper returns an <code>OrderShippedEvent</code>, which the relay publishes to the <code>order-shipped-event</code> topic.</p>
+          </li>
+        </ol>
+        <h3>Run the demo</h3>
+        <p>The demo runs entirely in Docker: SQL Server, the Azure Service Bus emulator, two Worker Services and two Consumer Services. No Azure subscription is needed. From the root of the repo:</p>
+        <div class="code cmd" role="region" tabindex="0" aria-label="Run the demo"><pre><code>docker compose up --build</code></pre></div>
+        <p>On startup the database is created and seeded, and 100 database operations are executed against it. The demo uses both change sources: <code>Event1</code> is captured with CDC, <code>Event2</code> with SQL Service Broker. The 100 operations produce:</p>
+        <ul class="ledger">
+          <li><div class="head"><b>50</b><span class="nm">Event1DeletedEvent</span><span class="via">CDC, solid bar (25 soft deletes and 25 hard deletes)</span></div><div class="bar" style="--w:100"></div></li>
+          <li><div class="head"><b>25</b><span class="nm">Event1RestoredEvent</span><span class="via">CDC, solid bar</span></div><div class="bar" style="--w:50"></div></li>
+          <li><div class="head"><b>25</b><span class="nm">Event2CreatedEvent</span><span class="via">SQL Service Broker, dashed bar</span></div><div class="bar ssb" style="--w:50"></div></li>
+        </ul>
+        <p class="more"><a class="pin small" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#running-this-repo-locally"><span class="led" aria-hidden="true"></span><span>README: Running this repo locally</span></a></p>
+      </div>
+    </section>
+  </div>
+</main>
+<footer>
+  <div class="wrap">
+    <nav aria-label="Footer">
+      <ul class="pins">
+        <li><a class="pin" href="https://github.com/brenpike/Chatter.IntegrationEventRelay"><span class="led" aria-hidden="true"></span><span>GitHub</span></a></li>
+        <li><a class="pin" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay/"><span class="led" aria-hidden="true"></span><span>NuGet: Core</span></a></li>
+        <li><a class="pin" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.ServiceBroker/"><span class="led" aria-hidden="true"></span><span>NuGet: ServiceBroker</span></a></li>
+        <li><a class="pin" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.Cdc/"><span class="led" aria-hidden="true"></span><span>NuGet: Cdc</span></a></li>
+        <li><a class="pin" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#how-it-works"><span class="led" aria-hidden="true"></span><span>README: How it works</span></a></li>
+        <li><a class="pin" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#quick-start"><span class="led" aria-hidden="true"></span><span>README: Quick start</span></a></li>
+        <li><a class="pin" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/LICENSE"><span class="led" aria-hidden="true"></span><span>License (MIT)</span></a></li>
+        <li><a class="pin" href="index.html"><span class="led" aria-hidden="true"></span><span>All prototypes</span></a></li>
+      </ul>
+    </nav>
+    <p><strong>Chatter.IntegrationEventRelay</strong> is MIT licensed, by Brennan Pike. It targets .NET 10 (<code>net10.0</code>) and runs in a .NET Worker Service.</p>
+    <p>Blueprint is one of several design prototypes for the project page. The diagrams are schematic and illustrative, not measurements.</p>
+  </div>
+</footer>
+<script>
+  (function () {
+    'use strict';
+    var root = document.documentElement;
+    try {
+      root.classList.add('js');
+      var mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+      var pause = document.getElementById('pause');
+      var pauseNote = document.getElementById('pause-note');
+      var stage = document.getElementById('stage');
+      var PERIOD = 5200;
+      var LEAD = 2600;
+      var state = { reduced: mq.matches, onscreen: true, live: false };
+      var raf = 0;
+      var last = 0;
+      var clock = 0;
+
+      function paused() { return !!(pause && pause.checked); }
+      function canRun() { return !state.reduced && !paused() && !document.hidden && state.onscreen && state.live; }
+
+      function activeSvg() {
+        if (!stage) { return null; }
+        var list = stage.querySelectorAll('svg.sch');
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].getClientRects().length) { return list[i]; }
+        }
+        return null;
+      }
+
+      function route() {
+        var r = document.querySelector('input[name="source"]:checked');
+        return r ? r.value : 'cdc';
+      }
+
+      function hidePulses() {
+        var pulses = document.querySelectorAll('.pg');
+        for (var i = 0; i < pulses.length; i++) { pulses[i].classList.remove('on'); }
+      }
+
+      function frame(now) {
+        raf = 0;
+        if (!canRun()) { return; }
+        var dt = last ? Math.min(now - last, 100) : 0;
+        last = now;
+        clock += dt;
+        var svg = activeSvg();
+        if (svg) {
+          var path = svg.querySelector('.rp[data-route="' + route() + '"]');
+          var g = svg.querySelector('.pg');
+          if (path && g) {
+            var el = clock - LEAD;
+            if (el < 0) {
+              g.classList.remove('on');
+            } else {
+              var t = (el % PERIOD) / PERIOD;
+              var pt = path.getPointAtLength(t * path.getTotalLength());
+              g.setAttribute('transform', 'translate(' + pt.x.toFixed(1) + ' ' + pt.y.toFixed(1) + ')');
+              g.classList.add('on');
+            }
+          }
+        }
+        raf = requestAnimationFrame(frame);
+      }
+
+      function sync() {
+        if (canRun()) {
+          if (!raf) { last = 0; raf = requestAnimationFrame(frame); }
+        } else if (raf) {
+          cancelAnimationFrame(raf);
+          raf = 0;
+        }
+        if (state.reduced) { hidePulses(); }
+      }
+
+      function applyReduced() {
+        state.reduced = mq.matches;
+        root.classList.toggle('reduced', state.reduced);
+        if (pause) {
+          pause.checked = state.reduced;
+          pause.disabled = state.reduced;
+        }
+        if (pauseNote) { pauseNote.textContent = state.reduced ? '(reduced motion is on)' : ''; }
+        root.classList.toggle('paused', paused());
+        sync();
+      }
+
+      if (pause) {
+        pause.addEventListener('change', function () {
+          root.classList.toggle('paused', paused());
+          sync();
+        });
+      }
+      if (mq.addEventListener) { mq.addEventListener('change', applyReduced); } else if (mq.addListener) { mq.addListener(applyReduced); }
+      document.addEventListener('visibilitychange', sync);
+
+      var radios = document.querySelectorAll('input[name="source"]');
+      for (var i = 0; i < radios.length; i++) {
+        radios[i].addEventListener('change', function () { clock = LEAD; sync(); });
+      }
+
+      if ('IntersectionObserver' in window) {
+        if (stage) {
+          var stageObs = new IntersectionObserver(function (entries) {
+            var e = entries[entries.length - 1];
+            state.onscreen = e.isIntersecting;
+            if (e.isIntersecting && !state.live) {
+              state.live = true;
+              stage.classList.add('live');
+            }
+            sync();
+          }, { threshold: 0.05 });
+          stageObs.observe(stage);
+        }
+        var sheets = document.querySelectorAll('.sheet');
+        var sheetObs = new IntersectionObserver(function (entries) {
+          for (var k = 0; k < entries.length; k++) {
+            if (entries[k].isIntersecting) {
+              entries[k].target.classList.add('in');
+              sheetObs.unobserve(entries[k].target);
+            }
+          }
+        }, { threshold: 0.04, rootMargin: '0px 0px -4% 0px' });
+        for (var s = 0; s < sheets.length; s++) { sheetObs.observe(sheets[s]); }
+      } else {
+        state.live = true;
+        if (stage) { stage.classList.add('live'); }
+        var all = document.querySelectorAll('.sheet');
+        for (var a = 0; a < all.length; a++) { all[a].classList.add('in'); }
+      }
+
+      applyReduced();
+    } catch (err) {
+      root.classList.remove('js');
+    }
+  }());
+</script>
+</body>
+</html>

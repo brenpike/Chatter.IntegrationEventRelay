@@ -1,0 +1,821 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Chatter.IntegrationEventRelay | Console</title>
+  <meta name="description" content="Relays changes to a legacy SQL Server database's tables to message broker infrastructure as integration events, so systems that can't publish events themselves can take part in an event-driven architecture. A developer-console tour.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230D0F0C'/%3E%3Cpath d='M7 9l8 7-8 7' fill='none' stroke='%235CF28B' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3Crect x='17' y='21' width='9' height='3' fill='%235CF28B'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      --bg: #0D0F0C;
+      --panel: #151913;
+      --chrome: #20261D;
+      --text: #D7F9C8;
+      --muted: #8FB38A;
+      --prompt: #5CF28B;
+      --warn: #F2C14E;
+      --err: #FF8A80;
+      --line: #3A4736;
+      --sweep: #25472E;
+      --sweep-active: #2F6B3E;
+      --mono: ui-monospace, SFMono-Regular, "Cascadia Mono", "Cascadia Code", Menlo, Consolas, "Liberation Mono", "DejaVu Sans Mono", monospace;
+      color-scheme: dark;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html { -webkit-text-size-adjust: 100%; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background-color: var(--bg);
+      background-image: radial-gradient(60rem 28rem at 50% -8%, rgba(92, 242, 139, 0.11), transparent 70%);
+      background-repeat: no-repeat;
+      color: var(--text);
+      font: 1rem/1.65 var(--mono);
+      overflow-wrap: break-word;
+    }
+
+    /* Decorative scanline overlay: static, never intercepts input, off for reduced motion and forced colours. */
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 90;
+      pointer-events: none;
+      background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) 2px, rgba(0, 0, 0, 0.14) 3px);
+    }
+
+    .wrap { width: min(100% - 2rem, 72rem); margin-inline: auto; }
+
+    h1, h2, h3, p, ul, ol, dl, dd, figure, pre { margin-top: 0; }
+
+    code { font-family: inherit; font-size: 0.95em; color: var(--text); background: rgba(92, 242, 139, 0.08); padding: 0.05em 0.35em; border-radius: 3px; overflow-wrap: anywhere; }
+    pre code { background: none; padding: 0; font-size: inherit; overflow-wrap: normal; }
+
+    a { color: var(--prompt); text-underline-offset: 0.2em; }
+    a:hover { color: var(--text); }
+
+    :focus-visible { outline: 3px solid var(--warn); outline-offset: 3px; border-radius: 2px; }
+
+    .vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+    .skip { position: absolute; left: 0.5rem; top: -4rem; z-index: 100; background: var(--prompt); color: var(--bg); padding: 0.75rem 1rem; min-height: 44px; font-weight: 700; text-decoration: none; }
+    .skip:focus-visible { top: 0.5rem; }
+
+    .pr { color: var(--prompt); }
+    .muted { color: var(--muted); }
+    .warn { color: var(--warn); }
+
+    /* ---------- command links: caret and highlight sweep ---------- */
+    .cmd {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0 0.5ch;
+      min-height: 44px;
+      min-width: 44px;
+      padding: 0.45rem 0.8rem;
+      color: var(--text);
+      text-decoration: none;
+      isolation: isolate;
+      overflow-wrap: anywhere;
+    }
+    .cmd .pr { flex: none; }
+    .cmd::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background: var(--sweep);
+      border-left: 3px solid var(--prompt);
+      transform: scaleX(0);
+      transform-origin: left center;
+    }
+    .cmd .car {
+      display: inline-block;
+      flex: none;
+      width: 0.6em;
+      height: 1.1em;
+      background: var(--prompt);
+      opacity: 0;
+    }
+    .cmd:hover::before, .cmd:focus-visible::before { animation: sweep 0.3s steps(8, end) forwards; }
+    .cmd:hover .car, .cmd:focus-visible .car { opacity: 1; animation: blink 1s steps(1, end) 5; }
+    .cmd:active::before { background: var(--sweep-active); animation: none; transform: scaleX(1); }
+    .cmd:active { color: var(--text); }
+    .cmd:hover { color: var(--text); }
+
+    @keyframes sweep { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }
+
+    /* ---------- header and footer ---------- */
+    .top { background: var(--chrome); border-bottom: 1px solid var(--line); }
+    .top .wrap { padding-block: 0.4rem 0.6rem; }
+    .brand { display: flex; align-items: center; gap: 0.7rem; margin: 0; min-height: 44px; font-weight: 700; color: var(--prompt); overflow-wrap: anywhere; }
+    .brand svg { flex: none; width: 1.75rem; height: 1.75rem; }
+    .navlist { display: flex; flex-wrap: wrap; gap: 0.15rem 0.35rem; margin: 0; padding: 0; list-style: none; }
+    .navlist li { min-width: 0; }
+
+    .foot { margin-top: 3rem; border-top: 1px solid var(--line); background: var(--chrome); }
+    .foot .wrap { padding-block: 1.5rem 2.5rem; }
+    .foot p { color: var(--muted); margin-bottom: 0.75rem; }
+
+    /* ---------- hero ---------- */
+    .hero { padding-block: clamp(1.75rem, 5vw, 3.5rem) clamp(1.5rem, 4vw, 3rem); }
+    .eyebrow { margin-bottom: 0.5rem; color: var(--muted); }
+    h1 {
+      margin-bottom: 0.15em;
+      color: var(--prompt);
+      font-size: clamp(1.5rem, 5.4vw, 3.4rem);
+      line-height: 1.15;
+      letter-spacing: -0.01em;
+      text-shadow: 0 0 22px rgba(92, 242, 139, 0.4);
+      overflow-wrap: anywhere;
+    }
+    .subname { margin-bottom: 1.25rem; font-size: clamp(1.1rem, 2.4vw, 1.5rem); color: var(--muted); }
+    .lede { max-width: 62ch; margin-bottom: 1.25rem; font-size: clamp(1.0625rem, 2.1vw, 1.3rem); line-height: 1.6; }
+    .facts { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0 0 1.25rem; padding: 0; list-style: none; }
+    .facts li { padding: 0.15rem 0.7rem; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--panel); }
+    .cta { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0 0 2rem; padding: 0; list-style: none; }
+    .cta .cmd { border: 1px solid var(--line); background: var(--panel); }
+
+    .pause-input { width: 1.5rem; height: 1.5rem; margin: 0 0.5rem 0 0; accent-color: var(--prompt); vertical-align: middle; }
+    .pause-label { display: inline-flex; align-items: center; min-height: 44px; padding-right: 0.75rem; cursor: pointer; }
+    .cap { display: block; margin: 0 0 0.25rem; }
+
+    .window { margin-top: 0.25rem; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; box-shadow: 0 0 0 1px rgba(92, 242, 139, 0.08), 0 24px 64px rgba(0, 0, 0, 0.65), 0 0 70px rgba(92, 242, 139, 0.09); }
+    .chrome { display: flex; align-items: center; gap: 0.8rem; padding: 0.55rem 0.9rem; background: var(--chrome); border-bottom: 1px solid var(--line); color: var(--muted); }
+    .dots { display: inline-flex; gap: 0.4rem; }
+    .dots i { display: block; width: 0.8rem; height: 0.8rem; border-radius: 50%; background: var(--muted); }
+    .dots i:nth-child(1) { background: var(--err); }
+    .dots i:nth-child(2) { background: var(--warn); }
+    .dots i:nth-child(3) { background: var(--prompt); }
+    .panes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; background: var(--line); }
+    .pane { min-width: 0; background: var(--panel); }
+    .pane-h { display: flex; align-items: center; gap: 0.6ch; margin: 0; padding: 0.3rem 0.9rem; background: rgba(32, 38, 29, 0.6); border-bottom: 1px solid var(--line); color: var(--muted); font-size: 0.875rem; }
+    .term { padding: 0.75rem 0.9rem; overflow-x: auto; font-size: 0.875rem; line-height: 1.75; }
+    .row { display: flex; white-space: pre; gap: 1ch; width: max-content; min-width: 100%; }
+    .pm { flex: none; color: var(--prompt); }
+    .tl { display: inline-block; flex: none; }
+    .blk { display: block; width: max-content; }
+    .kw { color: var(--prompt); font-weight: 700; }
+    .q { color: var(--prompt); }
+    .jk { color: var(--muted); }
+    .shot { margin-top: 0.75rem; color: var(--muted); font-size: 0.9375rem; }
+
+    .caret { display: inline-block; width: 0.6em; height: 1.1em; vertical-align: text-bottom; background: var(--prompt); animation: blink 1s steps(1, end) infinite; }
+
+    @media (min-width: 1000px) {
+      .panes { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); grid-template-areas: "sql broker" "relay broker"; }
+      .pane-sql { grid-area: sql; }
+      .pane-relay { grid-area: relay; }
+      .pane-broker { grid-area: broker; }
+    }
+
+    /* hero sequence: text is always in the DOM; only a clip reveal moves */
+    .hero-anim { animation-duration: 22s; animation-iteration-count: infinite; animation-timing-function: linear; }
+    .k0 { animation-name: k0; }
+    .k1 { animation-name: k1; }
+    .k2 { animation-name: k2; }
+    .k3 { animation-name: k3; }
+    .k4 { animation-name: k4; }
+    .k5 { animation-name: k5; }
+    .k6 { animation-name: k6; }
+    .k7 { animation-name: k7; }
+    .led-sql { animation-name: led-sql; }
+    .led-relay { animation-name: led-relay; }
+    .led-broker { animation-name: led-broker; }
+    @keyframes k0 { 0% { clip-path: inset(0 100% 0 0); } 2.73% { clip-path: inset(0 100% 0 0); animation-timing-function: steps(21, end); } 8.64% { clip-path: inset(0 0 0 0); } 97% { clip-path: inset(0 0 0 0); } 97.5% { clip-path: inset(0 100% 0 0); } 100% { clip-path: inset(0 100% 0 0); } }
+    @keyframes k1 { 0% { clip-path: inset(0 100% 0 0); } 9.09% { clip-path: inset(0 100% 0 0); animation-timing-function: steps(32, end); } 16.82% { clip-path: inset(0 0 0 0); } 97% { clip-path: inset(0 0 0 0); } 97.5% { clip-path: inset(0 100% 0 0); } 100% { clip-path: inset(0 100% 0 0); } }
+    @keyframes k2 { 0% { clip-path: inset(0 100% 0 0); } 17.27% { clip-path: inset(0 100% 0 0); animation-timing-function: steps(50, end); } 28.64% { clip-path: inset(0 0 0 0); } 97% { clip-path: inset(0 0 0 0); } 97.5% { clip-path: inset(0 100% 0 0); } 100% { clip-path: inset(0 100% 0 0); } }
+    @keyframes k3 { 0% { clip-path: inset(0 100% 0 0); } 29.09% { clip-path: inset(0 100% 0 0); animation-timing-function: steps(2, end); } 30.91% { clip-path: inset(0 0 0 0); } 97% { clip-path: inset(0 0 0 0); } 97.5% { clip-path: inset(0 100% 0 0); } 100% { clip-path: inset(0 100% 0 0); } }
+    @keyframes k4 { 0% { clip-path: inset(0 100% 0 0); } 35.45% { clip-path: inset(0 100% 0 0); animation-timing-function: steps(83, end); } 48.18% { clip-path: inset(0 0 0 0); } 97% { clip-path: inset(0 0 0 0); } 97.5% { clip-path: inset(0 100% 0 0); } 100% { clip-path: inset(0 100% 0 0); } }
+    @keyframes k5 { 0% { clip-path: inset(0 100% 0 0); } 50.91% { clip-path: inset(0 100% 0 0); animation-timing-function: steps(75, end); } 62.73% { clip-path: inset(0 0 0 0); } 97% { clip-path: inset(0 0 0 0); } 97.5% { clip-path: inset(0 100% 0 0); } 100% { clip-path: inset(0 100% 0 0); } }
+    @keyframes k6 { 0% { clip-path: inset(0 0 100% 0); } 64.55% { clip-path: inset(0 0 100% 0); animation-timing-function: steps(2, end); } 67.73% { clip-path: inset(0 0 0 0); } 97% { clip-path: inset(0 0 0 0); } 97.5% { clip-path: inset(0 0 100% 0); } 100% { clip-path: inset(0 0 100% 0); } }
+    @keyframes k7 { 0% { clip-path: inset(0 0 100% 0); } 68.64% { clip-path: inset(0 0 100% 0); animation-timing-function: steps(7, end); } 78.18% { clip-path: inset(0 0 0 0); } 97% { clip-path: inset(0 0 0 0); } 97.5% { clip-path: inset(0 0 100% 0); } 100% { clip-path: inset(0 0 100% 0); } }
+    @keyframes led-sql { 0% { opacity: 0.3; } 2.26% { opacity: 0.3; } 2.27% { opacity: 1; } 31.82% { opacity: 1; } 31.83% { opacity: 0.3; } 100% { opacity: 0.3; } }
+    @keyframes led-relay { 0% { opacity: 0.3; } 34.99% { opacity: 0.3; } 35.00% { opacity: 1; } 63.64% { opacity: 1; } 63.65% { opacity: 0.3; } 100% { opacity: 0.3; } }
+    @keyframes led-broker { 0% { opacity: 0.3; } 64.54% { opacity: 0.3; } 64.55% { opacity: 1; } 95.45% { opacity: 1; } 95.46% { opacity: 0.3; } 100% { opacity: 0.3; } }
+
+    /* ---------- sections as commands ---------- */
+    .sec { padding-block: clamp(2.25rem, 6vw, 4rem); border-top: 1px dashed var(--line); }
+    .cmdline { display: flex; flex-wrap: wrap; gap: 0 1ch; margin-bottom: 1.25rem; font-size: clamp(1.2rem, 3.2vw, 1.8rem); line-height: 1.3; color: var(--text); overflow-wrap: anywhere; }
+    .typed { display: inline-block; }
+    .out { padding-left: clamp(0.75rem, 2vw, 1.5rem); border-left: 2px solid var(--line); }
+    .out > :last-child { margin-bottom: 0; }
+    .out h3 { margin-bottom: 0.5rem; font-size: 1.125rem; color: var(--prompt); }
+    .out p, .out li, .out dd { max-width: 80ch; }
+    .out ul.bul { padding-left: 1.5ch; list-style: none; }
+    .out ul.bul li { position: relative; padding-left: 2ch; margin-bottom: 0.5rem; }
+    .out ul.bul li::before { content: ">"; position: absolute; left: 0; color: var(--prompt); font-weight: 700; }
+    .grid2 { display: grid; gap: 1.25rem; grid-template-columns: minmax(0, 1fr); }
+    .grid3 { display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 760px) { .grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+    .card { min-width: 0; padding: 1rem 1.1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+    .card > :last-child { margin-bottom: 0; }
+    .card h3 { margin-bottom: 0.5rem; }
+
+    .tag { display: inline-block; padding: 0 0.5rem; margin-right: 0.5ch; border: 1px solid currentColor; border-radius: 4px; font-size: 0.875rem; font-weight: 700; letter-spacing: 0.05em; line-height: 1.6; }
+    .tag.err { color: var(--err); }
+    .tag.warn { color: var(--warn); }
+    .tag.ok { color: var(--prompt); }
+
+    .writers { display: grid; gap: 0.75rem; margin: 1.25rem 0; padding: 0; list-style: none; grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 760px) { .writers { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    .writers li { padding: 0.85rem 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+    .writers .tag { display: table; margin-top: 0.5rem; }
+
+    .how { display: grid; gap: 1.5rem; grid-template-columns: minmax(0, 1fr); align-items: start; }
+    @media (min-width: 900px) { .how { grid-template-columns: minmax(0, 24rem) minmax(0, 1fr); } }
+    .ascii { margin: 0; padding: 1rem; overflow-x: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; font-size: 0.875rem; line-height: 1.35; color: var(--prompt); white-space: pre; }
+    .steps { margin: 0; padding-left: 3ch; }
+    .steps li { margin-bottom: 0.75rem; padding-left: 0.5ch; }
+    .steps li::marker { color: var(--prompt); font-weight: 700; }
+    .example { margin: 1.5rem 0 0; padding: 0.9rem 1rem; border: 1px solid var(--prompt); border-radius: 8px; background: rgba(92, 242, 139, 0.06); }
+
+    .gloss { display: grid; gap: 0.25rem 1.5rem; margin: 1.5rem 0 0; grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 760px) { .gloss { grid-template-columns: minmax(0, 14ch) minmax(0, 1fr); } }
+    .gloss dt { color: var(--prompt); font-weight: 700; margin-top: 0.5rem; }
+    .gloss dd { margin: 0 0 0.25rem; }
+
+    .codefig { margin: 0 0 1.25rem; min-width: 0; }
+    .fl { margin: 0 0 0.35rem; color: var(--muted); font-size: 0.9375rem; }
+    .code { margin: 0; padding: 0.9rem 1rem; max-width: 100%; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; font-size: 0.875rem; line-height: 1.6; tab-size: 4; white-space: pre; }
+
+    /* tables */
+    .tablewrap { margin: 1.25rem 0; max-width: 100%; overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; line-height: 1.55; }
+    caption { padding: 0.6rem 0.9rem; text-align: left; color: var(--muted); }
+    th, td { padding: 0.65rem 0.9rem; text-align: left; vertical-align: top; border-top: 1px solid var(--line); }
+    thead th { background: var(--chrome); color: var(--prompt); }
+    tbody th { color: var(--muted); font-weight: 700; width: 14ch; }
+    @media (max-width: 759px) {
+      table, thead, tbody, tr, th, td { display: block; width: auto; }
+      thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+      tbody tr { border-top: 2px solid var(--line); padding-bottom: 0.4rem; }
+      tbody th { padding-bottom: 0.1rem; color: var(--prompt); }
+      td { border-top: 0; padding-top: 0.3rem; padding-bottom: 0.3rem; }
+      td::before { content: attr(data-label); display: block; color: var(--muted); font-size: 0.875rem; }
+    }
+
+    /* switch timeline */
+    .timeline { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.5rem; margin: 1.25rem 0; }
+    .tl-seg { padding: 0.75rem 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+    .tl-seg strong { display: block; color: var(--prompt); }
+    .tl-pt { position: relative; padding: 0.5rem 1rem; border: 2px dashed var(--warn); border-radius: 8px; color: var(--warn); text-align: center; font-weight: 700; }
+    @media (min-width: 820px) { .timeline { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: stretch; } .tl-pt { display: flex; align-items: center; } }
+
+    /* demo tally */
+    .tally { display: grid; gap: 0.9rem; margin: 1.25rem 0; padding: 0; list-style: none; }
+    .tally li { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.3rem; }
+    .tally .n { font-weight: 700; color: var(--prompt); }
+    .track { height: 1.25rem; border: 1px solid var(--line); border-radius: 3px; background: var(--bg); overflow: hidden; }
+    .bar { height: 100%; width: calc(var(--v) * 1%); background: var(--prompt); }
+
+    .pkgs { display: grid; gap: 1rem; margin: 1.25rem 0; padding: 0; list-style: none; grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 900px) { .pkgs { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    .pkgs .card { height: 100%; }
+    .pkgname { display: block; margin-bottom: 0.5rem; font-weight: 700; color: var(--prompt); overflow-wrap: anywhere; }
+
+    /* ---------- reveal: JS-only hide-then-reveal ---------- */
+    .js .reveal:not(.in) .out { opacity: 0; transform: translateY(14px); }
+    .js .reveal .out { transition: opacity 0.5s steps(5, end) 0.4s, transform 0.5s steps(5, end) 0.4s; }
+    .js .reveal:not(.in) .typed { clip-path: inset(0 100% 0 0); }
+    .js .reveal.in .typed { animation: type-in 0.7s steps(var(--n, 12), end) both; }
+    @keyframes type-in { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+
+    /* ---------- pause and visibility controls ---------- */
+    html.paused .hero-anim, html.paused .caret, .pause-input:checked ~ .window .hero-anim, .pause-input:checked ~ .window .caret { animation: none; }
+    html.hero-off .hero-anim, html.hero-off .caret, html.tab-hidden .hero-anim, html.tab-hidden .caret { animation-play-state: paused; }
+
+    /* ---------- reduced motion: static, instant, final state ---------- */
+    @media (prefers-reduced-motion: reduce) {
+      body::after { display: none; }
+      .hero-anim, .caret { animation: none !important; }
+      .js .reveal:not(.in) .out { opacity: 1; transform: none; }
+      .js .reveal .out { transition: none; }
+      .js .reveal:not(.in) .typed { clip-path: none; }
+      .js .reveal.in .typed { animation: none; }
+      .cmd:hover::before, .cmd:focus-visible::before { animation: none; transform: scaleX(1); }
+      .cmd:hover .car, .cmd:focus-visible .car { animation: none; opacity: 1; }
+    }
+
+    /* ---------- forced colours ---------- */
+    @media (forced-colors: active) {
+      body::after { display: none; }
+      body { background-image: none; }
+      :focus-visible { outline: 3px solid Highlight; }
+      a { color: LinkText; }
+      .cmd::before { display: none; }
+      .cmd:hover, .cmd:focus-visible { text-decoration: underline; outline: 2px solid Highlight; }
+      .cmd .car, .caret { background: CanvasText; forced-color-adjust: none; }
+      .window, .card, .code, .ascii, .tablewrap, .writers li, .tl-seg, .facts li, .cta .cmd, .example { border: 1px solid CanvasText; }
+      .tag { border: 1px solid CanvasText; }
+      .tl-pt { border: 2px dashed CanvasText; }
+      .out { border-left: 2px solid CanvasText; }
+      .track { border: 1px solid CanvasText; }
+      .bar { forced-color-adjust: none; background: Highlight; }
+      .dots i { background: CanvasText; forced-color-adjust: none; }
+      h1 { text-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to main content</a>
+
+  <header class="top">
+    <div class="wrap">
+      <p class="brand">
+        <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect x="1.5" y="1.5" width="29" height="29" rx="6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 10l7 6-7 6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><rect x="17" y="20" width="8" height="3" fill="currentColor"/></svg>
+        <span>Chatter.IntegrationEventRelay</span>
+      </p>
+      <nav aria-label="Primary">
+        <ul class="navlist">
+          <li><a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay"><span class="pr" aria-hidden="true">$</span> <span>open github</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay/"><span class="pr" aria-hidden="true">$</span> <span>open nuget Chatter.IntegrationEventRelay</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.ServiceBroker/"><span class="pr" aria-hidden="true">$</span> <span>open nuget Chatter.IntegrationEventRelay.ServiceBroker</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.Cdc/"><span class="pr" aria-hidden="true">$</span> <span>open nuget Chatter.IntegrationEventRelay.Cdc</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#quick-start"><span class="pr" aria-hidden="true">$</span> <span>man readme#quick-start</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#choosing-a-change-source"><span class="pr" aria-hidden="true">$</span> <span>man readme#choosing-a-change-source</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="index.html"><span class="pr" aria-hidden="true">$</span> <span>cd ..</span> <span>All prototypes</span><span class="car" aria-hidden="true"></span></a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" aria-labelledby="top-h">
+      <div class="wrap">
+        <p class="eyebrow"><span class="pr" aria-hidden="true">$</span> cat README.md</p>
+        <h1 id="top-h">Chatter.IntegrationEventRelay</h1>
+        <p class="subname">Integration Event Relay</p>
+        <p class="lede">Relays changes to a legacy SQL Server database's tables to message broker infrastructure as integration events, so systems that can't publish events themselves can take part in an event-driven architecture.</p>
+        <ul class="facts">
+          <li>MIT license</li>
+          <li>.NET 10 (<code>net10.0</code>)</li>
+          <li>Runs in a .NET Worker Service</li>
+          <li>Author: Brennan Pike</li>
+        </ul>
+        <ul class="cta">
+          <li><a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#quick-start"><span class="pr" aria-hidden="true">$</span> <span>man readme#quick-start</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay"><span class="pr" aria-hidden="true">$</span> <span>open github</span><span class="car" aria-hidden="true"></span></a></li>
+        </ul>
+
+        <figure class="demo" aria-labelledby="demo-cap">
+          <figcaption id="demo-cap" class="muted cap">Illustrative output: values and timing are illustrative.</figcaption>
+          <input class="pause-input" type="checkbox" id="pause">
+          <label class="pause-label" for="pause">Pause animations</label>
+          <div class="window" role="group" aria-label="Three panes: a SQL session, the relay log and the message broker">
+            <div class="chrome"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span>relay-demo: update, relay, broker</span></div>
+            <div class="panes">
+              <div class="pane pane-sql" role="group" aria-label="sql pane">
+                <p class="pane-h"><span aria-hidden="true" class="pr led hero-anim led-sql">&#9679;</span> <span>sql&gt;</span></p>
+                <div class="term" tabindex="0" role="region" aria-label="SQL session, illustrative output">
+                  <div class="row"><span class="pm" aria-hidden="true">sql&gt;</span><span class="tl hero-anim k0"><span class="kw">UPDATE</span> [dbo].[Orders]</span></div>
+                  <div class="row"><span class="pm" aria-hidden="true">  -&gt;</span><span class="tl hero-anim k1">   <span class="kw">SET</span> [OrderStatus] = 'Shipped'</span></div>
+                  <div class="row"><span class="pm" aria-hidden="true">  -&gt;</span><span class="tl hero-anim k2"> <span class="kw">WHERE</span> Id = '52CBE9FF-2496-4F46-9331-7F122AA3D973'</span></div>
+                  <div class="row"><span class="pm" aria-hidden="true">  -&gt;</span><span class="tl hero-anim k3"><span class="kw">GO</span></span></div>
+                  <div class="row"><span class="pm" aria-hidden="true">sql&gt;</span><span class="caret" aria-hidden="true"></span></div>
+                </div>
+              </div>
+              <div class="pane pane-relay" role="group" aria-label="relay pane">
+                <p class="pane-h"><span aria-hidden="true" class="pr led hero-anim led-relay">&#9679;</span> <span>relay</span></p>
+                <div class="term" tabindex="0" role="region" aria-label="Relay log, illustrative output">
+                  <div class="row"><span class="tl hero-anim k4">Processing Update of <span class="q">&#x27;OrderChangedEvent&#x27;</span> from source <span class="q">&#x27;orders-cdc&#x27;</span> with 1 mapping(s)</span></div>
+                  <div class="row"><span class="tl hero-anim k5">Published integration event <span class="q">&#x27;OrderShippedEvent&#x27;</span> to messaging infrastructure</span></div>
+                </div>
+              </div>
+              <div class="pane pane-broker" role="group" aria-label="broker pane">
+                <p class="pane-h"><span aria-hidden="true" class="pr led hero-anim led-broker">&#9679;</span> <span>broker</span></p>
+                <div class="term" tabindex="0" role="region" aria-label="Message arriving on the order-shipped-event topic, illustrative output">
+                  <div class="blk hero-anim k6"><div class="row"><span class="jk">topic  </span><span>order-shipped-event</span></div><div class="row"><span class="jk">type   </span><span>OrderShippedEvent</span></div></div>
+                  <div class="blk hero-anim k7" style="margin-top:0.5rem"><div class="row">{</div><div class="row">  <span class="jk">"Id"</span>: &quot;52CBE9FF-2496-4F46-9331-7F122AA3D973&quot;,</div><div class="row">  <span class="jk">"CustomerId"</span>: &quot;99FD8C91-F197-48BA-995C-17BD89D4394D&quot;,</div><div class="row">  <span class="jk">"ProductId"</span>: &quot;170310D2-6EF8-47B0-9B4C-62BA088EA7BE&quot;,</div><div class="row">  <span class="jk">"OrderPlacedOn"</span>: &quot;2026-01-15T09:30:00&quot;,</div><div class="row">  <span class="jk">"OccurredAt"</span>: &quot;2026-01-15T09:41:07Z&quot;</div><div class="row">}</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </figure>
+        <p class="shot">The relay log lines use the relay's two real log templates. The <code>OrderShippedEvent</code> body shows the fields of the README's quick start.</p>
+      </div>
+    </section>
+
+    <section class="sec reveal" id="why" aria-labelledby="why-h">
+      <div class="wrap">
+        <h2 class="cmdline" id="why-h"><span class="pr" aria-hidden="true">$</span> <span class="typed" style="--n:3">why</span><span class="vh">: the problem the relay solves</span></h2>
+        <div class="out">
+          <p>Legacy systems write to a SQL Server database but can't create or publish integration events. Their as-is architecture, technical debt, or inability to integrate with message broker infrastructure keeps them out of an event-driven architecture.</p>
+          <ul class="writers">
+            <li>A monolithic desktop app (WinForms/Swing)<span class="tag err">ERR cannot publish events</span></li>
+            <li>A VBA Excel app<span class="tag err">ERR cannot publish events</span></li>
+            <li>People editing tables directly<span class="tag err">ERR cannot publish events</span></li>
+          </ul>
+          <p><span class="tag ok">REQUIRES</span>The legacy system's backend must be SQL Server.</p>
+          <p>The relay watches those tables for row changes and publishes them as integration events, so these systems can take part without publishing anything themselves.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec reveal" id="how" aria-labelledby="how-h">
+      <div class="wrap">
+        <h2 class="cmdline" id="how-h"><span class="pr" aria-hidden="true">$</span> <span class="typed" style="--n:15">explain --how</span><span class="vh">: how it works</span></h2>
+        <div class="out">
+          <div class="how">
+            <pre class="ascii" role="img" aria-label="Pipeline: a legacy system writes rows to a SQL Server table. A change source turns each row change into a source event. A mapping and its mapper turn the source event into an integration event, or return null and publish nothing. The relay publishes the integration event to message broker infrastructure, and consumers subscribe.">         legacy system
+               │ writes rows
+               ▼
+┌──────────────────────────────┐
+│ SQL Server table             │
+└──────────────┬───────────────┘
+               │ row change
+               ▼
+┌──────────────────────────────┐
+│ change source                │
+│ (SQL Service Broker or CDC)  │
+└──────────────┬───────────────┘
+               │ source event
+               ▼
+┌──────────────────────────────┐
+│ mapping ── mapper (your code)│
+└──────────────┬───────────────┘
+               │ integration event
+               │ (null: nothing published)
+               ▼
+┌──────────────────────────────┐
+│ message broker infrastructure│
+│ topic: order-shipped-event   │
+└──────────────┬───────────────┘
+               │
+               ▼
+        consumers subscribe</pre>
+            <ol class="steps">
+              <li>A <strong>change source</strong> watches tables for <strong>row changes</strong> (an insert, update or delete of one row).</li>
+              <li>Each row change becomes a <strong>source event</strong>: the row's values, typed by the mapping's source event type.</li>
+              <li>A <strong>mapping</strong> in configuration pairs a table and change type with a source event type and an integration event type. Each mapping has exactly one <strong>mapper</strong>.</li>
+              <li>The <strong>mapper</strong> is your code. It decides whether the source event becomes an <strong>integration event</strong> and builds it. It returns <code class="warn">null</code> and nothing is published. For updates it sees <code>OldValue</code> and <code>NewValue</code>.</li>
+              <li>The relay publishes integration events through any Chatter message broker infrastructure implementation, such as Azure Service Bus. <code>[BrokeredMessage("order-shipped-event")]</code> names the topic, and consumers subscribe.</li>
+              <li>The relay checks its configuration when the host starts and stops with a list of problems.</li>
+            </ol>
+          </div>
+          <p class="example"><strong class="pr">Running example:</strong> in an <code>Orders</code> table, when <code>OrderStatus</code> changes to <code>Shipped</code>, the mapper publishes <code>OrderShippedEvent</code> to the <code>order-shipped-event</code> topic.</p>
+          <dl class="gloss">
+            <dt>row change</dt><dd>An insert, update or delete of one row.</dd>
+            <dt>source event</dt><dd>The row's values, typed by the mapping's source event type.</dd>
+            <dt>mapping</dt><dd>A configured pairing of a table and change type with a source event type and an integration event type.</dd>
+            <dt>mapper</dt><dd>Your code: decides whether the source event becomes an integration event and builds it.</dd>
+            <dt>integration event</dt><dd>The message the relay publishes to the broker after a mapper accepts a source event.</dd>
+            <dt>change source</dt><dd>The component that captures a table's row changes and hands them to the relay: SQL Service Broker or CDC.</dd>
+            <dt>source</dt><dd>A named, configured instance of a change source, which mappings name in <code>Source</code>.</dd>
+          </dl>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec reveal" id="compare" aria-labelledby="compare-h">
+      <div class="wrap">
+        <h2 class="cmdline" id="compare-h"><span class="pr" aria-hidden="true">$</span> <span class="typed" style="--n:19">compare --sources</span><span class="vh">: the two change sources</span></h2>
+        <div class="out">
+          <p>Two change sources are available. One relay can use both, but each table uses only one. Each mapping names its source in <code>Source</code>; a mapping without one uses SQL Service Broker.</p>
+          <div class="tablewrap" tabindex="0" role="region" aria-label="Comparison of the SQL Service Broker and CDC change sources">
+            <table>
+              <caption>SQL Service Broker versus CDC</caption>
+              <thead>
+                <tr><th scope="col">Aspect</th><th scope="col">SQL Service Broker</th><th scope="col">CDC</th></tr>
+              </thead>
+              <tbody>
+                <tr><th scope="row">Package</th><td data-label="SQL Service Broker"><code>Chatter.IntegrationEventRelay.ServiceBroker</code></td><td data-label="CDC"><code>Chatter.IntegrationEventRelay.Cdc</code></td></tr>
+                <tr><th scope="row">Capture</th><td data-label="SQL Service Broker">A trigger on each watched table, in the writing transaction, adds modified rows to a SQL Service Broker queue. The Worker consumes it.</td><td data-label="CDC">The Worker polls the change tables CDC's capture job fills from the transaction log. No trigger on the table.</td></tr>
+                <tr><th scope="row">Order</th><td data-label="SQL Service Broker">Not guaranteed</td><td data-label="CDC">Commit order per table (capture instance); no order across tables</td></tr>
+                <tr><th scope="row">Delivery</th><td data-label="SQL Service Broker">At least once</td><td data-label="CDC">At least once: a batch is checkpointed only after every change in it is published</td></tr>
+                <tr><th scope="row">Message id</th><td data-label="SQL Service Broker">Generated by Chatter</td><td data-label="CDC">Derived from the source name, the change's position and the integration event type</td></tr>
+                <tr><th scope="row">Commit time</th><td data-label="SQL Service Broker">Not available</td><td data-label="CDC">Available as <code>RelayContext.CommittedAt</code></td></tr>
+                <tr><th scope="row">Capabilities</th><td data-label="SQL Service Broker">None</td><td data-label="CDC"><code>Ordered</code>, <code>Resumable</code>, <code>CommitTime</code> (<code>ParkRow</code> drops <code>Ordered</code>)</td></tr>
+                <tr><th scope="row">After downtime</th><td data-label="SQL Service Broker">Changes wait in the queue</td><td data-label="CDC">Resumes from a checkpoint while changes are still in the change table (retention default 3 days)</td></tr>
+                <tr><th scope="row">Latency</th><td data-label="SQL Service Broker">No CDC capture latency</td><td data-label="CDC">The capture job scans the log every 5 s by default</td></tr>
+                <tr><th scope="row">Needs</th><td data-label="SQL Service Broker">SQL Server with Service Broker (most PaaS offerings don't support it)</td><td data-label="CDC">SQL Server Agent; <code>sysadmin</code> to enable CDC on the database; <code>db_owner</code> per table</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="grid2">
+            <div class="card">
+              <h3><span class="tag ok">CDC</span>Use CDC when</h3>
+              <ul class="bul">
+                <li>mappers compare old and new values or depend on the order of changes (for example soft delete followed by restore), since CDC delivers each table's changes in commit order and keeps the before-image of every update;</li>
+                <li>you can't, or don't want to, add triggers to the legacy system's tables, or the writes must not pay for a trigger and a Service Broker send;</li>
+                <li>the relay must resume where it stopped after downtime, from changes still in the change table.</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3><span class="tag ok">SSB</span>Use SQL Service Broker when</h3>
+              <ul class="bul">
+                <li>SQL Server Agent isn't available (CDC's capture job needs it), or CDC can't be enabled on the database;</li>
+                <li>changes must reach the relay without CDC's capture latency (the capture job scans the log every few seconds by default);</li>
+                <li>the table is already relayed this way and works as needed.</li>
+              </ul>
+            </div>
+          </div>
+          <p><span class="tag warn">STARTUP</span>A mapping can set <code>RequiredCapabilities</code>. The relay stops at startup if the mapping's source doesn't provide them.</p>
+          <p class="muted">Tested against SQL Server 2019 and 2022.
+            <a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#choosing-a-change-source"><span class="pr" aria-hidden="true">$</span> <span>man readme#choosing-a-change-source</span><span class="car" aria-hidden="true"></span></a></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec reveal" id="delivery" aria-labelledby="delivery-h">
+      <div class="wrap">
+        <h2 class="cmdline" id="delivery-h"><span class="pr" aria-hidden="true">$</span> <span class="typed" style="--n:19">explain --delivery</span><span class="vh">: delivery and reliability</span></h2>
+        <div class="out">
+          <p><span class="tag warn">AT LEAST ONCE</span>Both change sources deliver at least once, so a change can be published more than once. Plan for replays.</p>
+          <div class="grid2">
+            <div class="card">
+              <h3>CDC</h3>
+              <p>A batch is checkpointed only after every change in it is published. After a crash the batch is republished with the same message ids, derived from the source name, the change's position and the integration event type.</p>
+              <p>Enable duplicate detection on the topics (Azure Service Bus) or make consumers idempotent.</p>
+            </div>
+            <div class="card">
+              <h3>SQL Service Broker</h3>
+              <p>Acknowledges by committing Chatter's receive transaction once processing succeeds. Chatter's recovery options retry failures.</p>
+            </div>
+          </div>
+          <h3>Several relay instances</h3>
+          <p>Several relay instances can run with the same configuration. A lease (a SQL Server application lock) lets one poll each capture instance while the others stand by.</p>
+          <h3>Error policy</h3>
+          <p>Transient failures are retried with exponential backoff and never parked. For a change that keeps failing with other errors:</p>
+          <div class="grid2">
+            <div class="card">
+              <h3><span class="tag err">HALT</span><code>Halt</code> (default)</h3>
+              <p>Stops at the change and keeps retrying. Nothing after it is published, so order holds.</p>
+            </div>
+            <div class="card">
+              <h3><span class="tag warn">PARK</span><code>ParkRow</code></h3>
+              <p>After <code>MaxAttemptsBeforePark</code> attempts the change is parked in <code>&lt;Schema&gt;.Chatter_RelayParkedChanges</code>, and later changes to the same row park behind it. Other rows carry on. On request, a replay republishes the row's parked changes in order.</p>
+            </div>
+          </div>
+          <h3>Metrics and health check</h3>
+          <p>Meter <code>Chatter.IntegrationEventRelay.Cdc</code> publishes:</p>
+          <ul class="bul">
+            <li><code>chatter.relay.cdc.changes</code></li>
+            <li><code>chatter.relay.cdc.parked</code></li>
+            <li><code>chatter.relay.cdc.batch.failures</code></li>
+            <li><code>chatter.relay.cdc.batch.duration</code></li>
+            <li><code>chatter.relay.cdc.lag</code></li>
+            <li><code>chatter.relay.cdc.parked.current</code></li>
+          </ul>
+          <figure class="codefig">
+            <p class="fl">health check</p>
+            <pre class="code" tabindex="0"><code>services.AddHealthChecks().AddCdcChangeSource(maxLag: TimeSpan.FromMinutes(5));</code></pre>
+          </figure>
+          <p><span class="tag ok">TESTED</span>Tested SQL scripts enable CDC and grant the relay's login least-privilege permissions. The integration tests run the relay under exactly those grants.</p>
+          <p><a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#delivery-semantics"><span class="pr" aria-hidden="true">$</span> <span>man readme#delivery-semantics</span><span class="car" aria-hidden="true"></span></a>
+            <a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#error-policy-and-parked-changes"><span class="pr" aria-hidden="true">$</span> <span>man readme#error-policy-and-parked-changes</span><span class="car" aria-hidden="true"></span></a>
+            <a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#metrics-and-health-check"><span class="pr" aria-hidden="true">$</span> <span>man readme#metrics-and-health-check</span><span class="car" aria-hidden="true"></span></a></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec reveal" id="switch" aria-labelledby="switch-h">
+      <div class="wrap">
+        <h2 class="cmdline" id="switch-h"><span class="pr" aria-hidden="true">$</span> <span class="typed" style="--n:13">switch --help</span><span class="vh">: switching a table between change sources</span></h2>
+        <div class="out">
+          <p>Two scripts switch a table between the change sources. Each picks a switch point.</p>
+          <div class="timeline">
+            <div class="tl-seg"><strong>Before the switch point</strong>The source you switch away from relays every change committed before it.</div>
+            <div class="tl-pt">switch point</div>
+            <div class="tl-seg"><strong>After the switch point</strong>The source you switch to relays every change committed after it.</div>
+          </div>
+          <p>Every change is relayed by only one of the two sources, and each source is still at least once.</p>
+          <div class="grid2">
+            <figure class="codefig">
+              <p class="fl">.scripts/cdc/switch-to-cdc.sql</p>
+              <pre class="code" tabindex="0"><code>SQL Service Broker to CDC
+@tableSchema
+@tableName
+@captureInstance
+@sourceName
+@relaySchema
+@keepDeadLetters
+@timeoutSeconds</code></pre>
+            </figure>
+            <figure class="codefig">
+              <p class="fl">.scripts/cdc/switch-to-service-broker.sql</p>
+              <pre class="code" tabindex="0"><code>CDC to SQL Service Broker
+@tableSchema
+@tableName
+@captureInstance
+@relaySchema
+@timeoutSeconds</code></pre>
+            </figure>
+          </div>
+          <ul class="bul">
+            <li><span class="tag ok">ATOMIC</span>The switch commits in one transaction, or the script rolls all of it back and changes nothing.</li>
+            <li><span class="tag warn">PAUSE</span>Writes to the table pause while the script runs, normally a few seconds. Past <code>@timeoutSeconds</code> (default 300) it rolls back.</li>
+            <li><span class="tag ok">MAPPERS</span>Mappers don't change.</li>
+            <li><span class="tag ok">TESTED</span>Integration tests run both scripts in both directions.</li>
+          </ul>
+          <p><a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#switching-a-table-from-sql-service-broker-to-cdc"><span class="pr" aria-hidden="true">$</span> <span>man readme#switching-a-table-from-sql-service-broker-to-cdc</span><span class="car" aria-hidden="true"></span></a></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec reveal" id="install" aria-labelledby="install-h">
+      <div class="wrap">
+        <h2 class="cmdline" id="install-h"><span class="pr" aria-hidden="true">$</span> <span class="typed" style="--n:7">install</span><span class="vh">: packages and setup</span></h2>
+        <div class="out">
+          <p>Requires .NET 10 (<code>net10.0</code>) and SQL Server as the legacy system's database. The relay runs in a .NET Worker Service.</p>
+          <ul class="pkgs">
+            <li class="card">
+              <a class="pkgname" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay/">Chatter.IntegrationEventRelay</a>
+              <p>Core: mapping configuration, mapper interfaces, and the processor that maps row changes to integration events and publishes them. It doesn't capture changes itself.</p>
+            </li>
+            <li class="card">
+              <a class="pkgname" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.ServiceBroker/">Chatter.IntegrationEventRelay.ServiceBroker</a>
+              <p>The SQL Service Broker change source. It uses Chatter.SqlChangeFeed, which installs a trigger on each watched table that sends changed rows to a SQL Service Broker queue.</p>
+            </li>
+            <li class="card">
+              <a class="pkgname" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.Cdc/">Chatter.IntegrationEventRelay.Cdc</a>
+              <p>The CDC change source. It polls each capture instance's change table, hands the changes to the processor in commit order, and saves a checkpoint in the source database once a batch is published.</p>
+            </li>
+          </ul>
+          <figure class="codefig">
+            <p class="fl"><span class="pr" aria-hidden="true">$</span> dotnet add package</p>
+            <pre class="code" tabindex="0"><code>dotnet add package Chatter.IntegrationEventRelay
+dotnet add package Chatter.IntegrationEventRelay.ServiceBroker
+dotnet add package Chatter.MessageBrokers.AzureServiceBus
+dotnet add package Chatter.MessageBrokers.AzureServiceBus.Auth
+dotnet add package Chatter.IntegrationEventRelay.Cdc</code></pre>
+          </figure>
+          <div class="grid2">
+            <figure class="codefig">
+              <p class="fl">Program.cs: SQL Service Broker</p>
+              <pre class="code" tabindex="0"><code>// Wires up the mapper of each mapping in configuration
+.AddIntegrationEventRelay()
+    // Captures changes to the mapped tables with triggers and SQL Service Broker
+    .UseServiceBrokerChangeSource();</code></pre>
+            </figure>
+            <figure class="codefig">
+              <p class="fl">Program.cs: CDC</p>
+              <pre class="code" tabindex="0"><code>.AddIntegrationEventRelay()
+    .UseCdcChangeSource()
+    .UseServiceBrokerChangeSource();</code></pre>
+            </figure>
+          </div>
+          <figure class="codefig">
+            <p class="fl">OrderShippedMapper</p>
+            <pre class="code" tabindex="0"><code>using Chatter.IntegrationEventRelay.Core.Abstractions;
+using Chatter.IntegrationEventRelay.Core.Configuration;
+using Chatter.IntegrationEventRelay.Core.Mapping;
+
+namespace MyNewIntegrationEventRelay;
+
+public class OrderShippedMapper : IMapSourceUpdateToIntegrationEvent&lt;OrderChangedEvent, OrderShippedEvent&gt;
+{
+    public Task&lt;OrderShippedEvent?&gt; MapAsync(MappingData&lt;OrderChangedEvent&gt; mappingData, RelayContext context, EventMappingConfigurationItem? mappingConfig)
+    {
+        OrderShippedEvent? orderShippedEvent = <span class="warn">null</span>;
+
+        // mappingData.OldValue only has a value for an update
+        if (mappingData.OldValue?.OrderStatus != "Shipped" &amp;&amp; mappingData.NewValue?.OrderStatus == "Shipped")
+        {
+            orderShippedEvent = new OrderShippedEvent
+            {
+                Id = mappingData.NewValue.Id,
+                CustomerId = mappingData.NewValue.CustomerId,
+                ProductId = mappingData.NewValue.ProductId,
+                OrderPlacedOn = mappingData.NewValue.OrderPlacedOn,
+                OccurredAt = DateTime.UtcNow
+            };
+        }
+
+        return Task.FromResult(orderShippedEvent);
+    }
+}</code></pre>
+          </figure>
+          <figure class="codefig">
+            <p class="fl">appsettings.json: CDC source and mapping</p>
+            <pre class="code" tabindex="0"><code>"IntegrationEventRelay": {
+  "ConnectionString": "...",
+  "Schema": "Chatter",
+  "Sources": {
+    "orders-cdc": { "Type": "Cdc", "PollInterval": "00:00:01" }
+  },
+  "Mappings": [
+    {
+      "Source": "orders-cdc",
+      "SourceEventTypeName": "MyNewIntegrationEventRelay.OrderChangedEvent",
+      "IntegrationEventTypeName": "MyNewIntegrationEventRelay.OrderShippedEvent",
+      "SourceChangeType": "Update",
+      "TableName": "Orders",
+      "TableSchema": "dbo",
+      "CaptureInstance": "dbo_Orders"
+    }
+  ]
+}</code></pre>
+          </figure>
+          <figure class="codefig">
+            <p class="fl">sql&gt; ship the seeded order</p>
+            <pre class="code" tabindex="0"><code>USE [OrdersDB]
+GO
+
+UPDATE [dbo].[Orders]
+   SET [OrderStatus] = 'Shipped'
+ WHERE Id = '52CBE9FF-2496-4F46-9331-7F122AA3D973'
+GO</code></pre>
+          </figure>
+          <p>
+            <a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#quick-start"><span class="pr" aria-hidden="true">$</span> <span>man readme#quick-start</span><span class="car" aria-hidden="true"></span></a>
+            <a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#using-the-cdc-change-source"><span class="pr" aria-hidden="true">$</span> <span>man readme#using-the-cdc-change-source</span><span class="car" aria-hidden="true"></span></a>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec reveal" id="demo" aria-labelledby="demo-h">
+      <div class="wrap">
+        <h2 class="cmdline" id="demo-h"><span class="pr" aria-hidden="true">$</span> <span class="typed" style="--n:26">docker compose up --build</span><span class="vh">: run the demo</span></h2>
+        <div class="out">
+          <p>From the root of the repo, <code>docker compose up --build</code> runs SQL Server, the Azure Service Bus emulator, two Worker Services and two Consumer Services. No Azure subscription needed.</p>
+          <p>100 database operations produce:</p>
+          <ul class="tally">
+            <li><span><span class="n">50</span> <code>Event1DeletedEvent</code> (25 soft deletes and 25 hard deletes)</span><div class="track" aria-hidden="true"><div class="bar" style="--v:50"></div></div></li>
+            <li><span><span class="n">25</span> <code>Event1RestoredEvent</code></span><div class="track" aria-hidden="true"><div class="bar" style="--v:25"></div></div></li>
+            <li><span><span class="n">25</span> <code>Event2CreatedEvent</code></span><div class="track" aria-hidden="true"><div class="bar" style="--v:25"></div></div></li>
+          </ul>
+          <p>The demo uses both change sources: <code>Event1</code> is captured with CDC, and <code>Event2</code> with SQL Service Broker.</p>
+          <p><a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#running-this-repo-locally"><span class="pr" aria-hidden="true">$</span> <span>man readme#running-this-repo-locally</span><span class="car" aria-hidden="true"></span></a></p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap">
+      <p><span class="pr" aria-hidden="true">$</span> echo "MIT license. Author: Brennan Pike. .NET 10."</p>
+      <nav aria-label="Footer">
+        <ul class="navlist">
+          <li><a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay"><span class="pr" aria-hidden="true">$</span> <span>open github</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay/"><span class="pr" aria-hidden="true">$</span> <span>open nuget Chatter.IntegrationEventRelay</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.ServiceBroker/"><span class="pr" aria-hidden="true">$</span> <span>open nuget Chatter.IntegrationEventRelay.ServiceBroker</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.Cdc/"><span class="pr" aria-hidden="true">$</span> <span>open nuget Chatter.IntegrationEventRelay.Cdc</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#quick-start"><span class="pr" aria-hidden="true">$</span> <span>man readme#quick-start</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#choosing-a-change-source"><span class="pr" aria-hidden="true">$</span> <span>man readme#choosing-a-change-source</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/LICENSE"><span class="pr" aria-hidden="true">$</span> <span>cat LICENSE</span><span class="car" aria-hidden="true"></span></a></li>
+          <li><a class="cmd" href="index.html"><span class="pr" aria-hidden="true">$</span> <span>cd ..</span> <span>All prototypes</span><span class="car" aria-hidden="true"></span></a></li>
+        </ul>
+      </nav>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      var root = document.documentElement;
+      root.classList.add('js');
+      var mq = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+      var pause = document.getElementById('pause');
+
+      function applyPause(paused) {
+        root.classList.toggle('paused', paused);
+      }
+      function syncMotion() {
+        var reduced = !!(mq && mq.matches);
+        if (pause) { pause.checked = reduced; }
+        applyPause(reduced);
+      }
+      if (pause) {
+        pause.addEventListener('change', function () { applyPause(pause.checked); });
+      }
+      syncMotion();
+      if (mq) {
+        if (mq.addEventListener) { mq.addEventListener('change', syncMotion); }
+        else if (mq.addListener) { mq.addListener(syncMotion); }
+      }
+
+      document.addEventListener('visibilitychange', function () {
+        root.classList.toggle('tab-hidden', document.hidden);
+      });
+
+      var reveals = Array.prototype.slice.call(document.querySelectorAll('.reveal'));
+      var hero = document.querySelector('.window');
+      if ('IntersectionObserver' in window) {
+        var io = new IntersectionObserver(function (entries) {
+          entries.forEach(function (e) {
+            if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+          });
+        }, { rootMargin: '0px 0px -8% 0px' });
+        reveals.forEach(function (el) { io.observe(el); });
+        if (hero) {
+          new IntersectionObserver(function (entries) {
+            root.classList.toggle('hero-off', !entries[0].isIntersecting);
+          }).observe(hero);
+        }
+      } else {
+        reveals.forEach(function (el) { el.classList.add('in'); });
+      }
+    }());
+  </script>
+</body>
+</html>

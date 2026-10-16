@@ -1,0 +1,1462 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>Chatter.IntegrationEventRelay: the relay pipeline</title>
+    <meta name="description" content="Relays changes to a legacy SQL Server database's tables to message broker infrastructure as integration events. See the pipeline from row change to mapper gate to topic.">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230B1220'/%3E%3Cpath d='M4 16h8M20 16h8' stroke='%2338D9F5' stroke-width='3' stroke-linecap='round'/%3E%3Crect x='12' y='6' width='5' height='20' rx='2' fill='%23FFB547'/%3E%3Ccircle cx='25' cy='16' r='3' fill='%236EE7A8'/%3E%3C/svg%3E">
+    <style>
+      :root{--bg:#0B1220;--surface:#131C2E;--line:#24324A;--text:#E6EDF7;--muted:#A9B6CC;--flow:#38D9F5;--gate:#FFB547;--drop:#FF8FA3;--ok:#6EE7A8;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;--sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;--pad:clamp(16px,4vw,40px);--ease:cubic-bezier(.4,0,.2,1)}
+      @property --ang{syntax:"<angle>";inherits:false;initial-value:0deg}
+      *,*::before,*::after{box-sizing:border-box}
+      html{color-scheme:dark;scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+      body{margin:0;background:var(--bg);color:var(--text);font:400 1rem/1.6 var(--sans);overflow-wrap:break-word;overflow-x:clip}
+      body::before{content:"";position:absolute;inset:0 0 auto 0;height:720px;pointer-events:none;background:radial-gradient(60% 70% at 78% 0,rgb(56 217 245/.10),transparent 70%),radial-gradient(40% 50% at 8% 10%,rgb(255 181 71/.06),transparent 70%)}
+      body>*{position:relative}
+      img,svg{max-width:100%}
+      h1,h2,h3,p,ul,ol,figure,pre{margin:0}
+      a{color:var(--flow)}
+      code,kbd{font-family:var(--mono);font-size:.9em;background:rgb(56 217 245/.1);padding:.1em .35em;border-radius:5px;color:var(--text);overflow-wrap:anywhere}
+      pre code{background:none;padding:0;font-size:inherit;overflow-wrap:normal}
+      :focus-visible{outline:3px solid var(--flow);outline-offset:3px;border-radius:4px}
+      main:focus{outline:none}
+      .wrap{width:min(100% - 2*var(--pad),1200px);margin-inline:auto}
+      .skip{position:absolute;left:8px;top:-80px;z-index:30;background:var(--surface);color:var(--text);padding:12px 18px;border:2px solid var(--flow);border-radius:8px;font-weight:700}
+      .skip:focus{top:8px}
+      .prog{display:none}
+      @supports (animation-timeline:scroll()){
+      .prog{display:block;position:fixed;top:0;left:0;right:0;height:3px;z-index:25;pointer-events:none;background:linear-gradient(90deg,var(--flow),var(--ok));transform-origin:0 50%;transform:scaleX(0);animation:prog linear both;animation-timeline:scroll(root)}
+      @keyframes prog{to{transform:scaleX(1)}}
+      }
+      /* header and nav */
+      .top{border-bottom:1px solid var(--line);background:rgb(11 18 32/.92)}
+      .bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 20px;padding-block:10px}
+      .brand{display:flex;align-items:center;gap:10px;font:700 clamp(.78rem,3.7vw,1rem)/1.2 var(--mono);overflow-wrap:anywhere;min-width:0}
+      .brand svg{flex:none}
+      .nav{display:flex;flex-wrap:wrap;gap:0 2px;list-style:none;padding:0;width:100%}
+      .nav li{display:flex}
+      .nl{position:relative;display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:0 12px 4px;color:var(--text);text-decoration:none;font-weight:600;font-size:.95rem;background:linear-gradient(var(--line),var(--line)) 12px calc(100% - 8px)/calc(100% - 24px) 2px no-repeat}
+      .nl::before{content:"";position:absolute;left:12px;width:calc(100% - 30px);bottom:6px;height:6px;opacity:0;background:radial-gradient(circle at 3px 3px,var(--flow) 0 2.6px,transparent 3.2px) 0 0/6px 6px no-repeat;transform:translateX(0)}
+      .nl::after{content:"";position:absolute;left:12px;right:12px;bottom:8px;height:2px;background:var(--flow);transform:scaleX(0);transform-origin:0 50%}
+      .nl:hover,.nl:focus-visible{color:var(--flow)}
+      .nl:hover::before,.nl:focus-visible::before{opacity:1;transform:translateX(100%);transition:transform .45s var(--ease),opacity .08s}
+      .nl:hover::after,.nl:focus-visible::after{transform:scaleX(1);transition:transform .45s var(--ease)}
+      .nl:active::after{background:var(--ok)}
+      .nl:active::before{background:radial-gradient(circle at 3px 3px,var(--ok) 0 2.6px,transparent 3.2px) 0 0/6px 6px no-repeat}
+      .nl:active{color:var(--ok)}
+      .pause{display:none;align-items:center;gap:10px;min-height:44px;padding:0 14px;border:1px solid var(--muted);border-radius:999px;cursor:pointer;font-size:.9rem;color:var(--text);background:var(--surface)}
+      .js .pause{display:inline-flex}
+      .pause input{width:24px;height:24px;margin:0;accent-color:var(--flow);cursor:pointer}
+      /* buttons */
+      .cta{--ang:0deg;position:relative;display:inline-flex;align-items:center;gap:10px;min-height:48px;padding:0 26px;border:2px solid transparent;border-radius:999px;color:var(--text);font-weight:700;text-decoration:none;background:linear-gradient(var(--surface),var(--surface)) padding-box,conic-gradient(from var(--ang),var(--flow),transparent 30%,var(--ok) 55%,transparent 78%,var(--flow)) border-box}
+      .cta.alt{background:linear-gradient(var(--bg),var(--bg)) padding-box,conic-gradient(from var(--ang),var(--muted),transparent 35%,var(--flow) 60%,transparent 82%,var(--muted)) border-box}
+      .js.prop .cta{animation:spin 3.6s linear infinite}
+      @keyframes spin{to{--ang:360deg}}
+      .cta:hover{color:var(--flow)}
+      .cta .ic{position:relative;width:20px;height:20px;flex:none}
+      .cta .ic svg{position:absolute;inset:0;width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;transition:transform .18s var(--ease),opacity .18s}
+      .cta .ic .ck{opacity:0;transform:scale(.4);stroke:var(--ok)}
+      .cta:active .ic .ar{opacity:0;transform:translateX(6px)}
+      .cta:active .ic .ck{opacity:1;transform:scale(1)}
+      .cta:active{color:var(--ok)}
+      .cta-row{display:flex;flex-wrap:wrap;gap:14px;margin-top:28px}
+      /* hero */
+      .hero{padding-block:clamp(28px,5vw,64px) 24px}
+      .eyebrow{font:700 .8rem/1.4 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--flow)}
+      h1{font:800 clamp(1.2rem,6.1vw,3.7rem)/1.08 var(--sans);letter-spacing:-.02em;margin-top:12px;overflow-wrap:anywhere}
+      h1 .dim{color:var(--muted);font-weight:700}
+      .lede{margin-top:18px;max-width:64ch;color:var(--muted);font-size:clamp(1rem,1.5vw,1.2rem)}
+      .chips{display:flex;flex-wrap:wrap;gap:8px;list-style:none;padding:0;margin-top:22px}
+      .chips li{border:1px solid var(--line);border-radius:999px;padding:6px 14px;font:.82rem/1.3 var(--mono);color:var(--muted);background:var(--surface)}
+      .fig{margin-top:36px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:clamp(10px,2vw,24px)}
+      .fig figcaption{margin-top:14px;color:var(--muted);font-size:.92rem;max-width:90ch}
+      .vwrap{display:grid;gap:20px;align-items:start}
+      @media(min-width:640px){.vwrap{grid-template-columns:minmax(0,400px) 1fr;align-items:center}}
+      @media(min-width:960px){.vwrap{display:block}}
+      .dg{display:block;width:100%;height:auto}
+      .hero-h{display:none}
+      .hero-v{max-width:400px;margin-inline:auto}
+      @media(min-width:960px){.hero-h{display:block}.hero-v{display:none}}
+      .legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:10px 18px;list-style:none;padding:0;margin-top:16px;font-size:.88rem;color:var(--muted)}
+      .legend li{display:flex;align-items:center;gap:10px}
+      .legend svg{flex:none;width:44px;height:26px}
+      .note{font-size:.88rem;color:var(--muted)}
+      /* sections */
+      .sec{padding-block:clamp(48px,8vw,104px);border-top:1px solid var(--line)}
+      .sec h2{font:800 clamp(1.5rem,3.6vw,2.4rem)/1.15 var(--sans);letter-spacing:-.01em;margin-top:8px}
+      .sec h3{font:700 1.15rem/1.3 var(--sans)}
+      .sec .lead{margin-top:16px;max-width:62ch;color:var(--muted);font-size:1.08rem}
+      .sec p+p{margin-top:1em}
+      .stage{font:700 .8rem/1.4 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--flow)}
+      .split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,400px);gap:clamp(24px,5vw,64px);align-items:center;margin-top:32px}
+      .split.flip{grid-template-columns:minmax(0,400px) minmax(0,1fr)}
+      .split.flip>.vis{order:-1}
+      .split .fig{margin-top:0}
+      @media(max-width:860px){.split,.split.flip{grid-template-columns:minmax(0,1fr)}.split.flip>.vis{order:0}}
+      .vis .dg{max-width:400px;margin-inline:auto}
+      .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px;margin-top:28px}
+      .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px}
+      .card h3{display:flex;align-items:center;gap:10px}
+      .card h3 svg{flex:none;width:22px;height:22px}
+      .card p{color:var(--muted);margin-top:.5em}
+      .tick{list-style:none;padding:0;margin-top:12px}
+      .tick li{position:relative;padding-left:24px;margin:.55em 0;color:var(--text)}
+      .tick li::before{content:"";position:absolute;left:2px;top:.62em;width:9px;height:9px;border-radius:50%;background:var(--flow)}
+      .tick.gate li::before{background:var(--gate);border-radius:2px}
+      .tick.ok li::before{background:var(--ok)}
+      .card .tick li{color:var(--text)}
+      .more{display:flex;flex-wrap:wrap;gap:0 6px;list-style:none;padding:0;margin-top:20px}
+      .more .nl{border-radius:8px}
+      /* steps */
+      .steps{list-style:none;padding:0;margin-top:34px;counter-reset:s;display:grid;gap:0}
+      .steps li{position:relative;counter-increment:s;padding:0 0 28px 64px;min-height:64px}
+      .steps li::before{content:counter(s);position:absolute;left:0;top:0;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--surface);border:2px solid var(--flow);font:700 1rem var(--mono);color:var(--text)}
+      .steps li::after{content:"";position:absolute;left:19px;top:44px;bottom:4px;width:2px;background:var(--flow);opacity:.55;transform-origin:0 0}
+      .steps li:last-child::after{display:none}
+      .js .steps li::after{transform:scaleY(0)}
+      .js .steps li.in::after{transform:scaleY(1);transition:transform .7s var(--ease) .15s}
+      .steps h3{font:700 1.05rem/1.3 var(--sans);margin-bottom:4px}
+      .steps p{color:var(--muted)}
+      .steps strong{color:var(--text)}
+      .example{margin-top:10px;padding:18px 20px;border:1px solid var(--gate);border-radius:14px;background:var(--surface)}
+      .example b{color:var(--gate)}
+      /* tables and code */
+      .tw{overflow-x:auto;border:1px solid var(--line);border-radius:12px;margin-top:24px;background:var(--surface)}
+      table{border-collapse:collapse;width:100%;min-width:620px;font-size:.95rem}
+      th,td{padding:12px 16px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+      tr:last-child>*{border-bottom:0}
+      thead th{color:var(--text);background:var(--bg)}
+      tbody th{color:var(--muted);font-weight:600;width:22%}
+      caption{caption-side:top;text-align:left;padding:12px 16px;color:var(--muted);font-size:.9rem}
+      .code{margin-top:18px}
+      .code figcaption{font:600 .85rem var(--mono);color:var(--muted);margin-bottom:6px}
+      pre{background:var(--bg);border:1px solid var(--muted);border-radius:12px;padding:16px 18px;overflow:auto;font:.86rem/1.6 var(--mono);color:var(--text);tab-size:4}
+      pre .cm{color:var(--muted);font-style:italic}
+      pre .st{color:var(--flow)}
+      pre .kw{color:var(--gate)}
+      .cgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));gap:8px 20px;margin-top:8px}
+      .cgrid>*{min-width:0}
+      .sub{font:700 1.1rem var(--sans);margin-top:44px}
+      .metrics{display:flex;flex-wrap:wrap;gap:8px;list-style:none;padding:0;margin-top:14px}
+      .metrics li{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:6px 10px}
+      .counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:14px;margin-top:22px;list-style:none;padding:0}
+      .cnt{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+      .cnt b{display:block;font:800 2.2rem/1 var(--mono);color:var(--ok)}
+      .cnt code{display:inline-block;margin-top:8px}
+      .cnt i{display:block;margin-top:12px;height:8px;border-radius:4px;background:var(--bg);overflow:hidden}
+      .cnt i::before{content:"";display:block;height:100%;width:100%;background:var(--ok);transform-origin:0 50%;transform:scaleX(var(--w))}
+      .js .cnt i::before{transform:scaleX(0)}
+      .js .in .cnt i::before,.js .cnt.in i::before{transform:scaleX(var(--w));transition:transform .9s var(--ease) .2s}
+      /* reveal */
+      .js .rv{opacity:0;transform:translateY(18px)}
+      .js .rv.in{opacity:1;transform:none;transition:opacity .6s var(--ease),transform .6s var(--ease)}
+      /* footer */
+      .foot{border-top:1px solid var(--line);padding-block:36px 56px}
+      .foot p{color:var(--muted);margin-top:14px;font-size:.92rem}
+      /* svg */
+      .dg text{font-family:var(--sans);fill:var(--text);font-size:15px;font-weight:600}
+      .dg .sm{font-size:13.5px}
+      .dg .tb{font-size:17px;font-weight:700}
+      .dg .tm{font-family:var(--mono);font-size:13px;font-weight:500}
+      .dg .ts{font-size:12.5px;font-weight:500;fill:var(--muted)}
+      .dg .ta{fill:var(--gate)}.dg .td{fill:var(--drop)}.dg .tok{fill:var(--ok)}.dg .tf{fill:var(--flow)}
+      .dg .halo{paint-order:stroke;stroke:var(--bg);stroke-width:5px;stroke-linejoin:round}
+      .dg .nd{fill:var(--surface);stroke:var(--muted);stroke-opacity:.6;stroke-width:1.5}
+      .dg .nd.dash{stroke-dasharray:6 5;fill:var(--bg)}
+      .dg .rw{fill:var(--bg);stroke:var(--muted);stroke-opacity:.6;stroke-width:1}
+      .dg .tr{fill:none;stroke:var(--flow);stroke-opacity:.55;stroke-width:3;stroke-linecap:round}
+      .dg .tr.thin{stroke-width:2;stroke-dasharray:2 6}
+      .dg .tr.dr{stroke:var(--drop);stroke-opacity:.8;stroke-dasharray:7 6}
+      .dg .tr.ak2{stroke:var(--ok);stroke-opacity:.7;stroke-dasharray:6 6;stroke-width:2}
+      .dg .tr.mu{stroke:var(--muted);stroke-opacity:.7;stroke-dasharray:5 6;stroke-width:2}
+      .dg .rt{fill:none;stroke:none}
+      .dg .gt{fill:var(--gate)}
+      .dg .gp{fill:var(--gate);fill-opacity:.38;opacity:0}
+      .dg .fl{fill:var(--flow);fill-opacity:.35;opacity:0}
+      .dg .rg{fill:none;stroke:var(--ok);stroke-width:3;opacity:0}
+      .dg .hz{opacity:0}
+      .dg .hl{fill:var(--flow);fill-opacity:.16;opacity:0}
+      .dg .hl.d{fill:var(--drop);fill-opacity:.14}
+      .dg .hl.a{fill:var(--gate);fill-opacity:.16}
+      .dg .ic{fill:none;stroke:var(--ok);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+      .dg .ic.a{stroke:var(--gate)}.dg .ic.d{stroke:var(--drop)}.dg .ic.f{stroke:var(--flow)}.dg .ic.m{stroke:var(--muted)}
+      .dg .wl{fill:none;stroke:var(--muted);stroke-width:8;stroke-dasharray:14 7;stroke-linecap:round;stroke-opacity:.8}
+      .dg .wh{fill:none;stroke:var(--text);stroke-width:8;stroke-dasharray:14 7;stroke-linecap:round;opacity:0}
+      .dg .lk{fill:var(--ok)}
+      .live [data-static]{display:none}
+      .dg:not(.live) [data-layer]{display:none}
+      .spr .b{fill:var(--bg);stroke:var(--flow);stroke-width:2}
+      .spr .t{font:600 11px var(--mono);fill:var(--text)}
+      .spr .f{fill:none;stroke:var(--flow);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+      .spr-envok .b,.spr-envok .f,.spr-dotok .b{stroke:var(--ok)}
+      .spr-dotok .b{fill:var(--ok)}
+      .spr-dot .b{fill:var(--flow);stroke:none}
+      .spr-dead .b,.spr-dead .x{stroke:var(--drop)}
+      .spr-dead .t{fill:var(--drop)}
+      .spr-dead .x{fill:none;stroke-width:2.5;stroke-linecap:round}
+      .spr-pin .tk{fill:none;stroke:var(--ok);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;opacity:0}
+      .spr[data-s="ok"] .tk{opacity:1}
+      .spr[data-s="ok"] .b,.spr[data-s="ok"] .f{stroke:var(--ok)}
+      .spr-blade .bl{fill:none;stroke:var(--gate);stroke-width:7;stroke-linecap:round}
+      .spr-blade .bc{fill:var(--gate)}
+      .spr-probe .pr{fill:var(--bg);stroke:var(--muted);stroke-width:2;stroke-dasharray:3 3}
+      /* reduced motion */
+      @media(prefers-reduced-motion:reduce){
+      html{scroll-behavior:auto}
+      .prog{display:none!important}
+      .js.prop .cta{animation:none}
+      .nl::before{display:none}
+      .nl:hover::after,.nl:focus-visible::after,.nl:hover::before,.nl:focus-visible::before{transition:none}
+      .cta .ic svg{transition:none}
+      .js .rv,.js .rv.in{opacity:1;transform:none;transition:none}
+      .js .steps li::after,.js .steps li.in::after{transform:scaleY(1);transition:none}
+      .js .cnt i::before,.js .in .cnt i::before,.js .cnt.in i::before{transform:scaleX(var(--w));transition:none}
+      }
+      .paused .cta{animation-play-state:paused}
+      /* forced colors */
+      @media(forced-colors:active){
+      :focus-visible{outline:3px solid Highlight}
+      .nl{background:none;forced-color-adjust:none;color:LinkText}
+      .nl::before,.nl::after{forced-color-adjust:none}
+      .nl::after{background:Highlight}
+      .nl{border-bottom:2px solid GrayText}
+      .nl:hover,.nl:focus-visible{border-bottom-color:Highlight;color:Highlight}
+      .cta,.cta.alt{border:2px solid ButtonText;background:ButtonFace;color:ButtonText;forced-color-adjust:none}
+      .cta .ic svg{stroke:ButtonText}
+      .card,.fig,.tw,pre,.chips li,.cnt,.metrics li,.example,.pause{border:1px solid CanvasText}
+      pre .cm,pre .st,pre .kw{color:CanvasText}
+      .steps li::before{border-color:CanvasText}
+      .steps li::after,.tick li::before,.cnt i::before{background:CanvasText;forced-color-adjust:none}
+      .prog{background:Highlight;forced-color-adjust:none}
+      .dg{forced-color-adjust:none}
+      .dg text,.dg .ts,.dg .ta,.dg .td,.dg .tok,.dg .tf,.dg .tm,.spr .t{fill:CanvasText}
+      .dg .nd,.dg .rw,.dg .tr,.dg .tr.dr,.dg .tr.ak2,.dg .tr.mu,.dg .wl,.dg .ic,.spr .b,.spr .f,.spr .x,.spr .tk,.spr .bl,.spr .pr,.dg .rg{stroke:CanvasText;stroke-opacity:1}
+      .dg .nd,.dg .rw,.spr .b{fill:Canvas}
+      .dg .gt,.dg .gp,.dg .fl,.dg .hl,.dg .lk,.spr .bc,.spr-dot .b,.spr-dotok .b{fill:Highlight}
+      .dg .halo{stroke:Canvas}
+      .spr-envok .b,.spr-envok .f,.spr[data-s="ok"] .b,.spr[data-s="ok"] .f,.spr-dead .b,.spr-dead .x{stroke:Highlight}
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to main content</a>
+    <div class="prog" aria-hidden="true"></div>
+    <header class="top">
+      <div class="wrap bar">
+        <p class="brand">
+          <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="7" fill="#131C2E"/>
+            <path d="M4 16h8M20 16h8" stroke="#38D9F5" stroke-width="3" stroke-linecap="round"/>
+            <rect x="12" y="6" width="5" height="20" rx="2" fill="#FFB547"/>
+            <circle cx="25" cy="16" r="3" fill="#6EE7A8"/>
+          </svg>
+          <span>Chatter.IntegrationEventRelay</span>
+        </p>
+        <label class="pause" for="pause">
+          <input type="checkbox" id="pause">
+          <span>Pause animations</span>
+        </label>
+        <nav aria-label="Primary">
+          <ul class="nav">
+            <li>
+              <a class="nl" href="https://github.com/brenpike/Chatter.IntegrationEventRelay">GitHub repository</a>
+            </li>
+            <li>
+              <a class="nl" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay/">NuGet Core</a>
+            </li>
+            <li>
+              <a class="nl" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.ServiceBroker/">NuGet ServiceBroker</a>
+            </li>
+            <li>
+              <a class="nl" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.Cdc/">NuGet Cdc</a>
+            </li>
+            <li>
+              <a class="nl" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#how-it-works">README: How it works</a>
+            </li>
+            <li>
+              <a class="nl" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#quick-start">README: Quick start</a>
+            </li>
+            <li>
+              <a class="nl" href="index.html">All prototypes</a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+    <main id="main" tabindex="-1">
+      <section class="hero" aria-labelledby="h1">
+        <div class="wrap">
+          <p class="eyebrow">Integration Event Relay</p>
+          <h1 id="h1"><span class="dim">Chatter.</span><wbr>IntegrationEventRelay</h1>
+          <p class="lede">Relays changes to a legacy SQL Server database's tables to message broker infrastructure as integration events, so systems that can't publish events themselves can take part in an event-driven architecture.</p>
+          <ul class="chips">
+            <li>MIT license</li>
+            <li>.NET 10 (<code>net10.0</code>)</li>
+            <li>Runs in a .NET Worker Service</li>
+            <li>Tested on SQL Server 2019 and 2022</li>
+          </ul>
+          <div class="cta-row">
+            <a class="cta" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#quick-start">
+              <span>Start with the quick start</span>
+              <span class="ic" aria-hidden="true">
+                <svg class="ar" viewBox="0 0 20 20">
+                  <path d="M3 10h13M11 5l5 5-5 5"/>
+                </svg>
+                <svg class="ck" viewBox="0 0 20 20">
+                  <path d="M3 10.5l4.5 4.5L17 5"/>
+                </svg>
+              </span>
+            </a>
+            <a class="cta alt" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#how-it-works">
+              <span>See how it works</span>
+              <span class="ic" aria-hidden="true">
+                <svg class="ar" viewBox="0 0 20 20">
+                  <path d="M3 10h13M11 5l5 5-5 5"/>
+                </svg>
+                <svg class="ck" viewBox="0 0 20 20">
+                  <path d="M3 10.5l4.5 4.5L17 5"/>
+                </svg>
+              </span>
+            </a>
+          </div>
+          <figure class="fig">
+            <div class="vwrap">
+              <svg class="dg hero-h" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 480" role="img" aria-label="Pipeline diagram. A legacy app writes rows to the dbo.Orders table. A change source captures each row change, either SQL Service Broker (trigger, then queue) or CDC (transaction log, change table, checkpoint). The relay maps each change; its mapper gate turns a change to Shipped into an OrderShippedEvent published to the order-shipped-event topic, and returns null for the others so nothing is published. Consumers subscribe to the topic." data-scene="hero">
+                <rect class="nd" x="776" y="170" width="164" height="140" rx="14"/>
+                <path class="tr" d="M148 240H196" data-r="w"/>
+                <path class="tr" d="M326 240H346C374 240 374 118 402 118H716C746 118 746 240 776 240" data-r="ssb"/>
+                <path class="tr" d="M326 240H346C374 240 374 362 402 362H716C746 362 746 240 776 240" data-r="cdc"/>
+                <path class="tr" d="M776 240H898" data-r="gate"/>
+                <path class="tr" d="M898 240H948" data-r="out"/>
+                <path class="tr" d="M1118 240C1146 240 1146 170 1176 170" data-r="c1"/>
+                <path class="tr" d="M1118 240C1146 240 1146 310 1176 310" data-r="c2"/>
+                <path class="tr dr" d="M898 262V392" data-r="drop"/>
+                <rect class="nd" x="8" y="190" width="140" height="100" rx="12"/>
+                <rect class="nd" x="196" y="150" width="130" height="180" rx="12"/>
+                <rect class="rw" x="206" y="188" width="110" height="28" rx="6"/>
+                <text class="tm" x="261" y="207" text-anchor="middle">Pending</text>
+                <rect class="fl" x="206" y="188" width="110" height="28" rx="6" data-p="f1"/>
+                <rect class="rw" x="206" y="222" width="110" height="28" rx="6"/>
+                <text class="tm" x="261" y="241" text-anchor="middle">Shipped</text>
+                <rect class="fl" x="206" y="222" width="110" height="28" rx="6" data-p="f2"/>
+                <rect class="rw" x="206" y="256" width="110" height="28" rx="6"/>
+                <text class="tm" x="261" y="275" text-anchor="middle">Pending</text>
+                <rect class="fl" x="206" y="256" width="110" height="28" rx="6" data-p="f3"/>
+                <rect class="rw" x="206" y="290" width="110" height="28" rx="6"/>
+                <text class="tm" x="261" y="309" text-anchor="middle">Shipped</text>
+                <rect class="fl" x="206" y="290" width="110" height="28" rx="6" data-p="f4"/>
+                <rect class="nd" x="412" y="96" width="88" height="44" rx="10"/>
+                <rect class="nd" x="568" y="96" width="100" height="44" rx="10"/>
+                <rect class="nd" x="392" y="340" width="136" height="44" rx="10"/>
+                <rect class="nd" x="544" y="340" width="116" height="44" rx="10"/>
+                <rect class="nd" x="948" y="222" width="170" height="36" rx="18"/>
+                <rect class="nd" x="1176" y="140" width="96" height="60" rx="12"/>
+                <rect class="nd" x="1176" y="280" width="96" height="60" rx="12"/>
+                <rect class="gp" x="878" y="176" width="40" height="128" rx="10" data-p="gate"/>
+                <rect class="gt" x="890" y="186" width="16" height="108" rx="4"/>
+                <rect class="rg" x="560" y="88" width="116" height="60" rx="12" data-p="ak"/>
+                <circle class="rg" cx="696" cy="362" r="24" data-p="ac"/>
+                <g class="spr spr-pin" transform="translate(696 366)">
+                  <circle class='b' cy='-9' r='9'/>
+                  <path class='f' d='M0 0V12'/>
+                  <path class='tk' d='M-4.5 -9L-1.5 -6L4.5 -12'/>
+                </g>
+                <text class="tx" x="78" y="236" text-anchor="middle">Legacy app</text>
+                <text class="ts" x="78" y="258" text-anchor="middle">can&#39;t publish events</text>
+                <text class="tm" x="261" y="174" text-anchor="middle">dbo.Orders</text>
+                <text class="tx tf" x="380" y="56" text-anchor="start">SQL Service Broker</text>
+                <text class="tx" x="456" y="123" text-anchor="middle">trigger</text>
+                <text class="ts" x="456" y="84" text-anchor="middle">in the writing transaction</text>
+                <text class="tx" x="618" y="123" text-anchor="middle">queue</text>
+                <text class="ts" x="618" y="84" text-anchor="middle">Service Broker queue</text>
+                <text class="tx sm" x="460" y="367" text-anchor="middle">transaction log</text>
+                <text class="ts" x="460" y="406" text-anchor="middle">capture job reads it</text>
+                <text class="tx sm" x="602" y="367" text-anchor="middle">change table</text>
+                <text class="ts" x="602" y="406" text-anchor="middle">commit order</text>
+                <text class="ts" x="698" y="406" text-anchor="middle">checkpoint</text>
+                <text class="tx tf" x="380" y="448" text-anchor="start">CDC</text>
+                <text class="ts" x="422" y="448" text-anchor="start">no trigger on the table</text>
+                <text class="tb" x="788" y="204" text-anchor="start">Relay</text>
+                <text class="ts" x="788" y="224" text-anchor="start">mapping</text>
+                <text class="tx ta" x="898" y="160" text-anchor="middle">mapper gate</text>
+                <text class="ts" x="1033" y="212" text-anchor="middle">topic</text>
+                <text class="tm" x="1033" y="245" text-anchor="middle">order-shipped-event</text>
+                <text class="tm tf" x="1033" y="282" text-anchor="middle">OrderShippedEvent</text>
+                <text class="tx" x="1224" y="166" text-anchor="middle">Consumer</text>
+                <text class="ts" x="1224" y="186" text-anchor="middle">subscribed</text>
+                <text class="tx" x="1224" y="306" text-anchor="middle">Consumer</text>
+                <text class="ts" x="1224" y="326" text-anchor="middle">subscribed</text>
+                <rect class="hl d" data-p="dl" x="786" y="384" width="224" height="80" rx="12"/>
+                <g>
+                  <g transform="translate(898 398)">
+                    <circle class="ic d" r="10"/>
+                    <path class="ic d" d="M-7.0 7.0L7.0 -7.0"/>
+                  </g>
+                  <text class="tx td" x="898" y="432" text-anchor="middle">null: nothing published</text>
+                  <text class="ts" x="898" y="452" text-anchor="middle">mapper returned null</text>
+                </g>
+                <g data-static="1">
+                  <g class='spr spr-row' transform='translate(840 262)'>
+                    <rect class='b' x='-30' y='-10' width='60' height='20' rx='6'/>
+                    <text class='t' y='4' text-anchor='middle'>Shipped</text>
+                  </g>
+                  <g class='spr spr-env' transform='translate(930 240)'>
+                    <rect class='b' x='-17' y='-12' width='34' height='24' rx='4'/>
+                    <path class='f' d='M-16 -9L0 3L16 -9'/>
+                  </g>
+                  <g class='spr spr-dead' transform='translate(898 336)'>
+                    <rect class='b' x='-30' y='-10' width='60' height='20' rx='6'/>
+                    <text class='t' y='4' text-anchor='middle'>null</text>
+                    <path class='x' d='M-34 13L34 -13'/>
+                  </g>
+                  <g class='spr spr-envok' transform='translate(1146 205)'>
+                    <rect class='b' x='-17' y='-12' width='34' height='24' rx='4'/>
+                    <path class='f' d='M-16 -9L0 3L16 -9'/>
+                  </g>
+                  <g class='spr spr-envok' transform='translate(1146 275)'>
+                    <rect class='b' x='-17' y='-12' width='34' height='24' rx='4'/>
+                    <path class='f' d='M-16 -9L0 3L16 -9'/>
+                  </g>
+                </g>
+                <g data-layer="1"></g>
+              </svg>
+              <svg class="dg hero-v" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 990" role="img" aria-label="Pipeline diagram. A legacy app writes rows to the dbo.Orders table. A change source captures each row change, either SQL Service Broker (trigger, then queue) or CDC (transaction log, change table, checkpoint). The relay maps each change; its mapper gate turns a change to Shipped into an OrderShippedEvent published to the order-shipped-event topic, and returns null for the others so nothing is published. Consumers subscribe to the topic." data-scene="hero">
+                <rect class="nd" x="90" y="574" width="180" height="132" rx="14"/>
+                <path class="tr" d="M180 58V96" data-r="w"/>
+                <path class="tr" d="M180 236V250C180 288 84 274 84 312V516C84 552 180 540 180 574" data-r="ssb"/>
+                <path class="tr" d="M180 236V250C180 288 276 274 276 312V516C276 552 180 540 180 574" data-r="cdc"/>
+                <path class="tr" d="M180 574V660" data-r="gate"/>
+                <path class="tr" d="M180 660V800" data-r="out"/>
+                <path class="tr" d="M180 840C180 880 100 872 100 912" data-r="c1"/>
+                <path class="tr" d="M180 840C180 880 260 872 260 912" data-r="c2"/>
+                <path class="tr dr" d="M180 668C180 702 316 692 316 732" data-r="drop"/>
+                <rect class="nd" x="100" y="6" width="160" height="52" rx="12"/>
+                <rect class="nd" x="90" y="96" width="180" height="140" rx="12"/>
+                <rect class="rw" x="100" y="124" width="160" height="24" rx="6"/>
+                <text class="tm" x="180" y="141" text-anchor="middle">Pending</text>
+                <rect class="fl" x="100" y="124" width="160" height="24" rx="6" data-p="f1"/>
+                <rect class="rw" x="100" y="152" width="160" height="24" rx="6"/>
+                <text class="tm" x="180" y="169" text-anchor="middle">Shipped</text>
+                <rect class="fl" x="100" y="152" width="160" height="24" rx="6" data-p="f2"/>
+                <rect class="rw" x="100" y="180" width="160" height="24" rx="6"/>
+                <text class="tm" x="180" y="197" text-anchor="middle">Pending</text>
+                <rect class="fl" x="100" y="180" width="160" height="24" rx="6" data-p="f3"/>
+                <rect class="rw" x="100" y="208" width="160" height="24" rx="6"/>
+                <text class="tm" x="180" y="225" text-anchor="middle">Shipped</text>
+                <rect class="fl" x="100" y="208" width="160" height="24" rx="6" data-p="f4"/>
+                <rect class="nd" x="22" y="344" width="124" height="48" rx="10"/>
+                <rect class="nd" x="22" y="448" width="124" height="48" rx="10"/>
+                <rect class="nd" x="214" y="344" width="124" height="48" rx="10"/>
+                <rect class="nd" x="214" y="440" width="124" height="48" rx="10"/>
+                <rect class="nd" x="60" y="800" width="240" height="40" rx="20"/>
+                <rect class="nd" x="40" y="912" width="120" height="56" rx="12"/>
+                <rect class="nd" x="200" y="912" width="120" height="56" rx="12"/>
+                <rect class="gp" x="110" y="646" width="140" height="28" rx="10" data-p="gate"/>
+                <rect class="gt" x="120" y="654" width="120" height="12" rx="4"/>
+                <rect class="rg" x="16" y="438" width="136" height="68" rx="12" data-p="ak"/>
+                <circle class="rg" cx="276" cy="520" r="22" data-p="ac"/>
+                <g class="spr spr-pin" transform="translate(276 524)">
+                  <circle class='b' cy='-9' r='9'/>
+                  <path class='f' d='M0 0V12'/>
+                  <path class='tk' d='M-4.5 -9L-1.5 -6L4.5 -12'/>
+                </g>
+                <text class="tx" x="180" y="28" text-anchor="middle">Legacy app</text>
+                <text class="ts" x="180" y="47" text-anchor="middle">can&#39;t publish events</text>
+                <text class="tm" x="180" y="116" text-anchor="middle">dbo.Orders</text>
+                <text class="tx tf halo" x="84" y="330" text-anchor="middle">SQL Service Broker</text>
+                <text class="tx" x="84" y="365" text-anchor="middle">trigger</text>
+                <text class="ts" x="84" y="382" text-anchor="middle">on each write</text>
+                <text class="tx" x="84" y="469" text-anchor="middle">queue</text>
+                <text class="ts" x="84" y="486" text-anchor="middle">Service Broker</text>
+                <text class="tx tf halo" x="276" y="330" text-anchor="middle">CDC</text>
+                <text class="tx sm" x="276" y="365" text-anchor="middle">transaction log</text>
+                <text class="ts" x="276" y="382" text-anchor="middle">no trigger</text>
+                <text class="tx sm" x="276" y="461" text-anchor="middle">change table</text>
+                <text class="ts" x="276" y="478" text-anchor="middle">commit order</text>
+                <text class="ts" x="248" y="528" text-anchor="end">checkpoint</text>
+                <text class="tb" x="100" y="598" text-anchor="start">Relay</text>
+                <text class="ts" x="100" y="618" text-anchor="start">mapping</text>
+                <text class="ts ta" x="262" y="640" text-anchor="end">mapper gate</text>
+                <text class="ts" x="196" y="792" text-anchor="start">topic</text>
+                <text class="tm" x="180" y="825" text-anchor="middle">order-shipped-event</text>
+                <text class="tm tf halo" x="170" y="748" text-anchor="end">OrderShippedEvent</text>
+                <text class="tx" x="100" y="937" text-anchor="middle">Consumer</text>
+                <text class="ts" x="100" y="956" text-anchor="middle">subscribed</text>
+                <text class="tx" x="260" y="937" text-anchor="middle">Consumer</text>
+                <text class="ts" x="260" y="956" text-anchor="middle">subscribed</text>
+                <rect class="hl d" data-p="dl" x="232" y="722" width="126" height="78" rx="12"/>
+                <g>
+                  <g transform="translate(316 740)">
+                    <circle class="ic d" r="10"/>
+                    <path class="ic d" d="M-7.0 7.0L7.0 -7.0"/>
+                  </g>
+                  <text class="tx td" x="350" y="772" text-anchor="end">null: nothing</text>
+                  <text class="tx td" x="350" y="790" text-anchor="end">published</text>
+                </g>
+                <g data-static="1">
+                  <g class='spr spr-row' transform='translate(120 420)'>
+                    <rect class='b' x='-30' y='-10' width='60' height='20' rx='6'/>
+                    <text class='t' y='4' text-anchor='middle'>Shipped</text>
+                  </g>
+                  <g class='spr spr-env' transform='translate(180 730)'>
+                    <rect class='b' x='-17' y='-12' width='34' height='24' rx='4'/>
+                    <path class='f' d='M-16 -9L0 3L16 -9'/>
+                  </g>
+                  <g class='spr spr-dead' transform='translate(252 700)'>
+                    <rect class='b' x='-30' y='-10' width='60' height='20' rx='6'/>
+                    <text class='t' y='4' text-anchor='middle'>null</text>
+                    <path class='x' d='M-34 13L34 -13'/>
+                  </g>
+                  <g class='spr spr-envok' transform='translate(140 876)'>
+                    <rect class='b' x='-17' y='-12' width='34' height='24' rx='4'/>
+                    <path class='f' d='M-16 -9L0 3L16 -9'/>
+                  </g>
+                  <g class='spr spr-envok' transform='translate(220 876)'>
+                    <rect class='b' x='-17' y='-12' width='34' height='24' rx='4'/>
+                    <path class='f' d='M-16 -9L0 3L16 -9'/>
+                  </g>
+                </g>
+                <g data-layer="1"></g>
+              </svg>
+              <ul class="legend" aria-label="Diagram legend">
+                <li>
+                  <svg viewBox="0 0 44 26" aria-hidden="true">
+                    <rect x="3" y="3" width="38" height="20" rx="6" fill="#0B1220" stroke="#38D9F5" stroke-width="2"/>
+                  </svg>
+                  <span>Row change from a write</span>
+                </li>
+                <li>
+                  <svg viewBox="0 0 44 26" aria-hidden="true">
+                    <rect x="5" y="3" width="34" height="20" rx="4" fill="#0B1220" stroke="#6EE7A8" stroke-width="2"/>
+                    <path d="M6 6l16 10 16-10" fill="none" stroke="#6EE7A8" stroke-width="2"/>
+                  </svg>
+                  <span><code>OrderShippedEvent</code> published to the topic</span>
+                </li>
+                <li>
+                  <svg viewBox="0 0 44 26" aria-hidden="true">
+                    <rect x="16" y="1" width="12" height="24" rx="3" fill="#FFB547"/>
+                  </svg>
+                  <span>Mapper gate</span>
+                </li>
+                <li>
+                  <svg viewBox="0 0 44 26" aria-hidden="true">
+                    <rect x="3" y="3" width="38" height="20" rx="6" fill="#0B1220" stroke="#FF8FA3" stroke-width="2"/>
+                    <path d="M5 22L39 4" stroke="#FF8FA3" stroke-width="2.5" stroke-linecap="round"/>
+                  </svg>
+                  <span><code>null</code>: nothing published</span>
+                </li>
+                <li>
+                  <svg viewBox="0 0 44 26" aria-hidden="true">
+                    <circle cx="22" cy="13" r="10" fill="none" stroke="#6EE7A8" stroke-width="2.4"/>
+                    <path d="M17 13l4 4 7-8" fill="none" stroke="#6EE7A8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <span>Ack: queue commit or checkpoint advance</span>
+                </li>
+              </ul>
+            </div>
+            <figcaption>A legacy app writes <code>dbo.Orders</code>. A change source captures each row change: SQL Service Broker with a trigger and a queue, or CDC from the transaction log into a change table with a checkpoint. The relay maps each change. When <code>OrderStatus</code> changes to <code>Shipped</code>, the mapper gate builds an <code>OrderShippedEvent</code> for the <code>order-shipped-event</code> topic, and consumers subscribe. Every other change returns <code>null</code> and nothing is published. <em>The animation is a sketch; the rows and values are illustrative.</em></figcaption>
+          </figure>
+        </div>
+      </section>
+      <section class="sec" id="problem" aria-labelledby="h-problem">
+        <div class="wrap">
+          <p class="stage">01 &middot; The problem</p>
+          <h2 id="h-problem">Legacy systems write rows. They can&#39;t publish events.</h2>
+          <div class="split rv">
+            <div>
+              <p class="lead">Legacy systems write to a SQL Server database but can&#39;t create or publish integration events. Their as-is architecture, technical debt, or inability to integrate with message broker infrastructure keeps them out of an event-driven architecture.</p>
+              <ul class="tick">
+                <li>A monolithic desktop app (WinForms or Swing)</li>
+                <li>A VBA Excel app</li>
+                <li>People editing tables directly</li>
+              </ul>
+              <p class="lead">The relay doesn&#39;t ask them to change. It watches their tables instead. The one requirement: the legacy backend is SQL Server.</p>
+              <ul class="more">
+                <li>
+                  <a class="nl" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#how-it-works">README: How it works</a>
+                </li>
+              </ul>
+            </div>
+            <figure class="fig vis">
+              <svg class="dg " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 330" role="img" aria-label="A legacy app writes rows to its SQL Server database. Rows travel toward the event-driven architecture, hit a wall labelled can't publish, and bounce back. Nothing is published." data-scene="prob">
+                <path class="rt" d="M180 64V204" data-r="go"/>
+                <path class="tr thin" d="M180 64V204"/>
+                <rect class="nd" x="90" y="8" width="180" height="56" rx="12"/>
+                <text class="tx" x="180" y="32" text-anchor="middle">Legacy app</text>
+                <text class="ts" x="180" y="51" text-anchor="middle">writes to SQL Server</text>
+                <path class="wl" d="M24 212H336"/>
+                <path class="wh" d="M24 212H336" data-p="wall"/>
+                <g transform="translate(116 250)">
+                  <circle class="ic d" r="11"/>
+                  <path class="ic d" d="M-7.7 7.7L7.7 -7.7"/>
+                </g>
+                <text class="tx td" x="138" y="256" text-anchor="start">can&#39;t publish</text>
+                <rect class="nd dash" x="40" y="282" width="280" height="40" rx="12"/>
+                <text class="tx sm" x="180" y="307" text-anchor="middle" style="fill:var(--muted)">Event-driven architecture</text>
+                <g data-static="1">
+                  <g class='spr spr-row' transform='translate(180 190)'>
+                    <rect class='b' x='-30' y='-10' width='60' height='20' rx='6'/>
+                    <text class='t' y='4' text-anchor='middle'>update</text>
+                  </g>
+                </g>
+                <g data-layer="1"></g>
+              </svg>
+              <figcaption>Rows written by a legacy app hit a wall: nothing publishes an event, so the event-driven side never hears about them.</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+      <section class="sec" id="how" aria-labelledby="h-how">
+        <div class="wrap">
+          <p class="stage">02 &middot; Mapping</p>
+          <h2 id="h-how">From row change to integration event</h2>
+          <p class="lead">Six steps. The mapper is the only part you write.</p>
+          <ol class="steps">
+            <li>
+              <h3>A change source watches the tables</h3>
+              <p>It watches tables for <strong>row changes</strong>: an insert, update or delete of one row.</p>
+            </li>
+            <li>
+              <h3>Each row change becomes a source event</h3>
+              <p>A <strong>source event</strong> holds the row&#39;s values, typed by the mapping&#39;s source event type.</p>
+            </li>
+            <li>
+              <h3>A mapping pairs table, change type and types</h3>
+              <p>A <strong>mapping</strong> in configuration pairs a table and change type with a source event type and an integration event type. Each mapping has exactly one mapper.</p>
+            </li>
+            <li>
+              <h3>The mapper decides</h3>
+              <p>The <strong>mapper</strong> is your code. It decides whether the source event becomes an integration event and builds it. Return <code>null</code> and nothing is published. For updates it sees <code>OldValue</code> and <code>NewValue</code>.</p>
+            </li>
+            <li>
+              <h3>The relay publishes through your broker</h3>
+              <p>It publishes <strong>integration events</strong> through any Chatter message broker infrastructure implementation, such as Azure Service Bus. <code>[BrokeredMessage(&quot;order-shipped-event&quot;)]</code> names the topic; consumers subscribe.</p>
+            </li>
+            <li>
+              <h3>Configuration is checked at startup</h3>
+              <p>The relay checks its configuration when the host starts and stops with a list of problems.</p>
+            </li>
+          </ol>
+          <div class="example rv"><b>Running example.</b> The <code>Orders</code> table. When <code>OrderStatus</code> changes to <code>Shipped</code>, the mapper publishes <code>OrderShippedEvent</code> to the <code>order-shipped-event</code> topic.</div>
+          <ul class="more">
+            <li>
+              <a class="nl" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#how-it-works">README: How it works</a>
+            </li>
+            <li>
+              <a class="nl" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#features">README: Features</a>
+            </li>
+            <li>
+              <a class="nl" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#packages">README: Packages</a>
+            </li>
+          </ul>
+          <div class="grid2 rv">
+            <div class="card">
+              <h3>Core</h3>
+              <p>
+                <code>Chatter.IntegrationEventRelay</code>
+              </p>
+              <p>Mapping configuration, mapper interfaces, and the processor that maps row changes to integration events and publishes them. It doesn&#39;t capture changes itself.</p>
+              <p>
+                <a class="nl" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay/">NuGet: Core</a>
+              </p>
+            </div>
+            <div class="card">
+              <h3>SQL Service Broker change source</h3>
+              <p>
+                <code>Chatter.IntegrationEventRelay.ServiceBroker</code>
+              </p>
+              <p>Uses Chatter.SqlChangeFeed, which installs a trigger on each watched table that sends changed rows to a SQL Service Broker queue.</p>
+              <p>
+                <a class="nl" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.ServiceBroker/">NuGet: ServiceBroker</a>
+              </p>
+            </div>
+            <div class="card">
+              <h3>CDC change source</h3>
+              <p>
+                <code>Chatter.IntegrationEventRelay.Cdc</code>
+              </p>
+              <p>Polls each capture instance&#39;s change table, hands the changes to the processor in commit order, and saves a checkpoint in the source database once a batch is published.</p>
+              <p>
+                <a class="nl" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.Cdc/">NuGet: Cdc</a>
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="sec" id="sources" aria-labelledby="h-src">
+        <div class="wrap">
+          <p class="stage">03 &middot; Change sources</p>
+          <h2 id="h-src">Two change sources. One per table.</h2>
+          <div class="split flip rv">
+            <div>
+              <p class="lead">One relay can use both change sources, but each table uses only one. Each mapping names its source.</p>
+              <p class="note">Tested against SQL Server 2019 and 2022.</p>
+            </div>
+            <figure class="fig vis">
+              <svg class="dg " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 410" role="img" aria-label="One relay, two change sources. Table A is captured by SQL Service Broker through a trigger and a queue. Table B is captured by CDC through the transaction log and a change table. Both feed the same relay, which publishes to a topic on the broker." data-scene="src">
+                <path class="tr" d="M90 52V250C90 272 180 262 180 284" data-r="ssb"/>
+                <path class="tr" d="M270 52V250C270 272 180 262 180 284" data-r="cdc"/>
+                <path class="tr" d="M180 322V356" data-r="out"/>
+                <rect class="nd" x="34" y="8" width="112" height="44" rx="10"/>
+                <rect class="nd" x="214" y="8" width="112" height="44" rx="10"/>
+                <text class="tx" x="90" y="36" text-anchor="middle">Table A</text>
+                <text class="tx" x="270" y="36" text-anchor="middle">Table B</text>
+                <text class="tx tf halo" x="90" y="84" text-anchor="middle">SQL Service Broker</text>
+                <text class="tx tf halo" x="270" y="84" text-anchor="middle">CDC</text>
+                <rect class="nd" x="30" y="104" width="120" height="48" rx="10"/>
+                <rect class="nd" x="30" y="184" width="120" height="48" rx="10"/>
+                <rect class="nd" x="210" y="104" width="120" height="48" rx="10"/>
+                <rect class="nd" x="210" y="184" width="120" height="48" rx="10"/>
+                <text class="tx" x="90" y="125" text-anchor="middle">trigger</text>
+                <text class="ts" x="90" y="142" text-anchor="middle">in the write</text>
+                <text class="tx" x="90" y="205" text-anchor="middle">queue</text>
+                <text class="ts" x="90" y="222" text-anchor="middle">Service Broker</text>
+                <text class="tx sm" x="270" y="125" text-anchor="middle">transaction log</text>
+                <text class="ts" x="270" y="142" text-anchor="middle">no trigger</text>
+                <text class="tx sm" x="270" y="205" text-anchor="middle">change table</text>
+                <text class="ts" x="270" y="222" text-anchor="middle">commit order</text>
+                <rect class="nd" x="110" y="284" width="140" height="38" rx="12"/>
+                <text class="tx" x="180" y="309" text-anchor="middle">Relay</text>
+                <rect class="nd" x="80" y="356" width="200" height="40" rx="20"/>
+                <text class="tm" x="180" y="381" text-anchor="middle">topic on the broker</text>
+                <g data-static="1">
+                  <g class='spr spr-row' transform='translate(90 168)'>
+                    <rect class='b' x='-30' y='-10' width='60' height='20' rx='6'/>
+                    <text class='t' y='4' text-anchor='middle'>change</text>
+                  </g>
+                  <g class='spr spr-row' transform='translate(270 168)'>
+                    <rect class='b' x='-30' y='-10' width='60' height='20' rx='6'/>
+                    <text class='t' y='4' text-anchor='middle'>change</text>
+                  </g>
+                  <g class='spr spr-env' transform='translate(180 340)'>
+                    <rect class='b' x='-17' y='-12' width='34' height='24' rx='4'/>
+                    <path class='f' d='M-16 -9L0 3L16 -9'/>
+                  </g>
+                </g>
+                <g data-layer="1"></g>
+              </svg>
+              <figcaption>Two tables, two change sources, one relay.</figcaption>
+            </figure>
+          </div>
+          <div class="grid2 rv">
+            <div class="card">
+              <h3>SQL Service Broker</h3>
+              <ul class="tick">
+                <li>A trigger on each watched table, in the writing transaction, adds modified rows to a Service Broker queue. The Worker consumes it.</li>
+                <li>Needs SQL Server with Service Broker (most PaaS offerings don&#39;t support it).</li>
+                <li>No CDC capture latency.</li>
+                <li>Order not guaranteed. Chatter generates the message id. Capabilities: None.</li>
+                <li>After downtime, changes wait in the queue.</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>CDC</h3>
+              <ul class="tick ok">
+                <li>The Worker polls the change tables that CDC&#39;s capture job fills from the transaction log. No trigger on the table.</li>
+                <li>Commit order per table (capture instance); no order across tables. Keeps the before-image of updates.</li>
+                <li>Resumes from a checkpoint while changes are still in the change table (retention default 3 days).</li>
+                <li>Commit time available (<code>RelayContext.CommittedAt</code>). The capture job scans the log every 5 s by default.</li>
+                <li>Needs SQL Server Agent, <code>sysadmin</code> to enable CDC on the database, <code>db_owner</code> per table.</li>
+                <li>Capabilities: <code>Ordered</code>, <code>Resumable</code>, <code>CommitTime</code> (<code>ParkRow</code> drops <code>Ordered</code>).</li>
+              </ul>
+            </div>
+          </div>
+          <h3 class="sub">Delivery semantics</h3>
+          <div class="tw" role="region" aria-label="Delivery semantics table" tabindex="0">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col"><span class="note">Aspect</span></th>
+                  <th scope="col">SQL Service Broker</th>
+                  <th scope="col">CDC</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">Capture</th>
+                  <td>Trigger in the writing transaction</td>
+                  <td>Capture job reads the transaction log</td>
+                </tr>
+                <tr>
+                  <th scope="row">Order</th>
+                  <td>Not guaranteed</td>
+                  <td>Commit order per table (capture instance); no order across tables</td>
+                </tr>
+                <tr>
+                  <th scope="row">Delivery</th>
+                  <td>At least once (Chatter&#39;s receive transaction and recovery options)</td>
+                  <td>At least once: a batch is checkpointed only after every change in it is published</td>
+                </tr>
+                <tr>
+                  <th scope="row">Message id</th>
+                  <td>Generated by Chatter</td>
+                  <td>Derived from the source name, the change&#39;s position and the integration event type, so a replay republishes the same ids</td>
+                </tr>
+                <tr>
+                  <th scope="row">Commit time (<code>RelayContext.CommittedAt</code>)</th>
+                  <td>Not available</td>
+                  <td>Available</td>
+                </tr>
+                <tr>
+                  <th scope="row">Capabilities</th>
+                  <td>None</td>
+                  <td><code>Ordered</code>, <code>Resumable</code>, <code>CommitTime</code> (<code>ParkRow</code> drops <code>Ordered</code>)</td>
+                </tr>
+                <tr>
+                  <th scope="row">After downtime</th>
+                  <td>Changes wait in the queue</td>
+                  <td>Resumes from the checkpoint while the changes are still in the change table</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <h3 class="sub">Which one?</h3>
+          <div class="grid2 rv">
+            <div class="card">
+              <h3>Use CDC when</h3>
+              <ul class="tick ok">
+                <li>mappers compare old and new values or depend on the order of changes (for example soft delete followed by restore), since CDC delivers each table&#39;s changes in commit order and keeps the before-image of every update;</li>
+                <li>you can&#39;t, or don&#39;t want to, add triggers to the legacy system&#39;s tables, or the writes must not pay for a trigger and a Service Broker send;</li>
+                <li>the relay must resume where it stopped after downtime, from changes still in the change table.</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>Use SQL Service Broker when</h3>
+              <ul class="tick">
+                <li>SQL Server Agent isn&#39;t available (CDC&#39;s capture job needs it), or CDC can&#39;t be enabled on the database;</li>
+                <li>changes must reach the relay without CDC&#39;s capture latency (the capture job scans the log every few seconds by default);</li>
+                <li>the table is already relayed this way and works as needed.</li>
+              </ul>
+            </div>
+          </div>
+          <p class="lead">A mapping can require capabilities with <code>RequiredCapabilities</code> (for example <code>&quot;Ordered&quot;</code> or <code>&quot;Ordered, CommitTime&quot;</code>); the relay stops at startup if the mapping&#39;s source doesn&#39;t provide them.</p>
+          <ul class="more">
+            <li>
+              <a class="nl" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#choosing-a-change-source">README: Choosing a change source</a>
+            </li>
+            <li>
+              <a class="nl" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#delivery-semantics">README: Delivery semantics</a>
+            </li>
+            <li>
+              <a class="nl" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#using-the-cdc-change-source">README: Using the CDC change source</a>
+            </li>
+          </ul>
+        </div>
+      </section>
+      <section class="sec" id="reliability" aria-labelledby="h-rel">
+        <div class="wrap">
+          <p class="stage">04 &middot; Reliability</p>
+          <h2 id="h-rel">At least once, and safe to replay</h2>
+          <p class="lead">Both sources deliver at least once. SQL Service Broker acknowledges by committing Chatter&#39;s receive transaction once processing succeeds; Chatter&#39;s recovery options retry failures.</p>
+          <div class="split rv">
+            <div>
+              <h3>The checkpoint pin</h3>
+              <ul class="tick ok">
+                <li>With CDC, a batch is checkpointed only after every change in it is published.</li>
+                <li>After a crash the batch is republished with the same message ids, derived from the source name, the change&#39;s position and the integration event type.</li>
+                <li>Enable duplicate detection on topics (Azure Service Bus) or make consumers idempotent.</li>
+              </ul>
+            </div>
+            <figure class="fig vis">
+              <svg class="dg " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 430" role="img" aria-label="Checkpoint diagram. A worker reads a batch from the change table and publishes it to the broker. The checkpoint pin on the left advances only after the batch reaches the broker. After a crash before the pin moves, the batch is replayed with the same message ids." data-scene="rel">
+                <path class="tr thin" d="M44 70V198" data-r="pin"/>
+                <path class="tr" d="M210 126H252" data-r="rd"/>
+                <path class="tr" d="M296 156V262" data-r="pub"/>
+                <path class="tr ak2" d="M236 284H44V204" data-r="ack"/>
+                <path class="ic m" d="M36 70 H52"/>
+                <path class="ic m" d="M36 134 H52"/>
+                <path class="ic m" d="M36 198 H52"/>
+                <text class="ts" x="44" y="38" text-anchor="middle">checkpoint</text>
+                <rect class="nd" x="80" y="44" width="130" height="170" rx="12"/>
+                <text class="tx sm" x="145" y="66" text-anchor="middle">change table</text>
+                <rect class="rw" x="92" y="76" width="106" height="26" rx="6"/>
+                <text class="tm" x="145" y="94" text-anchor="middle">change 1</text>
+                <rect class="rw" x="92" y="108" width="106" height="26" rx="6"/>
+                <text class="tm" x="145" y="126" text-anchor="middle">change 2</text>
+                <rect class="rw" x="92" y="140" width="106" height="26" rx="6"/>
+                <text class="tm" x="145" y="158" text-anchor="middle">change 3</text>
+                <rect class="rw" x="92" y="172" width="106" height="26" rx="6"/>
+                <text class="tm" x="145" y="190" text-anchor="middle">change 4</text>
+                <rect class="nd" x="252" y="96" width="88" height="60" rx="12"/>
+                <text class="tx" x="296" y="131" text-anchor="middle">Worker</text>
+                <rect class="nd" x="236" y="262" width="120" height="44" rx="12"/>
+                <text class="tx sm" x="296" y="289" text-anchor="middle">Broker topic</text>
+                <text class="ts tok" x="140" y="276" text-anchor="middle" style="fill:var(--ok)">ack after publish</text>
+                <g data-p="cr" class="hz" transform="translate(334 98)">
+                  <circle r="13" fill="#0B1220" stroke="#FFB547" stroke-width="2.4"/>
+                  <path class="ic a" d="M-5 -5L5 5M5 -5L-5 5"/>
+                </g>
+                <rect class="hl" data-p="c1" x="8" y="324" width="344" height="28" rx="8"/>
+                <g>
+                  <g transform="translate(18 339)">
+                    <path class="ic" d="M0 0L5 5L13 -6"/>
+                  </g>
+                  <text class="sm" x="44" y="344">1  Publish the batch, then move the pin</text>
+                </g>
+                <rect class="hl" data-p="c2" x="8" y="356" width="344" height="28" rx="8"/>
+                <g>
+                  <g transform="translate(18 371)">
+                    <path class="ic a" d="M0 -5L10 5M10 -5L0 5"/>
+                  </g>
+                  <text class="sm" x="44" y="376">2  Crash before the pin moves: it stays</text>
+                </g>
+                <rect class="hl" data-p="c3" x="8" y="388" width="344" height="28" rx="8"/>
+                <g>
+                  <g transform="translate(18 403)">
+                    <path class="ic f" d="M0 0A6 6 0 1 1 3 6M3 6L-3 6M3 6L3 1"/>
+                  </g>
+                  <text class="sm" x="44" y="408">3  Replay: same message ids</text>
+                </g>
+                <g data-static="1">
+                  <g class="spr spr-pin" data-s="ok" transform="translate(44 207)">
+                    <circle class='b' cy='-9' r='9'/>
+                    <path class='f' d='M0 0V12'/>
+                    <path class='tk' d='M-4.5 -9L-1.5 -6L4.5 -12'/>
+                  </g>
+                </g>
+                <g data-layer="1"></g>
+              </svg>
+              <figcaption>Illustrative: changes 1 to 4 stand for changes in one capture instance. The pin moves only after the broker has the batch.</figcaption>
+            </figure>
+          </div>
+          <div class="split flip rv">
+            <div>
+              <h3>The lease</h3>
+              <p class="lead">Several relay instances can run with the same configuration. A lease (a SQL Server application lock) lets one of them poll each capture instance while the others stand by.</p>
+            </div>
+            <figure class="fig vis">
+              <svg class="dg " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 350" role="img" aria-label="Lease diagram. Several relay instances run with the same configuration. Worker A holds the lease, a SQL Server application lock, and polls the capture instance and publishes to the broker. Worker B stands by and keeps checking the lease." data-scene="lease">
+                <path class="tr" d="M130 56V100C130 140 90 130 90 176" data-r="pa"/>
+                <path class="tr mu" d="M270 176V140C270 118 230 108 204 106" data-r="pb"/>
+                <path class="tr" d="M90 234V262C90 290 180 276 180 300" data-r="pub"/>
+                <rect class="nd" x="100" y="8" width="160" height="48" rx="12"/>
+                <text class="tx sm" x="180" y="29" text-anchor="middle">capture instance</text>
+                <text class="tm ts" x="180" y="47" text-anchor="middle">dbo_Orders</text>
+                <circle class="rg" cx="180" cy="105" r="24" data-p="lk"/>
+                <g transform="translate(180 105)">
+                  <rect class="lk" x="-12" y="-4" width="24" height="18" rx="3"/>
+                  <path class="ic" d="M-7 -4V-9A7 7 0 0 1 7 -9V-4"/>
+                </g>
+                <text class="tx sm tok" x="180" y="143" text-anchor="middle">lease</text>
+                <text class="ts" x="180" y="159" text-anchor="middle">SQL Server</text>
+                <text class="ts" x="180" y="173" text-anchor="middle">application lock</text>
+                <rect class="nd" x="24" y="180" width="132" height="58" rx="12"/>
+                <text class="tx" x="90" y="202" text-anchor="middle">Worker A</text>
+                <path class="ic" d="M54 223l4 4 8-9"/>
+                <text class="tx sm tok" x="74" y="227" text-anchor="start">ACTIVE</text>
+                <rect class="nd dash" x="204" y="180" width="132" height="58" rx="12"/>
+                <text class="tx" x="270" y="202" text-anchor="middle">Worker B</text>
+                <path class="ic m" d="M236 219V229M243 219V229"/>
+                <text class="tx sm" x="256" y="227" text-anchor="start" style="fill:var(--muted)">STANDBY</text>
+                <rect class="nd" x="110" y="300" width="140" height="40" rx="20"/>
+                <text class="tx sm" x="180" y="325" text-anchor="middle">Broker</text>
+                <g data-static="1">
+                  <g class='spr spr-env' transform='translate(90 270)'>
+                    <rect class='b' x='-17' y='-12' width='34' height='24' rx='4'/>
+                    <path class='f' d='M-16 -9L0 3L16 -9'/>
+                  </g>
+                </g>
+                <g data-layer="1"></g>
+              </svg>
+              <figcaption>Worker A holds the lease. Worker B stands by and checks again.</figcaption>
+            </figure>
+          </div>
+          <h3 class="sub">Error policy</h3>
+          <p class="lead">Transient failures are retried with exponential backoff and never parked. For a change that keeps failing with other errors, a CDC source applies its error policy.</p>
+          <div class="grid2 rv">
+            <div class="card">
+              <h3>Halt <span class="note">(default)</span></h3>
+              <p>Stops at the change and keeps retrying. Nothing after it is published, so order holds.</p>
+            </div>
+            <div class="card">
+              <h3>ParkRow</h3>
+              <p>Parks the change in <code>&lt;Schema&gt;.Chatter_RelayParkedChanges</code> after <code>MaxAttemptsBeforePark</code> attempts. Later changes to the same row park behind it; other rows carry on. On request, a replay republishes the row&#39;s parked changes in order.</p>
+            </div>
+          </div>
+          <figure class="code">
+            <figcaption id="c-replay">Request a replay of a row's parked changes</figcaption>
+            <pre tabindex="0" aria-labelledby="c-replay"><code><span class="kw">UPDATE</span> Chatter.Chatter_RelayParkedChanges <span class="kw">SET</span> ReplayRequestedAt = SYSUTCDATETIME()
+<span class="kw">WHERE</span> SourceName = N<span class="st">'orders-cdc'</span> AND CaptureInstance = N<span class="st">'dbo_Orders'</span> AND RowKey = N<span class="st">'&lt;row key, e.g. [42]&gt;'</span>;</code></pre>
+          </figure>
+          <h3 class="sub">Metrics and health check</h3>
+          <p class="lead">Meter <code>Chatter.IntegrationEventRelay.Cdc</code>, with these instruments:</p>
+          <ul class="metrics">
+            <li>
+              <code>chatter.relay.cdc.changes</code>
+            </li>
+            <li>
+              <code>chatter.relay.cdc.parked</code>
+            </li>
+            <li>
+              <code>chatter.relay.cdc.batch.failures</code>
+            </li>
+            <li>
+              <code>chatter.relay.cdc.batch.duration</code>
+            </li>
+            <li>
+              <code>chatter.relay.cdc.lag</code>
+            </li>
+            <li>
+              <code>chatter.relay.cdc.parked.current</code>
+            </li>
+          </ul>
+          <figure class="code">
+            <figcaption id="c-health">Health check</figcaption>
+            <pre tabindex="0" aria-labelledby="c-health"><code>services.AddHealthChecks().AddCdcChangeSource(maxLag: TimeSpan.FromMinutes(5));</code></pre>
+          </figure>
+          <p class="lead">Tested SQL scripts enable CDC and grant the relay&#39;s login least-privilege permissions. The integration tests run the relay under exactly those grants.</p>
+          <ul class="more">
+            <li>
+              <a class="nl" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#delivery-semantics">README: Delivery semantics</a>
+            </li>
+            <li>
+              <a class="nl" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#error-policy-and-parked-changes">README: Error policy and parked changes</a>
+            </li>
+            <li>
+              <a class="nl" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#metrics-and-health-check">README: Metrics and health check</a>
+            </li>
+          </ul>
+        </div>
+      </section>
+      <section class="sec" id="switch" aria-labelledby="h-sw">
+        <div class="wrap">
+          <p class="stage">05 &middot; Switch-over</p>
+          <h2 id="h-sw">Switch a table between sources. One source relays each change.</h2>
+          <div class="split rv">
+            <div>
+              <p class="lead"><code>.scripts/cdc/switch-to-cdc.sql</code> and <code>.scripts/cdc/switch-to-service-broker.sql</code> switch a table between sources.</p>
+              <ul class="tick gate">
+                <li>Each script picks a switch point. The source you switch away from relays every change committed before it; the source you switch to relays every change committed after it.</li>
+                <li>Every change is relayed by only one of the two sources, and each source is still at least once.</li>
+                <li>The switch commits in one transaction, or the script rolls all of it back and changes nothing.</li>
+                <li>Writes to the table pause while the script runs, normally a few seconds; past <code>@timeoutSeconds</code> (default 300) it rolls back.</li>
+                <li>Mappers don&#39;t change.</li>
+                <li>Integration tests run both scripts in both directions.</li>
+              </ul>
+            </div>
+            <figure class="fig vis">
+              <svg class="dg " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 490" role="img" aria-label="Railway points diagram. Writes to a table run down one track. At the switch point, the points send each change onto one of two tracks, SQL Service Broker or CDC, never both. Writes pause while the points move." data-scene="sw">
+                <path class="tr" d="M180 46V200" data-r="m"/>
+                <path class="tr" d="M180 200C180 236 70 226 70 262V362" data-r="l"/>
+                <path class="tr" d="M180 200C180 236 290 226 290 262V362" data-r="r"/>
+                <path class="rt" d="M180 200L180 200" data-r="jn"/>
+                <rect class="nd" x="100" y="6" width="160" height="40" rx="12"/>
+                <text class="tx sm" x="180" y="31" text-anchor="middle">Writes to the table</text>
+                <rect class="nd" x="10" y="362" width="120" height="48" rx="10"/>
+                <rect class="nd" x="230" y="362" width="120" height="48" rx="10"/>
+                <text class="tx sm" x="70" y="391" text-anchor="middle">Service Broker</text>
+                <text class="tx" x="290" y="391" text-anchor="middle">CDC</text>
+                <text class="ts" x="70" y="428" text-anchor="middle">one track at a time</text>
+                <text class="ts" x="290" y="428" text-anchor="middle">never both</text>
+                <text class="tx ta" x="204" y="186" text-anchor="start">switch point</text>
+                <g data-p="pz" class="hz">
+                  <path class="ic a" d="M200 84V96M207 84V96"/>
+                  <text class="tx sm ta" x="218" y="96" text-anchor="start">writes pause</text>
+                </g>
+                <rect class="hl a" data-p="sa" x="36" y="440" width="288" height="22" rx="6"/>
+                <rect class="hl a" data-p="sb" x="36" y="462" width="288" height="22" rx="6"/>
+                <text class="tm" x="180" y="456" text-anchor="middle">switch-to-cdc.sql</text>
+                <text class="tm" x="180" y="478" text-anchor="middle">switch-to-service-broker.sql</text>
+                <g data-static="1">
+                  <g class="spr spr-blade" transform="translate(180 200) rotate(65)">
+                    <path class='bl' d='M0 0H52'/>
+                    <circle class='bc' r='8'/>
+                  </g>
+                  <g class='spr spr-chip' transform='translate(70 300)'>
+                    <rect class='b' x='-13' y='-10' width='26' height='20' rx='6'/>
+                    <text class='t' y='4' text-anchor='middle'>2</text>
+                  </g>
+                  <g class='spr spr-chip' transform='translate(290 300)'>
+                    <rect class='b' x='-13' y='-10' width='26' height='20' rx='6'/>
+                    <text class='t' y='4' text-anchor='middle'>4</text>
+                  </g>
+                  <g class='spr spr-chip' transform='translate(180 150)'>
+                    <rect class='b' x='-13' y='-10' width='26' height='20' rx='6'/>
+                    <text class='t' y='4' text-anchor='middle'>3</text>
+                  </g>
+                </g>
+                <g data-layer="1"></g>
+              </svg>
+              <figcaption>Railway points. Changes numbered 1 to 8 are illustrative. Before the switch point a change goes down one track, after it down the other, never both.</figcaption>
+            </figure>
+          </div>
+          <ul class="more">
+            <li>
+              <a class="nl" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#switching-a-table-from-sql-service-broker-to-cdc">README: Switching a table from SQL Service Broker to CDC</a>
+            </li>
+          </ul>
+        </div>
+      </section>
+      <section class="sec" id="start" aria-labelledby="h-start">
+        <div class="wrap">
+          <p class="stage">06 &middot; Get started</p>
+          <h2 id="h-start">Try it</h2>
+          <p class="lead">The snippets below come from the README quick start.</p>
+          <div class="cgrid">
+            <figure class="code">
+              <figcaption id="c-pkg">1. Add the packages</figcaption>
+              <pre tabindex="0" aria-labelledby="c-pkg"><code>dotnet add package Chatter.IntegrationEventRelay
+dotnet add package Chatter.IntegrationEventRelay.ServiceBroker
+dotnet add package Chatter.MessageBrokers.AzureServiceBus
+dotnet add package Chatter.MessageBrokers.AzureServiceBus.Auth</code></pre>
+            </figure>
+            <figure class="code">
+              <figcaption id="c-pkgcdc">2. Add the CDC change source (optional)</figcaption>
+              <pre tabindex="0" aria-labelledby="c-pkgcdc"><code>dotnet add package Chatter.IntegrationEventRelay.Cdc</code></pre>
+            </figure>
+            <figure class="code">
+              <figcaption id="c-ssb">3. Program.cs: SQL Service Broker</figcaption>
+              <pre tabindex="0" aria-labelledby="c-ssb"><code><span class="cm">// Wires up the mapper of each mapping in configuration</span>
+.AddIntegrationEventRelay()
+    <span class="cm">// Captures changes to the mapped tables with triggers and SQL Service Broker</span>
+    .UseServiceBrokerChangeSource();</code></pre>
+            </figure>
+            <figure class="code">
+              <figcaption id="c-cdc">3. Program.cs: CDC</figcaption>
+              <pre tabindex="0" aria-labelledby="c-cdc"><code>.AddIntegrationEventRelay()
+    .UseCdcChangeSource()
+    .UseServiceBrokerChangeSource();</code></pre>
+            </figure>
+          </div>
+          <figure class="code">
+            <figcaption id="c-mapper">4. The mapper</figcaption>
+            <pre tabindex="0" aria-labelledby="c-mapper"><code><span class="kw">using</span> Chatter.IntegrationEventRelay.Core.Abstractions;
+<span class="kw">using</span> Chatter.IntegrationEventRelay.Core.Configuration;
+<span class="kw">using</span> Chatter.IntegrationEventRelay.Core.Mapping;
+
+<span class="kw">namespace</span> MyNewIntegrationEventRelay;
+
+<span class="kw">public</span> <span class="kw">class</span> OrderShippedMapper : IMapSourceUpdateToIntegrationEvent&lt;OrderChangedEvent, OrderShippedEvent&gt;
+{
+    <span class="kw">public</span> <span class="kw">Task</span>&lt;OrderShippedEvent?&gt; MapAsync(MappingData&lt;OrderChangedEvent&gt; mappingData, RelayContext context, EventMappingConfigurationItem? mappingConfig)
+    {
+        OrderShippedEvent? orderShippedEvent = <span class="kw">null</span>;
+
+        <span class="cm">// mappingData.OldValue only has a value for an update</span>
+        <span class="kw">if</span> (mappingData.OldValue?.OrderStatus != <span class="st">"Shipped"</span> &amp;&amp; mappingData.NewValue?.OrderStatus == <span class="st">"Shipped"</span>)
+        {
+            orderShippedEvent = <span class="kw">new</span> OrderShippedEvent
+            {
+                Id = mappingData.NewValue.Id,
+                CustomerId = mappingData.NewValue.CustomerId,
+                ProductId = mappingData.NewValue.ProductId,
+                OrderPlacedOn = mappingData.NewValue.OrderPlacedOn,
+                OccurredAt = <span class="kw">DateTime</span>.UtcNow
+            };
+        }
+
+        <span class="kw">return</span> <span class="kw">Task</span>.FromResult(orderShippedEvent);
+    }
+}</code></pre>
+          </figure>
+          <figure class="code">
+            <figcaption id="c-json">5. appsettings.json: a CDC source and mapping</figcaption>
+            <pre tabindex="0" aria-labelledby="c-json"><code><span class="st">"IntegrationEventRelay"</span>: {
+  <span class="st">"ConnectionString"</span>: <span class="st">"..."</span>,
+  <span class="st">"Schema"</span>: <span class="st">"Chatter"</span>,
+  <span class="st">"Sources"</span>: {
+    <span class="st">"orders-cdc"</span>: { <span class="st">"Type"</span>: <span class="st">"Cdc"</span>, <span class="st">"PollInterval"</span>: <span class="st">"00:00:01"</span> }
+  },
+  <span class="st">"Mappings"</span>: [
+    {
+      <span class="st">"Source"</span>: <span class="st">"orders-cdc"</span>,
+      <span class="st">"SourceEventTypeName"</span>: <span class="st">"MyNewIntegrationEventRelay.OrderChangedEvent"</span>,
+      <span class="st">"IntegrationEventTypeName"</span>: <span class="st">"MyNewIntegrationEventRelay.OrderShippedEvent"</span>,
+      <span class="st">"SourceChangeType"</span>: <span class="st">"Update"</span>,
+      <span class="st">"TableName"</span>: <span class="st">"Orders"</span>,
+      <span class="st">"TableSchema"</span>: <span class="st">"dbo"</span>,
+      <span class="st">"CaptureInstance"</span>: <span class="st">"dbo_Orders"</span>
+    }
+  ]
+}</code></pre>
+          </figure>
+          <figure class="code">
+            <figcaption id="c-sql">6. Ship the seeded order</figcaption>
+            <pre tabindex="0" aria-labelledby="c-sql"><code><span class="kw">USE</span> [OrdersDB]
+<span class="kw">GO</span>
+
+<span class="kw">UPDATE</span> [dbo].[Orders]
+   <span class="kw">SET</span> [OrderStatus] = <span class="st">'Shipped'</span>
+ <span class="kw">WHERE</span> Id = <span class="st">'52CBE9FF-2496-4F46-9331-7F122AA3D973'</span>
+<span class="kw">GO</span></code></pre>
+          </figure>
+          <p class="lead">The mapper returns an <code>OrderShippedEvent</code>, which the relay publishes to the <code>order-shipped-event</code> topic.</p>
+          <figure class="code">
+            <figcaption id="c-log">Log output</figcaption>
+            <pre tabindex="0" aria-labelledby="c-log"><code>Processing Update of 'OrderChangedEvent' from source 'orders-cdc' with 1 mapping(s)
+Published integration event 'OrderShippedEvent' to messaging infrastructure</code></pre>
+          </figure>
+          <p class="note">Illustrative log output.</p>
+          <h3 class="sub">Or run the demo</h3>
+          <p class="lead">From the root of the repo, <code>docker compose up --build</code> runs SQL Server, the Azure Service Bus emulator, two Worker Services and two Consumer Services. No Azure subscription is needed. The demo uses both change sources.</p>
+          <figure class="code">
+            <figcaption id="c-docker">Run the demo</figcaption>
+            <pre tabindex="0" aria-labelledby="c-docker"><code>docker compose up --build</code></pre>
+          </figure>
+          <p class="lead">100 database operations produce:</p>
+          <ul class="counts rv">
+            <li class="cnt">
+              <b>50</b>
+              <code>Event1DeletedEvent</code>
+              <i style="--w:.5"></i>
+            </li>
+            <li class="cnt">
+              <b>25</b>
+              <code>Event1RestoredEvent</code>
+              <i style="--w:.25"></i>
+            </li>
+            <li class="cnt">
+              <b>25</b>
+              <code>Event2CreatedEvent</code>
+              <i style="--w:.25"></i>
+            </li>
+          </ul>
+          <ul class="more">
+            <li>
+              <a class="nl" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#quick-start">README: Quick start</a>
+            </li>
+            <li>
+              <a class="nl" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#running-this-repo-locally">README: Running this repo locally</a>
+            </li>
+          </ul>
+          <div class="cta-row">
+            <a class="cta" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#quick-start">
+              <span>Open the quick start</span>
+              <span class="ic" aria-hidden="true">
+                <svg class="ar" viewBox="0 0 20 20">
+                  <path d="M3 10h13M11 5l5 5-5 5"/>
+                </svg>
+                <svg class="ck" viewBox="0 0 20 20">
+                  <path d="M3 10.5l4.5 4.5L17 5"/>
+                </svg>
+              </span>
+            </a>
+            <a class="cta alt" href="https://github.com/brenpike/Chatter.IntegrationEventRelay">
+              <span>GitHub repository</span>
+              <span class="ic" aria-hidden="true">
+                <svg class="ar" viewBox="0 0 20 20">
+                  <path d="M3 10h13M11 5l5 5-5 5"/>
+                </svg>
+                <svg class="ck" viewBox="0 0 20 20">
+                  <path d="M3 10.5l4.5 4.5L17 5"/>
+                </svg>
+              </span>
+            </a>
+          </div>
+        </div>
+      </section>
+    </main>
+    <footer class="foot">
+      <div class="wrap">
+        <nav aria-label="Footer">
+          <ul class="nav">
+            <li>
+              <a class="nl" href="https://github.com/brenpike/Chatter.IntegrationEventRelay">GitHub repository</a>
+            </li>
+            <li>
+              <a class="nl" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay/">NuGet Core</a>
+            </li>
+            <li>
+              <a class="nl" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.ServiceBroker/">NuGet ServiceBroker</a>
+            </li>
+            <li>
+              <a class="nl" href="https://www.nuget.org/packages/Chatter.IntegrationEventRelay.Cdc/">NuGet Cdc</a>
+            </li>
+            <li>
+              <a class="nl" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#how-it-works">README: How it works</a>
+            </li>
+            <li>
+              <a class="nl" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/README.md#quick-start">README: Quick start</a>
+            </li>
+            <li>
+              <a class="nl" href="index.html">All prototypes</a>
+            </li>
+            <li>
+              <a class="nl" href="https://github.com/brenpike/Chatter.IntegrationEventRelay/blob/main/LICENSE">MIT license</a>
+            </li>
+          </ul>
+        </nav>
+        <p>MIT license. Author: Brennan Pike. Runs on .NET 10 (<code>net10.0</code>) in a .NET Worker Service.</p>
+      </div>
+    </footer>
+    <script>
+      (function () {
+        'use strict';
+        var D = document, R = D.documentElement, NS = 'http://www.w3.org/2000/svg';
+        R.classList.add('js');
+        if (window.CSS && CSS.registerProperty) { R.classList.add('prop'); }
+
+        var SH = {"row":"<rect class='b' x='-30' y='-10' width='60' height='20' rx='6'/><text class='t' y='4' text-anchor='middle'>{L}</text>","chip":"<rect class='b' x='-13' y='-10' width='26' height='20' rx='6'/><text class='t' y='4' text-anchor='middle'>{L}</text>","dead":"<rect class='b' x='-30' y='-10' width='60' height='20' rx='6'/><text class='t' y='4' text-anchor='middle'>{L}</text><path class='x' d='M-34 13L34 -13'/>","env":"<rect class='b' x='-17' y='-12' width='34' height='24' rx='4'/><path class='f' d='M-16 -9L0 3L16 -9'/>","envok":"<rect class='b' x='-17' y='-12' width='34' height='24' rx='4'/><path class='f' d='M-16 -9L0 3L16 -9'/>","dot":"<circle class='b' r='5'/>","dotok":"<circle class='b' r='5'/>","pin":"<circle class='b' cy='-9' r='9'/><path class='f' d='M0 0V12'/><path class='tk' d='M-4.5 -9L-1.5 -6L4.5 -12'/>","blade":"<path class='bl' d='M0 0H52'/><circle class='bc' r='8'/>","probe":"<circle class='pr' r='7'/>"};
+        var SC = {"hero":{"l":18,"t":1.0,"s":[{"k":"dot","g":[{"r":"w","f":0,"g":1,"s":0.0,"e":0.6,"i":0.2,"o":0.2}]},{"k":"row","l":"Shipped","g":[{"r":"ssb","f":0,"g":1,"s":0.9,"e":3.7,"i":0.08},{"r":"gate","f":0,"g":1,"s":3.7,"e":4.3,"o":0.35}]},{"k":"env","g":[{"r":"out","f":0,"g":1,"s":4.2,"e":4.9,"i":0.2,"o":0.4}]},{"k":"envok","g":[{"r":"c1","f":0,"g":1,"s":5.2,"e":5.8,"i":0.3,"o":0.3}]},{"k":"envok","g":[{"r":"c2","f":0,"g":1,"s":5.2,"e":5.8,"i":0.3,"o":0.3}]},{"k":"dot","g":[{"r":"w","f":0,"g":1,"s":4.0,"e":4.6,"i":0.2,"o":0.2}]},{"k":"row","l":"Shipped","g":[{"r":"cdc","f":0,"g":1,"s":4.9,"e":7.7,"i":0.08},{"r":"gate","f":0,"g":1,"s":7.7,"e":8.3,"o":0.35}]},{"k":"env","g":[{"r":"out","f":0,"g":1,"s":8.2,"e":8.9,"i":0.2,"o":0.4}]},{"k":"envok","g":[{"r":"c1","f":0,"g":1,"s":9.2,"e":9.8,"i":0.3,"o":0.3}]},{"k":"envok","g":[{"r":"c2","f":0,"g":1,"s":9.2,"e":9.8,"i":0.3,"o":0.3}]},{"k":"dot","g":[{"r":"w","f":0,"g":1,"s":8.0,"e":8.6,"i":0.2,"o":0.2}]},{"k":"row","l":"Pending","g":[{"r":"ssb","f":0,"g":1,"s":8.9,"e":11.7,"i":0.08},{"r":"gate","f":0,"g":1,"s":11.7,"e":12.3,"o":0.35}]},{"k":"dead","l":"null","g":[{"r":"drop","f":0,"g":1,"s":12.2,"e":13.3,"i":0.15,"o":0.5}]},{"k":"dot","g":[{"r":"w","f":0,"g":1,"s":12.0,"e":12.6,"i":0.2,"o":0.2}]},{"k":"row","l":"Pending","g":[{"r":"cdc","f":0,"g":1,"s":12.9,"e":15.7,"i":0.08},{"r":"gate","f":0,"g":1,"s":15.7,"e":16.3,"o":0.35}]},{"k":"dead","l":"null","g":[{"r":"drop","f":0,"g":1,"s":16.2,"e":17.3,"i":0.15,"o":0.5}]}],"p":[{"p":"f2","s":0.5,"e":1.2},{"p":"gate","s":4.0,"e":4.6},{"p":"ak","s":4.9,"e":5.6},{"p":"f4","s":4.5,"e":5.2},{"p":"gate","s":8.0,"e":8.6},{"p":"ac","s":8.9,"e":9.6},{"p":"f1","s":8.5,"e":9.2},{"p":"gate","s":12.0,"e":12.6},{"p":"dl","s":12.2,"e":13.4},{"p":"f3","s":12.5,"e":13.2},{"p":"gate","s":16.0,"e":16.6},{"p":"dl","s":16.2,"e":17.4}]},"prob":{"l":6.8,"t":0.6,"s":[{"k":"row","l":"update","g":[{"r":"go","f":0,"g":0.96,"s":0.0,"e":1.6,"i":0.15},{"r":"go","f":0.96,"g":0.72,"s":1.6,"e":2.4,"o":0.8}]},{"k":"row","l":"update","g":[{"r":"go","f":0,"g":0.96,"s":2.2,"e":3.8,"i":0.15},{"r":"go","f":0.96,"g":0.72,"s":3.8,"e":4.6,"o":0.8}]},{"k":"row","l":"update","g":[{"r":"go","f":0,"g":0.96,"s":4.4,"e":6.0,"i":0.15},{"r":"go","f":0.96,"g":0.72,"s":6.0,"e":6.8,"o":0.8}]}],"p":[{"p":"wall","s":1.45,"e":2.0},{"p":"wall","s":3.6500000000000004,"e":4.2},{"p":"wall","s":5.8500000000000005,"e":6.4}]},"src":{"l":9,"t":0.4,"s":[{"k":"row","l":"change","g":[{"r":"ssb","f":0,"g":1,"s":0.0,"e":2.4,"i":0.1}]},{"k":"env","g":[{"r":"out","f":0,"g":1,"s":2.4,"e":3.1,"i":0.2,"o":0.3}]},{"k":"row","l":"change","g":[{"r":"cdc","f":0,"g":1,"s":2.0,"e":4.4,"i":0.1}]},{"k":"env","g":[{"r":"out","f":0,"g":1,"s":4.4,"e":5.1,"i":0.2,"o":0.3}]},{"k":"row","l":"change","g":[{"r":"ssb","f":0,"g":1,"s":4.0,"e":6.4,"i":0.1}]},{"k":"env","g":[{"r":"out","f":0,"g":1,"s":6.4,"e":7.1,"i":0.2,"o":0.3}]},{"k":"row","l":"change","g":[{"r":"cdc","f":0,"g":1,"s":6.0,"e":8.4,"i":0.1}]},{"k":"env","g":[{"r":"out","f":0,"g":1,"s":8.4,"e":9.1,"i":0.2,"o":0.3}]}],"p":[]},"rel":{"l":17,"t":0.2,"s":[{"k":"chip","l":"1","g":[{"r":"rd","f":0,"g":1,"s":0.6,"e":1.4,"i":0.15},{"r":"pub","f":0,"g":1,"s":1.4,"e":2.5,"o":0.4}]},{"k":"chip","l":"2","g":[{"r":"rd","f":0,"g":1,"s":1.0,"e":1.8,"i":0.15},{"r":"pub","f":0,"g":1,"s":1.8,"e":2.9,"o":0.4}]},{"k":"chip","l":"3","g":[{"r":"rd","f":0,"g":1,"s":6.0,"e":6.8,"i":0.15},{"r":"pub","f":0,"g":1,"s":6.8,"e":7.9,"o":0.4}]},{"k":"chip","l":"4","g":[{"r":"rd","f":0,"g":1,"s":6.4,"e":7.2,"i":0.15},{"r":"pub","f":0,"g":1,"s":7.2,"e":8.3,"o":0.4}]},{"k":"chip","l":"3","g":[{"r":"rd","f":0,"g":1,"s":11.0,"e":11.8,"i":0.15},{"r":"pub","f":0,"g":1,"s":11.8,"e":12.9,"o":0.4}]},{"k":"chip","l":"4","g":[{"r":"rd","f":0,"g":1,"s":11.4,"e":12.2,"i":0.15},{"r":"pub","f":0,"g":1,"s":12.2,"e":13.3,"o":0.4}]},{"k":"dotok","g":[{"r":"ack","f":0,"g":1,"s":3.0,"e":4.0,"i":0.2,"o":0.3}]},{"k":"dotok","g":[{"r":"ack","f":0,"g":1,"s":13.4,"e":14.4,"i":0.2,"o":0.3}]},{"k":"pin","h":1,"g":[{"r":"pin","f":0,"g":0,"s":0,"e":0.6,"i":1},{"r":"pin","f":0,"g":0.5,"s":4.0,"e":4.8,"z":1,"c":"ok"},{"r":"pin","f":0.5,"g":1,"s":14.4,"e":15.2,"z":1,"c":"ok"},{"r":"pin","f":1,"g":1,"s":15.2,"e":16.8,"o":1,"c":"ok"}]}],"p":[{"p":"c1","s":0.6,"e":5.2},{"p":"c2","s":6.0,"e":10.4},{"p":"c3","s":11.0,"e":15.4},{"p":"cr","s":8.2,"e":10.2}]},"lease":{"l":7.4,"t":0.2,"s":[{"k":"dot","g":[{"r":"pa","f":0,"g":1,"s":0.4,"e":2.0,"i":0.15}]},{"k":"env","g":[{"r":"pub","f":0,"g":1,"s":2.0,"e":2.9,"i":0.2,"o":0.3}]},{"k":"dot","g":[{"r":"pa","f":0,"g":1,"s":3.9,"e":5.5,"i":0.15}]},{"k":"env","g":[{"r":"pub","f":0,"g":1,"s":5.5,"e":6.4,"i":0.2,"o":0.3}]},{"k":"probe","g":[{"r":"pb","f":0,"g":0.94,"s":1.4,"e":2.4,"i":0.2},{"r":"pb","f":0.94,"g":0.45,"s":2.4,"e":3.2,"o":0.9}]},{"k":"probe","g":[{"r":"pb","f":0,"g":0.94,"s":5.0,"e":6.0,"i":0.2},{"r":"pb","f":0.94,"g":0.45,"s":6.0,"e":6.8,"o":0.9}]}],"p":[{"p":"lk","s":2.3,"e":2.9},{"p":"lk","s":5.9,"e":6.5}]},"sw":{"l":25,"t":0.2,"s":[{"k":"chip","l":"1","g":[{"r":"m","f":0,"g":1,"s":0.5,"e":1.9,"i":0.15},{"r":"l","f":0,"g":1,"s":1.9,"e":3.3,"o":0.3}]},{"k":"chip","l":"2","g":[{"r":"m","f":0,"g":1,"s":2.4,"e":3.8,"i":0.15},{"r":"l","f":0,"g":1,"s":3.8,"e":5.2,"o":0.3}]},{"k":"chip","l":"3","g":[{"r":"m","f":0,"g":0.78,"s":5.5,"e":6.5,"i":0.15},{"r":"m","f":0.78,"g":0.78,"s":6.5,"e":8.4},{"r":"m","f":0.78,"g":1,"s":8.4,"e":8.7},{"r":"r","f":0,"g":1,"s":8.7,"e":10.1,"o":0.3}]},{"k":"chip","l":"4","g":[{"r":"m","f":0,"g":1,"s":9.4,"e":10.8,"i":0.15},{"r":"r","f":0,"g":1,"s":10.8,"e":12.2,"o":0.3}]},{"k":"chip","l":"5","g":[{"r":"m","f":0,"g":1,"s":12.5,"e":13.9,"i":0.15},{"r":"r","f":0,"g":1,"s":13.9,"e":15.3,"o":0.3}]},{"k":"chip","l":"6","g":[{"r":"m","f":0,"g":1,"s":14.4,"e":15.8,"i":0.15},{"r":"r","f":0,"g":1,"s":15.8,"e":17.2,"o":0.3}]},{"k":"chip","l":"7","g":[{"r":"m","f":0,"g":0.78,"s":17.5,"e":18.5,"i":0.15},{"r":"m","f":0.78,"g":0.78,"s":18.5,"e":20.4},{"r":"m","f":0.78,"g":1,"s":20.4,"e":20.7},{"r":"l","f":0,"g":1,"s":20.7,"e":22.1,"o":0.3}]},{"k":"chip","l":"8","g":[{"r":"m","f":0,"g":1,"s":21.4,"e":22.8,"i":0.15},{"r":"l","f":0,"g":1,"s":22.8,"e":24.2,"o":0.3}]},{"k":"blade","h":1,"g":[{"r":"jn","f":0,"g":0,"s":0,"e":7.4,"q":[115,115]},{"r":"jn","f":0,"g":0,"s":7.4,"e":8.2,"q":[115,65],"z":1},{"r":"jn","f":0,"g":0,"s":8.2,"e":19.4,"q":[65,65]},{"r":"jn","f":0,"g":0,"s":19.4,"e":20.2,"q":[65,115],"z":1},{"r":"jn","f":0,"g":0,"s":20.2,"e":25,"q":[115,115]}]}],"p":[{"p":"pz","s":6.5,"e":8.4},{"p":"pz","s":18.5,"e":20.4},{"p":"sa","s":0.3,"e":11.8},{"p":"sb","s":12.3,"e":24.5}]}};
+
+        var mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+        var box = D.getElementById('pause');
+        var userPaused = false, raf = 0, last = 0, dgs = [];
+
+        function running() { return !userPaused && !mq.matches && !D.hidden; }
+        function ease(p) { return p * p * (3 - 2 * p); }
+
+        function Dg(svg, sc) {
+          this.svg = svg; this.sc = sc; this.t = sc.t || 0;
+          this.vis = false; this.ok = false; this.sp = []; this.pl = {}; this.rt = {};
+        }
+        Dg.prototype.shown = function () { return this.svg.getClientRects().length > 0; };
+        Dg.prototype.init = function () {
+          var me = this, svg = this.svg, layer = svg.querySelector('[data-layer]');
+          [].forEach.call(svg.querySelectorAll('[data-r]'), function (p) {
+            me.rt[p.getAttribute('data-r')] = { e: p, n: p.getTotalLength() };
+          });
+          this.sc.s.forEach(function (d) {
+            var g = D.createElementNS(NS, 'g');
+            g.setAttribute('class', 'spr spr-' + d.k);
+            g.innerHTML = SH[d.k].replace('{L}', d.l || '');
+            g.style.opacity = '0';
+            layer.appendChild(g);
+            me.sp.push({ g: g, d: d, o: 0, c: null });
+          });
+          this.sc.p.forEach(function (p) {
+            if (!me.pl[p.p]) {
+              me.pl[p.p] = { e: [].slice.call(svg.querySelectorAll('[data-p="' + p.p + '"]')), v: [] };
+            }
+            me.pl[p.p].v.push(p);
+          });
+          this.ok = true;
+        };
+        Dg.prototype.draw = function () {
+          var me = this, t = this.t % this.sc.l;
+          this.sp.forEach(function (s) {
+            var L = s.d.g, leg = null, held = false, i, p, op, q, f, g, rt, pt, tr, c;
+            for (i = 0; i < L.length; i++) {
+              if (t >= L[i].s && t < L[i].e) { leg = L[i]; break; }
+            }
+            if (!leg && s.d.h) {
+              for (i = L.length - 1; i >= 0; i--) {
+                if (t >= L[i].e) { leg = L[i]; held = true; break; }
+              }
+            }
+            if (!leg) {
+              if (s.o !== 0) { s.g.style.opacity = '0'; s.o = 0; }
+              return;
+            }
+            p = held ? 1 : (t - leg.s) / (leg.e - leg.s);
+            op = held ? (leg.o ? 0 : 1) : 1;
+            if (!held) {
+              if (leg.i && p < leg.i) { op = p / leg.i; }
+              if (leg.o && p > 1 - leg.o) { op = (1 - p) / leg.o; }
+            }
+            q = leg.z ? ease(p) : p;
+            f = leg.f; g = leg.g;
+            rt = me.rt[leg.r];
+            pt = rt.e.getPointAtLength((f + (g - f) * q) * rt.n);
+            tr = 'translate(' + pt.x.toFixed(1) + ' ' + pt.y.toFixed(1) + ')';
+            if (leg.q) { tr += ' rotate(' + (leg.q[0] + (leg.q[1] - leg.q[0]) * q).toFixed(1) + ')'; }
+            s.g.setAttribute('transform', tr);
+            s.g.style.opacity = op.toFixed(2);
+            s.o = op;
+            c = leg.c || '';
+            if (c !== s.c) { s.c = c; s.g.setAttribute('data-s', c); }
+          });
+          Object.keys(this.pl).forEach(function (k) {
+            var o = me.pl[k], v = 0;
+            o.v.forEach(function (p) {
+              if (t >= p.s && t < p.e) {
+                var u = (t - p.s) / (p.e - p.s), a = u < 0.15 ? u / 0.15 : (u > 0.6 ? (1 - u) / 0.4 : 1);
+                if (a > v) { v = a; }
+              }
+            });
+            o.e.forEach(function (el) {
+              var lo = parseFloat(el.getAttribute('data-lo') || '0');
+              el.style.opacity = (lo + (1 - lo) * v).toFixed(2);
+            });
+          });
+        };
+        Dg.prototype.live = function () {
+          if (!this.ok) {
+            if (!this.shown()) { return; }
+            this.init();
+          }
+          this.svg.classList.add('live');
+          this.draw();
+        };
+        Dg.prototype.stat = function () {
+          var me = this;
+          this.svg.classList.remove('live');
+          this.sp.forEach(function (s) { s.g.style.opacity = '0'; s.o = 0; });
+          Object.keys(this.pl).forEach(function (k) {
+            me.pl[k].e.forEach(function (el) { el.style.opacity = ''; });
+          });
+        };
+
+        function frame(ts) {
+          raf = 0;
+          if (!running()) { return; }
+          var dt = Math.min(0.1, (ts - last) / 1000), any = false;
+          last = ts;
+          dgs.forEach(function (d) {
+            if (d.vis && d.shown()) {
+              if (!d.ok) { d.live(); }
+              d.t += dt;
+              d.draw();
+              any = true;
+            }
+          });
+          if (any) { raf = requestAnimationFrame(frame); }
+        }
+        function kick() {
+          if (raf || !running()) { return; }
+          if (!dgs.some(function (d) { return d.vis && d.shown(); })) { return; }
+          last = performance.now();
+          raf = requestAnimationFrame(frame);
+        }
+
+        [].forEach.call(D.querySelectorAll('svg[data-scene]'), function (svg) {
+          var d = new Dg(svg, SC[svg.getAttribute('data-scene')]);
+          svg.dg = d;
+          dgs.push(d);
+        });
+
+        if ('IntersectionObserver' in window) {
+          var io = new IntersectionObserver(function (es) {
+            es.forEach(function (e) {
+              var d = e.target.dg;
+              d.vis = e.isIntersecting;
+              if (d.vis && !mq.matches) { d.live(); }
+            });
+            kick();
+          }, { rootMargin: '60px' });
+          dgs.forEach(function (d) { io.observe(d.svg); });
+
+          var rv = new IntersectionObserver(function (es) {
+            es.forEach(function (e) {
+              if (e.isIntersecting) { e.target.classList.add('in'); rv.unobserve(e.target); }
+            });
+          }, { threshold: 0, rootMargin: '0px 0px -6% 0px' });
+          [].forEach.call(D.querySelectorAll('.rv, .steps li'), function (el) { rv.observe(el); });
+        } else {
+          [].forEach.call(D.querySelectorAll('.rv, .steps li'), function (el) { el.classList.add('in'); });
+        }
+
+        function motion() {
+          if (mq.matches) {
+            box.checked = true; box.disabled = true;
+            dgs.forEach(function (d) { d.stat(); });
+          } else {
+            box.disabled = false; box.checked = userPaused;
+            dgs.forEach(function (d) { if (d.vis) { d.live(); } });
+            kick();
+          }
+        }
+        box.addEventListener('change', function () {
+          userPaused = box.checked;
+          R.classList.toggle('paused', userPaused);
+          kick();
+        });
+        if (mq.addEventListener) { mq.addEventListener('change', motion); } else if (mq.addListener) { mq.addListener(motion); }
+        D.addEventListener('visibilitychange', function () { if (!D.hidden) { kick(); } });
+        motion();
+      })();
+    </script>
+  </body>
+</html>
