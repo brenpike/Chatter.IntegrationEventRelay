@@ -53,9 +53,9 @@ prose. Keep them in step with the scripts, but treat the scripts as the source o
 `.github/workflows/pages.yml` deploys it when `web/` or the workflow changes on `main`. The `github-pages` environment
 allows deployments only from `main`, so no other branch can publish; the job's `if` only stops stray runs from
 displacing a waiting deploy. `web/index.html` is one self-contained page: its CSS and JS are inline, it loads nothing
-from outside, and it links only to this repository on GitHub and the three NuGet packages. It retells the README; keep
-it in step with the README, but treat the README as the source of truth. Report site changes that claim something the
-README doesn't or that load anything from outside.
+from outside, and it links only to this repository on GitHub, its author's GitHub profile and the three NuGet packages.
+It retells the README; keep it in step with the README, but treat the README as the source of truth. Report site
+changes that claim something the README doesn't or that load anything from outside.
 
 `docs/prototype/` holds the design prototypes the site was chosen from. They aren't published; changes to them
 don't need review beyond not breaking the gallery's links.

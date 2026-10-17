@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Chatter.IntegrationEventRelay: relay SQL Server table changes as integration events</title>
     <meta name="description" content="Relays changes to a legacy SQL Server database&#x27;s tables to message broker infrastructure as integration events, so systems that can&#x27;t publish events themselves can take part in an event-driven architecture.">
+    <meta name="author" content="Brennan Pike">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231B1A17'/%3E%3Cpath d='M4 22 Q16 6 28 22' fill='none' stroke='%23F6F1E7' stroke-width='3' stroke-linecap='round'/%3E%3Ccircle cx='4' cy='22' r='2.5' fill='%239A3412'/%3E%3Ccircle cx='28' cy='22' r='2.5' fill='%23115E59'/%3E%3C/svg%3E">
     <style>
       :root {
@@ -100,6 +101,8 @@
         letter-spacing: -0.02em; margin: 0 0 1.25rem; overflow-wrap: anywhere;
       }
       .lede { font: 400 clamp(1.1rem, 2.2vw, 1.45rem)/1.5 var(--display); max-width: 38rem; margin: 0 0 1rem; }
+      .hero-by { color: var(--muted); font-weight: 400; font-size: 0.85rem; margin: 0 0 0.75rem; }
+      .hero-by a { color: inherit; }
       .hero-sub { color: var(--muted); max-width: 36rem; margin: 0 0 1.75rem; }
       .cta-row { display: flex; flex-wrap: wrap; gap: 0.9rem; margin: 0 0 1.75rem; }
       .facts { display: flex; flex-wrap: wrap; gap: 0.5rem; list-style: none; margin: 0; padding: 0; }
@@ -560,6 +563,7 @@
           <p class="hero-kicker">A story in nine chapters</p>
           <h1 id="hero-t">Chatter.<wbr>Integration<wbr>Event<wbr>Relay</h1>
           <p class="lede">Relays changes to a legacy SQL Server database&#39;s tables to message broker infrastructure as integration events, so systems that can&#39;t publish events themselves can take part in an event-driven architecture.</p>
+          <p class="hero-by">by <a href="https://github.com/brenpike" target="_blank" rel="noopener noreferrer" aria-label="Brennan Pike on GitHub (opens in a new tab)">Brennan Pike</a></p>
           <p class="hero-sub">Scroll to follow one row change from a legacy table to a topic on a message broker.</p>
           <div class="cta-row">
             <a class="cta" href="#ch-1">Start the story <span class="arr" aria-hidden="true">&rarr;</span></a>
